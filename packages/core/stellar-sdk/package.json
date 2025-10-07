@@ -1,0 +1,41 @@
+{
+  "name": "@galaxy/core-stellar-sdk",
+  "version": "1.0.0",
+  "description": "Galaxy Stellar SDK - Enhanced Stellar SDK for Galaxy DevKit",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "stellar-sdk": "^13.3.0",
+    "@supabase/supabase-js": "^2.38.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.8.3",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.0.0"
+  },
+  "keywords": [
+    "stellar",
+    "blockchain",
+    "sdk",
+    "galaxy",
+    "defi"
+  ],
+  "author": "Galaxy DevKit Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "directory": "packages/core/stellar-sdk"
+  }
+}
+

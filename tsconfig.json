@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@galaxy/core/*": ["packages/core/*/src"],
+      "@galaxy/contracts/*": ["packages/contracts/*/src"],
+      "@galaxy/api/*": ["packages/api/*/src"],
+      "@galaxy/sdk/*": ["packages/sdk/*/src"],
+      "@galaxy/templates/*": ["packages/templates/*/src"],
+      "@galaxy/tools/*": ["tools/*/src"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "tools/*/src/**/*",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
+  ]
+}
+

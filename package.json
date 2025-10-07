@@ -1,0 +1,49 @@
+{
+  "name": "galaxy-devkit",
+  "version": "1.0.0",
+  "description": "Galaxy DevKit - Complete development framework for Stellar ecosystem",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "build": "lerna run build",
+    "dev": "lerna run dev",
+    "deploy": "lerna run deploy",
+    "lint": "lerna run lint",
+    "lint:fix": "lerna run lint:fix",
+    "type-check": "lerna run type-check",
+    "clean": "lerna run clean",
+    "bootstrap": "lerna bootstrap",
+    "version": "lerna version",
+    "publish": "lerna publish"
+  },
+  "devDependencies": {
+    "lerna": "^8.0.0",
+    "typescript": "^5.8.3",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "@types/node": "^20.0.0",
+    "concurrently": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "blockchain",
+    "framework",
+    "sdk",
+    "defi",
+    "smart-contracts"
+  ],
+  "author": "Galaxy DevKit Team",
+  "license": "MIT"
+}

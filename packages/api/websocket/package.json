@@ -1,0 +1,52 @@
+{
+  "name": "@galaxy/api-websocket",
+  "version": "1.0.0",
+  "description": "Galaxy WebSocket API - Real-time WebSocket API for Galaxy DevKit",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@galaxy/core-stellar-sdk": "^1.0.0",
+    "@galaxy/core-invisible-wallet": "^1.0.0",
+    "@galaxy/core-automation": "^1.0.0",
+    "@supabase/supabase-js": "^2.38.0",
+    "ws": "^8.14.2",
+    "socket.io": "^4.7.4",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "@types/socket.io": "^4.0.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.8.3",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.0.0"
+  },
+  "keywords": [
+    "stellar",
+    "websocket",
+    "realtime",
+    "galaxy",
+    "defi"
+  ],
+  "author": "Galaxy DevKit Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "directory": "packages/api/websocket"
+  }
+}
+
