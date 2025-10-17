@@ -1,0 +1,32 @@
+{
+  "name": "@galaxy/sdk",
+  "version": "0.1.0",
+  "description": "Galaxy JavaScript SDK (lightweight, vanilla)",
+  "main": "dist/galaxy-sdk.js",
+  "module": "src/index.js",
+  "types": "",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "echo 'No build step yet (source + prebundled dist)'",
+    "test": "node --version"
+  },
+  "keywords": [
+    "galaxy",
+    "sdk",
+    "javascript",
+    "browser",
+    "node"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^3.4.0"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=12"
+  }
+}
