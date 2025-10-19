@@ -7,6 +7,7 @@
 
 import { WebSocketServer } from '../../index';
 import { TestDataGenerator, mockEnvironment, setupJestMocks, cleanup, wait } from '../utils/test-helpers';
+mockEnvironment();
 
 // Mock Supabase
 jest.mock('@supabase/supabase-js', () => ({

@@ -9,6 +9,8 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { ExtendedSocket } from '../../types/websocket-types';
 
+mockEnvironment();
+
 /**
  * Mock Supabase Client
  */
@@ -125,6 +127,8 @@ export class MockSupabaseClient {
 export class TestSocketIOServer {
   private httpServer: any;
   private io: Server;
+  private roomMemberships: Map<string, Set<string>> = new Map();
+  public roomMembershipManager: { addToRoom: (id: string, room: string) => void, removeFromRoom: (id: string, room: string) => void };
 
   constructor() {
     this.httpServer = createServer();
@@ -134,10 +138,44 @@ export class TestSocketIOServer {
         credentials: true
       }
     });
+    // Patch adapter.rooms to delegate to test helper map
+    this.io.sockets.adapter.rooms = this.roomMemberships;
+    this.roomMembershipManager = {
+      addToRoom: (socketId: string, roomName: string) => {
+        if (!this.roomMemberships.has(roomName)) {
+          this.roomMemberships.set(roomName, new Set());
+        }
+        this.roomMemberships.get(roomName)!.add(socketId);
+      },
+      removeFromRoom: (socketId: string, roomName: string) => {
+        if (this.roomMemberships.has(roomName)) {
+          this.roomMemberships.get(roomName)!.delete(socketId);
+          if (this.roomMemberships.get(roomName)!.size === 0) {
+            this.roomMemberships.delete(roomName);
+          }
+        }
+      }
+    };
   }
 
   getServer(): Server {
     return this.io;
+  }
+
+  // Util for tests to allow socket to join/leave rooms
+  addToRoom(socketId: string, roomName: string) {
+    if (!this.roomMemberships.has(roomName)) {
+      this.roomMemberships.set(roomName, new Set());
+    }
+    this.roomMemberships.get(roomName)!.add(socketId);
+  }
+  removeFromRoom(socketId: string, roomName: string) {
+    if (this.roomMemberships.has(roomName)) {
+      this.roomMemberships.get(roomName)!.delete(socketId);
+      if (this.roomMemberships.get(roomName)!.size === 0) {
+        this.roomMemberships.delete(roomName);
+      }
+    }
   }
 
   async start(port: number = 0): Promise<number> {
@@ -424,15 +462,24 @@ export function wait(ms: number): Promise<void> {
  * Create a mock socket with default properties
  */
 export function createMockSocket(overrides: any = {}): ExtendedSocket {
-  return {
-    id: `mock-${Date.now()}`,
+  // If adapter/room mock provided in test context, patch join/leave to it
+  let roomMemberships = overrides.roomMemberships || null;
+  const id = overrides.id || `mock-${Date.now()}`;
+  const socket: ExtendedSocket = {
+    id,
     connected: true,
     emit: jest.fn(),
     on: jest.fn(),
     off: jest.fn(),
     disconnect: jest.fn(),
-    join: jest.fn(),
-    leave: jest.fn(),
+    join: jest.fn((room: string) => {
+      if (roomMemberships)
+        roomMemberships.addToRoom(id, room);
+    }),
+    leave: jest.fn((room: string) => {
+      if (roomMemberships)
+        roomMemberships.removeFromRoom(id, room);
+    }),
     handshake: {
       address: '127.0.0.1',
       headers: {
@@ -442,7 +489,7 @@ export function createMockSocket(overrides: any = {}): ExtendedSocket {
     isAuthenticated: false,
     userId: undefined,
     connectionState: {
-      socketId: `mock-${Date.now()}`,
+      socketId: id,
       isAuthenticated: false,
       connectedAt: Date.now(),
       lastActivity: Date.now(),
@@ -450,7 +497,8 @@ export function createMockSocket(overrides: any = {}): ExtendedSocket {
       metadata: {}
     },
     ...overrides
-  } as ExtendedSocket;
+  };
+  return socket;
 }
 
 /**
