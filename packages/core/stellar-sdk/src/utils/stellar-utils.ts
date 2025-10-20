@@ -7,6 +7,7 @@
  */
 
 import { Keypair } from 'stellar-sdk';
+import crypto from 'crypto';
 
 /**
  * Validates a Stellar public key
@@ -44,7 +45,7 @@ export const generateKeypair = () => {
   const keypair = Keypair.random();
   return {
     publicKey: keypair.publicKey(),
-    secretKey: keypair.secret()
+    secretKey: keypair.secret(),
   };
 };
 
@@ -74,7 +75,11 @@ export const fromStroops = (stroops: number): string => {
  * @param endChars - Number of characters to show at end
  * @returns formatted address
  */
-export const formatAddress = (address: string, startChars: number = 4, endChars: number = 4): string => {
+export const formatAddress = (
+  address: string,
+  startChars: number = 4,
+  endChars: number = 4
+): string => {
   if (address.length <= startChars + endChars) {
     return address;
   }
@@ -95,8 +100,10 @@ export const isValidMemo = (memo: string): boolean => {
  * @param network - Network name
  * @returns network passphrase
  */
-export const getNetworkPassphrase = (network: 'testnet' | 'mainnet'): string => {
-  return network === 'testnet' 
+export const getNetworkPassphrase = (
+  network: 'testnet' | 'mainnet'
+): string => {
+  return network === 'testnet'
     ? 'Test SDF Network ; September 2015'
     : 'Public Global Stellar Network ; September 2015';
 };
@@ -128,8 +135,12 @@ export const isValidAmount = (amount: string | number): boolean => {
  * @param decimals - Number of decimal places
  * @returns formatted balance string
  */
-export const formatBalance = (balance: string | number, decimals: number = 7): string => {
-  const numBalance = typeof balance === 'string' ? parseFloat(balance) : balance;
+export const formatBalance = (
+  balance: string | number,
+  decimals: number = 7
+): string => {
+  const numBalance =
+    typeof balance === 'string' ? parseFloat(balance) : balance;
   return numBalance.toFixed(decimals);
 };
 
@@ -161,7 +172,10 @@ export const createMemo = (text: string) => {
  * @param baseFee - Base fee per operation
  * @returns total fee
  */
-export const calculateFee = (operationCount: number, baseFee: number = 100): number => {
+export const calculateFee = (
+  operationCount: number,
+  baseFee: number = 100
+): number => {
   return operationCount * baseFee;
 };
 
@@ -175,3 +189,60 @@ export const isValidAssetCode = (assetCode: string): boolean => {
   return /^[A-Z0-9]{1,12}$/.test(assetCode);
 };
 
+// AES-GCM requires 12-byte IVs for best security
+const IV_LENGTH = 12;
+const ALGO = 'aes-256-gcm';
+
+/**
+ * Encrypt a private key with a password
+ */
+export function encryptPrivateKey(
+  privateKey: string,
+  password: string
+): string {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(IV_LENGTH);
+
+  // Derive 256-bit key from password using PBKDF2
+  const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(privateKey, 'utf8'),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+
+  // Store all parts (salt, iv, authTag, ciphertext)
+  return [
+    salt.toString('base64'),
+    iv.toString('base64'),
+    authTag.toString('base64'),
+    encrypted.toString('base64'),
+  ].join(':');
+}
+
+/**
+ * Decrypt a private key with a password
+ */
+export function decryptPrivateKey(
+  encryptedData: string,
+  password: string
+): string {
+  const [saltB64, ivB64, authTagB64, encryptedB64] = encryptedData.split(':');
+
+  const salt = Buffer.from(saltB64, 'base64');
+  const iv = Buffer.from(ivB64, 'base64');
+  const authTag = Buffer.from(authTagB64, 'base64');
+  const encrypted = Buffer.from(encryptedB64, 'base64');
+
+  const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+  const decipher = crypto.createDecipheriv(ALGO, key, iv);
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([
+    decipher.update(encrypted),
+    decipher.final(),
+  ]);
+  return decrypted.toString('utf8');
+}

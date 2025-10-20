@@ -37,11 +37,11 @@ export const useStellar = (networkConfig: NetworkConfig) => {
    * Creates a new wallet
    * @param config - Wallet configuration
    */
-  const createWallet = async (config: Partial<WalletConfig>) => {
+  const createWallet = async (config: Partial<WalletConfig> , password : string) => {
     try {
       loading = true;
       error = null;
-      const newWallet = await stellarService.createWallet(config);
+      const newWallet = await stellarService.createWallet(config , password );
       wallet = newWallet;
       return newWallet;
     } catch (err) {
