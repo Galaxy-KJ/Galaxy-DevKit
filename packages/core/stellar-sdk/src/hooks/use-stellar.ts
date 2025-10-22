@@ -8,15 +8,15 @@
 
 // import { useState, useEffect, useCallback } from 'react';
 import { StellarService } from '../services/stellar-service';
-import { 
-  Wallet, 
-  WalletConfig, 
-  NetworkConfig, 
-  AccountInfo, 
-  Balance, 
-  PaymentParams, 
-  PaymentResult, 
-  TransactionInfo 
+import {
+  Wallet,
+  WalletConfig,
+  NetworkConfig,
+  AccountInfo,
+  Balance,
+  PaymentParams,
+  PaymentResult,
+  TransactionInfo,
 } from '../types/stellar-types';
 
 /**
@@ -37,15 +37,19 @@ export const useStellar = (networkConfig: NetworkConfig) => {
    * Creates a new wallet
    * @param config - Wallet configuration
    */
-  const createWallet = async (config: Partial<WalletConfig> , password : string) => {
+  const createWallet = async (
+    config: Partial<WalletConfig>,
+    password: string
+  ) => {
     try {
       loading = true;
       error = null;
-      const newWallet = await stellarService.createWallet(config , password );
+      const newWallet = await stellarService.createWallet(config, password);
       wallet = newWallet;
       return newWallet;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create wallet';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to create wallet';
       error = errorMessage;
       throw new Error(errorMessage);
     } finally {
@@ -61,7 +65,7 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     try {
       loading = true;
       error = null;
-      
+
       // Create wallet object from config
       const newWallet: Wallet = {
         id: `wallet_${Date.now()}`,
@@ -70,22 +74,23 @@ export const useStellar = (networkConfig: NetworkConfig) => {
         network: walletConfig.network,
         createdAt: new Date(),
         updatedAt: new Date(),
-        metadata: {}
+        metadata: {},
       };
 
       wallet = newWallet;
-      
+
       // Load account info
       const account = await stellarService.getAccountInfo(wallet.publicKey);
       accountInfo = account;
-      
+
       // Load balance
       const walletBalance = await stellarService.getBalance(wallet.publicKey);
       balance = walletBalance;
-      
+
       return wallet;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to connect wallet';
       error = errorMessage;
       throw new Error(errorMessage);
     } finally {
@@ -117,17 +122,18 @@ export const useStellar = (networkConfig: NetworkConfig) => {
       loading = true;
       error = null;
       const result = await stellarService.sendPayment(wallet, params);
-      
+
       // Refresh account info after payment
       const account = await stellarService.getAccountInfo(wallet.publicKey);
       accountInfo = account;
-      
+
       const walletBalance = await stellarService.getBalance(wallet.publicKey);
       balance = walletBalance;
-      
+
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send payment';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to send payment';
       error = errorMessage;
       throw new Error(errorMessage);
     } finally {
@@ -144,14 +150,15 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     try {
       loading = true;
       error = null;
-      
+
       const account = await stellarService.getAccountInfo(wallet.publicKey);
       accountInfo = account;
-      
+
       const walletBalance = await stellarService.getBalance(wallet.publicKey);
       balance = walletBalance;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh account';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to refresh account';
       error = errorMessage;
     } finally {
       loading = false;
@@ -168,11 +175,17 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     try {
       loading = true;
       error = null;
-      
-      const history = await stellarService.getTransactionHistory(wallet.publicKey, limit);
+
+      const history = await stellarService.getTransactionHistory(
+        wallet.publicKey,
+        limit
+      );
       transactionHistory = history;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load transaction history';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load transaction history';
       error = errorMessage;
     } finally {
       loading = false;
@@ -196,7 +209,7 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     transactionHistory,
     loading,
     error,
-    
+
     // Actions
     createWallet,
     connectWallet,
@@ -205,9 +218,8 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     refreshAccount,
     loadTransactionHistory,
     switchNetwork,
-    
+
     // Service
-    stellarService
+    stellarService,
   };
 };
-

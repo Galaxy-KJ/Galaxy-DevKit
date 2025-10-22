@@ -8,9 +8,6 @@
 
 import {
   Keypair,
-  Transaction,
-  Account,
-  Networks,
   Asset,
   Operation,
   BASE_FEE,
@@ -20,9 +17,10 @@ import {
 } from 'stellar-sdk';
 import * as StellarSDK from '@stellar/stellar-sdk';
 import * as bip39 from 'bip39';
-import { encryptPrivateKey } from '../utils/encryption.utils';
-import * as crypto from 'crypto';
-
+import {
+  encryptPrivateKey,
+  decryptPrivateKey,
+} from '../utils/encryption.utils';
 import {
   Wallet,
   WalletConfig,
@@ -35,7 +33,6 @@ import {
 } from '../types/stellar-types';
 import { supabaseClient } from '../utils/supabase-client';
 import { NetworkUtils } from '../utils/network-utils';
-// import { TransactionUtils } from '../utils/transaction-utils';
 
 /**
  * Service class for Stellar operations
@@ -47,13 +44,11 @@ export class StellarService {
   private networkConfig: NetworkConfig;
   private supabase = supabaseClient;
   private networkUtils: NetworkUtils;
-  // private transactionUtils: TransactionUtils;
 
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
     this.server = new StellarSDK.Horizon.Server(networkConfig.horizonUrl);
     this.networkUtils = new NetworkUtils();
-    // this.transactionUtils = new TransactionUtils();
   }
 
   /**
@@ -261,7 +256,8 @@ export class StellarService {
    */
   async sendPayment(
     wallet: Wallet,
-    params: PaymentParams
+    params: PaymentParams,
+    password: string
   ): Promise<PaymentResult> {
     try {
       if (!this.networkUtils.isValidPublicKey(params.destination)) {
@@ -272,7 +268,12 @@ export class StellarService {
         throw new Error('Amount must be greater than 0');
       }
 
-      const keypair = Keypair.fromSecret(wallet.privateKey);
+      const decrypted_private_key = decryptPrivateKey(
+        wallet.privateKey,
+        password
+      );
+
+      const keypair = Keypair.fromSecret(decrypted_private_key);
       const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
       const asset =
@@ -393,7 +394,6 @@ export class StellarService {
 
       const transactionHistory: TransactionInfo[] = await Promise.all(
         transactions.records.map(async (tx: any) => {
-          // Get operations for this transaction to extract payment details
           const operations = await this.server
             .operations()
             .forTransaction(tx.hash)
