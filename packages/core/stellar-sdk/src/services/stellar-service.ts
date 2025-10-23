@@ -14,8 +14,7 @@ import {
   TransactionBuilder,
   Memo,
   Horizon,
-} from 'stellar-sdk';
-import * as StellarSDK from '@stellar/stellar-sdk';
+} from '@stellar/stellar-sdk';
 import * as bip39 from 'bip39';
 import {
   encryptPrivateKey,
@@ -33,6 +32,7 @@ import {
 } from '../types/stellar-types';
 import { supabaseClient } from '../utils/supabase-client';
 import { NetworkUtils } from '../utils/network-utils';
+import { validateMemo } from '../utils/stellar-utils';
 
 /**
  * Service class for Stellar operations
@@ -47,7 +47,7 @@ export class StellarService {
 
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
-    this.server = new StellarSDK.Horizon.Server(networkConfig.horizonUrl);
+    this.server = new Horizon.Server(networkConfig.horizonUrl);
     this.networkUtils = new NetworkUtils();
   }
 
@@ -149,7 +149,6 @@ export class StellarService {
    */
   async getAccountInfo(publicKey: string): Promise<AccountInfo> {
     try {
-      // Validate public key format
       if (!this.networkUtils.isValidPublicKey(publicKey)) {
         throw new Error('Invalid public key format');
       }
@@ -268,6 +267,21 @@ export class StellarService {
         throw new Error('Amount must be greater than 0');
       }
 
+      if (params.asset !== 'XLM') {
+        const destinationFunded = await this.isAccountFunded(
+          params.destination
+        );
+        if (!destinationFunded) {
+          throw new Error(
+            'Destination account must be funded to receive custom assets'
+          );
+        }
+      }
+
+      if (params.memo) {
+        validateMemo(params.memo);
+      }
+
       const decrypted_private_key = decryptPrivateKey(
         wallet.privateKey,
         password
@@ -278,9 +292,10 @@ export class StellarService {
 
       const asset =
         params.asset === 'XLM' ? Asset.native() : new Asset(params.asset);
+      const fee = await this.estimateFee();
 
       const transactionBuilder = new TransactionBuilder(sourceAccount, {
-        fee: params.fee?.toString() || BASE_FEE,
+        fee: params.fee?.toString() || fee,
         networkPassphrase: this.networkConfig.passphrase,
       });
 
@@ -301,7 +316,7 @@ export class StellarService {
       const transaction = transactionBuilder.build();
       transaction.sign(keypair);
 
-      const result = await this.server.submitTransaction(transaction);
+      const result = await this.submitTrxWithRetry(transaction);
 
       const paymentResult: PaymentResult = {
         hash: result.hash,
@@ -328,7 +343,8 @@ export class StellarService {
   async createAccount(
     sourceWallet: Wallet,
     destinationPublicKey: string,
-    startingBalance: string
+    startingBalance: string,
+    password: string
   ): Promise<PaymentResult> {
     try {
       if (!this.networkUtils.isValidPublicKey(destinationPublicKey)) {
@@ -339,13 +355,19 @@ export class StellarService {
         throw new Error('Starting balance must be at least 1 XLM');
       }
 
-      const keypair = Keypair.fromSecret(sourceWallet.privateKey);
+      const decrypted_private_key = decryptPrivateKey(
+        sourceWallet.privateKey,
+        password
+      );
+      const keypair = Keypair.fromSecret(decrypted_private_key);
       const sourceAccount = await this.server.loadAccount(
         sourceWallet.publicKey
       );
 
+      const fee = await this.estimateFee();
+
       const transaction = new TransactionBuilder(sourceAccount, {
-        fee: BASE_FEE,
+        fee,
         networkPassphrase: this.networkConfig.passphrase,
       })
         .addOperation(
@@ -359,7 +381,7 @@ export class StellarService {
 
       transaction.sign(keypair);
 
-      const result = await this.server.submitTransaction(transaction);
+      const result = await this.submitTrxWithRetry(transaction);
 
       return {
         hash: result.hash,
@@ -394,28 +416,71 @@ export class StellarService {
 
       const transactionHistory: TransactionInfo[] = await Promise.all(
         transactions.records.map(async (tx: any) => {
-          const operations = await this.server
-            .operations()
-            .forTransaction(tx.hash)
-            .call();
+          try {
+            const operations = await this.server
+              .operations()
+              .forTransaction(tx.hash)
+              .call();
 
-          const paymentOp = operations.records.find(
-            (op: any) => op.type === 'payment' || op.type === 'create_account'
-          );
+            // Find payment or create_account operation
+            const paymentOp = operations.records.find(
+              (op: any) => op.type === 'payment' || op.type === 'create_account'
+            );
 
-          return {
-            hash: tx.hash,
-            source: tx.source_account,
-            destination: paymentOp?.to || paymentOp?.account || '',
-            amount: paymentOp?.amount || paymentOp?.starting_balance || '0',
-            asset:
-              paymentOp?.asset_type === 'native'
-                ? 'XLM'
-                : paymentOp?.asset_code || 'XLM',
-            memo: tx.memo || '',
-            status: tx.successful ? 'success' : 'failed',
-            createdAt: new Date(tx.created_at),
-          };
+            // Extract destination based on operation type
+            let destination = '';
+            if (paymentOp) {
+              if (paymentOp.type === 'payment') {
+                destination = paymentOp.to || paymentOp.destination || '';
+              } else if (paymentOp.type === 'create_account') {
+                destination = paymentOp.account || '';
+              }
+            }
+
+            // Extract asset information
+            let asset = 'XLM';
+            if (paymentOp) {
+              if (paymentOp.asset_type === 'native') {
+                asset = 'XLM';
+              } else if (
+                paymentOp.asset_type === 'credit_alphanum4' ||
+                paymentOp.asset_type === 'credit_alphanum12'
+              ) {
+                asset = paymentOp.asset_code || 'UNKNOWN';
+              }
+            }
+
+            // Extract amount
+            const amount =
+              paymentOp?.amount || paymentOp?.starting_balance || '0';
+
+            return {
+              hash: tx.hash,
+              source: tx.source_account,
+              destination,
+              amount,
+              asset,
+              memo: tx.memo || '',
+              status: tx.successful ? 'success' : 'failed',
+              createdAt: new Date(tx.created_at),
+            };
+          } catch (error) {
+            // If we can't fetch operations, return basic transaction info
+            console.warn(
+              `Failed to fetch operations for transaction ${tx.hash}:`,
+              error
+            );
+            return {
+              hash: tx.hash,
+              source: tx.source_account,
+              destination: '',
+              amount: '0',
+              asset: 'XLM',
+              memo: tx.memo || '',
+              status: tx.successful ? 'success' : 'failed',
+              createdAt: new Date(tx.created_at),
+            };
+          }
         })
       );
 
@@ -444,19 +509,43 @@ export class StellarService {
         .forTransaction(transactionHash)
         .call();
 
+      // Find payment or create_account operation
       const paymentOp = operations.records.find(
         (op: any) => op.type === 'payment' || op.type === 'create_account'
       );
 
+      // Extract destination based on operation type
+      let destination = '';
+      if (paymentOp) {
+        if (paymentOp.type === 'payment') {
+          destination = paymentOp.to || paymentOp.destination || '';
+        } else if (paymentOp.type === 'create_account') {
+          destination = paymentOp.account || '';
+        }
+      }
+
+      // Extract asset information
+      let asset = 'XLM';
+      if (paymentOp) {
+        if (paymentOp.asset_type === 'native') {
+          asset = 'XLM';
+        } else if (
+          paymentOp.asset_type === 'credit_alphanum4' ||
+          paymentOp.asset_type === 'credit_alphanum12'
+        ) {
+          asset = paymentOp.asset_code || 'UNKNOWN';
+        }
+      }
+
+      // Extract amount
+      const amount = paymentOp?.amount || paymentOp?.starting_balance || '0';
+
       return {
         hash: tx.hash,
         source: tx.source_account,
-        destination: paymentOp?.to || paymentOp?.account || '',
-        amount: paymentOp?.amount || paymentOp?.starting_balance || '0',
-        asset:
-          paymentOp?.asset_type === 'native'
-            ? 'XLM'
-            : paymentOp?.asset_code || 'XLM',
+        destination,
+        amount,
+        asset,
         memo: tx.memo || '',
         status: tx.successful ? 'success' : 'failed',
         createdAt: new Date(tx.created_at),
@@ -466,6 +555,41 @@ export class StellarService {
         `Failed to get transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  async addTrustline(
+    wallet: Wallet,
+    assetCode: string,
+    assetIssuer: string,
+    limit: string = '922337203685.4775807', // Max
+    password: string
+  ): Promise<PaymentResult> {
+    const decrypted = decryptPrivateKey(wallet.privateKey, password);
+    const keypair = Keypair.fromSecret(decrypted);
+    const sourceAccount = await this.server.loadAccount(wallet.publicKey);
+
+    const transaction = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkConfig.passphrase,
+    })
+      .addOperation(
+        Operation.changeTrust({
+          asset: new Asset(assetCode, assetIssuer),
+          limit: limit,
+        })
+      )
+      .setTimeout(180)
+      .build();
+
+    transaction.sign(keypair);
+    const result = await this.server.submitTransaction(transaction);
+
+    return {
+      hash: result.hash,
+      status: result.successful ? 'success' : 'failed',
+      ledger: result.ledger.toString(),
+      createdAt: new Date(),
+    };
   }
 
   /**
@@ -490,7 +614,31 @@ export class StellarService {
    */
   switchNetwork(networkConfig: NetworkConfig): void {
     this.networkConfig = networkConfig;
-    // this.server = new Server(networkConfig.horizonUrl);
-    this.server = {}; // Placeholder
+    this.server = new Horizon.Server(networkConfig.horizonUrl);
+  }
+
+  private async submitTrxWithRetry(
+    transaction: any,
+    maxRetries: number = 3
+  ): Promise<any> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await this.server.submitTransaction(transaction);
+      } catch (error) {
+        if (i === maxRetries - 1 || error) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  }
+
+  async estimateFee(): Promise<string> {
+    try {
+      const feeStats = await this.server.feeStats();
+      return feeStats.max_fee.mode;
+    } catch (error) {
+      return BASE_FEE;
+    }
   }
 }

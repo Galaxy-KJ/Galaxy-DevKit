@@ -169,4 +169,3 @@ export type Asset = 'XLM' | string;
  * @type TransactionStatus
  */
 export type TransactionStatus = 'pending' | 'success' | 'failed' | 'cancelled';
-

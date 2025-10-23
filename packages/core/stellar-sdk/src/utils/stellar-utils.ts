@@ -246,3 +246,30 @@ export function decryptPrivateKey(
   ]);
   return decrypted.toString('utf8');
 }
+
+/**
+ * Validates a Stellar wallet memo.
+ * @param memo - Memo to validate
+ * @throws Error if memo is invalid
+ */
+export function validateMemo(memo: string): void {
+  if (!memo || typeof memo !== 'string') {
+    throw new Error('Memo must be a non-empty string');
+  }
+
+  // Reject control characters
+  if (/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/.test(memo)) {
+    throw new Error('Memo contains invalid control characters');
+  }
+
+  // Validate allowed memo format (alphanumeric, spaces, hyphens, underscores, and dots)
+  if (!/^[a-zA-Z0-9 _.\-]*$/.test(memo)) {
+    throw new Error('Invalid Stellar memo format');
+  }
+
+  // Check memo byte length (Stellar limit = 28 bytes)
+  const memoBytes = new TextEncoder().encode(memo).length;
+  if (memoBytes > 28) {
+    throw new Error('Memo exceeds maximum length of 28 bytes');
+  }
+}
