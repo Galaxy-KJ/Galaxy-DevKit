@@ -38,7 +38,7 @@ export class NetworkUtils {
    * @param publicKey - Public key to validate
    * @returns boolean
    */
-  static isValidPublicKey(publicKey: string): boolean {
+  isValidPublicKey(publicKey: string): boolean {
     try {
       return StrKey.isValidEd25519PublicKey(publicKey);
     } catch {
@@ -51,7 +51,7 @@ export class NetworkUtils {
    * @param secretKey - Secret key to validate
    * @returns boolean
    */
-  static isValidSecretKey(secretKey: string): boolean {
+  isValidSecretKey(secretKey: string): boolean {
     try {
       return StrKey.isValidEd25519SecretSeed(secretKey);
     } catch {
@@ -64,7 +64,7 @@ export class NetworkUtils {
    * @param networkName - Network name ('public' or 'testnet')
    * @returns NetworkConfig
    */
-  static getNetworkConfig(networkName: 'public' | 'testnet'): NetworkConfig {
+  getNetworkConfig(networkName: 'public' | 'testnet'): NetworkConfig {
     return networkName === 'public'
       ? NetworkUtils.NETWORKS.PUBLIC
       : NetworkUtils.NETWORKS.TESTNET;
@@ -77,7 +77,7 @@ export class NetworkUtils {
    * @param name - Network name
    * @returns NetworkConfig
    */
-  static createCustomNetwork(
+  createCustomNetwork(
     horizonUrl: string,
     passphrase: string,
     network: 'testnet' | 'mainnet' = 'testnet'
@@ -103,7 +103,7 @@ export class NetworkUtils {
    * @param passphrase - Network passphrase
    * @returns boolean
    */
-  static isPublic(passphrase: string): boolean {
+  isPublic(passphrase: string): boolean {
     return passphrase === Networks.PUBLIC;
   }
 
@@ -111,7 +111,7 @@ export class NetworkUtils {
    * Gets the appropriate friendbot URL for testnet funding
    * @returns string
    */
-  static getFriendbotUrl(): string {
+  getFriendbotUrl(): string {
     return 'https://friendbot.stellar.org';
   }
 
@@ -120,7 +120,7 @@ export class NetworkUtils {
    * @param publicKey - Public key to fund
    * @returns Promise<boolean>
    */
-  static async fundTestnetAccount(publicKey: string): Promise<boolean> {
+  async fundTestnetAccount(publicKey: string): Promise<boolean> {
     try {
       if (!this.isValidPublicKey(publicKey)) {
         throw new Error('Invalid public key');
@@ -148,7 +148,7 @@ export class NetworkUtils {
    * @param rawPublicKey - Raw public key bytes
    * @returns string
    */
-  static encodePublicKey(rawPublicKey: Buffer): string {
+  encodePublicKey(rawPublicKey: Buffer): string {
     return StrKey.encodeEd25519PublicKey(rawPublicKey);
   }
 
@@ -157,7 +157,7 @@ export class NetworkUtils {
    * @param rawSecretKey - Raw secret key bytes
    * @returns string
    */
-  static encodeSecretKey(rawSecretKey: Buffer): string {
+  encodeSecretKey(rawSecretKey: Buffer): string {
     return StrKey.encodeEd25519SecretSeed(rawSecretKey);
   }
 
@@ -166,7 +166,7 @@ export class NetworkUtils {
    * @param publicKey - Stellar public key
    * @returns Buffer
    */
-  static decodePublicKey(publicKey: string): Buffer {
+  decodePublicKey(publicKey: string): Buffer {
     return StrKey.decodeEd25519PublicKey(publicKey);
   }
 
@@ -175,7 +175,7 @@ export class NetworkUtils {
    * @param secretKey - Stellar secret key
    * @returns Buffer
    */
-  static decodeSecretKey(secretKey: string): Buffer {
+  decodeSecretKey(secretKey: string): Buffer {
     return StrKey.decodeEd25519SecretSeed(secretKey);
   }
 
@@ -184,7 +184,7 @@ export class NetworkUtils {
    * @param address - Address to validate
    * @returns boolean
    */
-  static isValidAddress(address: string): boolean {
+  isValidAddress(address: string): boolean {
     return this.isValidPublicKey(address);
   }
 
@@ -193,7 +193,7 @@ export class NetworkUtils {
    * @param address - Muxed address to validate
    * @returns boolean
    */
-  static isValidMuxedAccount(address: string): boolean {
+  isValidMuxedAccount(address: string): boolean {
     try {
       return StrKey.isValidMed25519PublicKey(address);
     } catch {
@@ -207,7 +207,7 @@ export class NetworkUtils {
    * @param network - Network type
    * @returns string
    */
-  static getExplorerUrl(
+  getExplorerUrl(
     txHash: string,
     network: 'public' | 'testnet' = 'public'
   ): string {
@@ -224,7 +224,7 @@ export class NetworkUtils {
    * @param network - Network type
    * @returns string
    */
-  static getAccountExplorerUrl(
+  getAccountExplorerUrl(
     publicKey: string,
     network: 'public' | 'testnet' = 'public'
   ): string {
@@ -240,7 +240,7 @@ export class NetworkUtils {
    * @param horizonUrl - Horizon server URL
    * @returns Promise<boolean>
    */
-  static async checkNetworkConnectivity(horizonUrl: string): Promise<boolean> {
+  async checkNetworkConnectivity(horizonUrl: string): Promise<boolean> {
     try {
       const response = await fetch(horizonUrl);
       return response.ok;
@@ -254,7 +254,7 @@ export class NetworkUtils {
    * @param horizonUrl - Horizon server URL
    * @returns Promise<object>
    */
-  static async getNetworkHealth(horizonUrl: string): Promise<{
+  async getNetworkHealth(horizonUrl: string): Promise<{
     isHealthy: boolean;
     latency?: number;
     error?: string;

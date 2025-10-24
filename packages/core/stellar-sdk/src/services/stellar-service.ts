@@ -158,7 +158,7 @@ export class StellarService {
    */
   async getAccountInfo(publicKey: string): Promise<AccountInfo> {
     try {
-      if (!NetworkUtils.isValidPublicKey(publicKey)) {
+      if (!this.networkUtils.isValidPublicKey(publicKey)) {
         throw new Error('Invalid public key format');
       }
 
@@ -268,7 +268,7 @@ export class StellarService {
     password: string
   ): Promise<PaymentResult> {
     try {
-      if (!NetworkUtils.isValidPublicKey(params.destination)) {
+      if (!this.networkUtils.isValidPublicKey(params.destination)) {
         throw new Error('Invalid destination address');
       }
 
@@ -363,7 +363,7 @@ export class StellarService {
     password: string
   ): Promise<PaymentResult> {
     try {
-      if (!NetworkUtils.isValidPublicKey(destinationPublicKey)) {
+      if (!this.networkUtils.isValidPublicKey(destinationPublicKey)) {
         throw new Error('Invalid destination public key');
       }
 
