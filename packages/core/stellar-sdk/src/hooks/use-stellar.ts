@@ -113,15 +113,21 @@ export const useStellar = (networkConfig: NetworkConfig) => {
    * Sends a payment
    * @param params - Payment parameters
    */
-  const sendPayment = async (params: PaymentParams): Promise<PaymentResult> => {
+  const sendPayment = async (
+    params: PaymentParams,
+    password: string
+  ): Promise<PaymentResult> => {
     if (!wallet) {
       throw new Error('No wallet connected');
+    }
+    if (!password) {
+      throw new Error('No password   given');
     }
 
     try {
       loading = true;
       error = null;
-      const result = await stellarService.sendPayment(wallet, params);
+      const result = await stellarService.sendPayment(wallet, params, password);
 
       // Refresh account info after payment
       const account = await stellarService.getAccountInfo(wallet.publicKey);

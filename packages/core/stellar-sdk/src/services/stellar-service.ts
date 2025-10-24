@@ -30,6 +30,7 @@ import {
   PaymentResult,
   TransactionInfo,
 } from '../types/stellar-types';
+import { derivePath } from 'ed25519-hd-key';
 import { supabaseClient } from '../utils/supabase-client';
 import { NetworkUtils } from '../utils/network-utils';
 import { validateMemo } from '../utils/stellar-utils';
@@ -100,13 +101,21 @@ export class StellarService {
     password: string,
     config: Partial<WalletConfig> = {}
   ): Promise<Wallet> {
+    if (!mnemonic) {
+      throw new Error('Plz enter Mnemonics');
+    }
+
+    if (!password) {
+      throw new Error('Plz enter password');
+    }
     try {
       if (!bip39.validateMnemonic(mnemonic)) {
         throw new Error('Invalid mnemonic phrase');
       }
 
       const seed = await bip39.mnemonicToSeed(mnemonic);
-      const keypair = Keypair.fromRawEd25519Seed(seed.slice(0, 32));
+      const { key } = derivePath("m/44'/148'/0'", seed.toString('hex'));
+      const keypair = Keypair.fromRawEd25519Seed(Buffer.from(key));
       const encryptedPrivateKey = encryptPrivateKey(keypair.secret(), password);
 
       const wallet: Wallet = {
@@ -149,7 +158,7 @@ export class StellarService {
    */
   async getAccountInfo(publicKey: string): Promise<AccountInfo> {
     try {
-      if (!this.networkUtils.isValidPublicKey(publicKey)) {
+      if (!NetworkUtils.isValidPublicKey(publicKey)) {
         throw new Error('Invalid public key format');
       }
 
@@ -259,7 +268,7 @@ export class StellarService {
     password: string
   ): Promise<PaymentResult> {
     try {
-      if (!this.networkUtils.isValidPublicKey(params.destination)) {
+      if (!NetworkUtils.isValidPublicKey(params.destination)) {
         throw new Error('Invalid destination address');
       }
 
@@ -291,7 +300,14 @@ export class StellarService {
       const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
       const asset =
-        params.asset === 'XLM' ? Asset.native() : new Asset(params.asset);
+        params.asset === 'XLM'
+          ? Asset.native()
+          : new Asset(params.asset, params.issuer as string);
+
+      if (params.asset !== 'XLM' && !params.issuer) {
+        throw new Error('Issuer is required for non-native assets');
+      }
+
       const fee = await this.estimateFee();
 
       const transactionBuilder = new TransactionBuilder(sourceAccount, {
@@ -347,7 +363,7 @@ export class StellarService {
     password: string
   ): Promise<PaymentResult> {
     try {
-      if (!this.networkUtils.isValidPublicKey(destinationPublicKey)) {
+      if (!NetworkUtils.isValidPublicKey(destinationPublicKey)) {
         throw new Error('Invalid destination public key');
       }
 
@@ -625,12 +641,25 @@ export class StellarService {
       try {
         return await this.server.submitTransaction(transaction);
       } catch (error) {
-        if (i === maxRetries - 1 || error) {
+        const isRetryable = this.isRetryableError(error);
+        if (i === maxRetries - 1 || !isRetryable) {
           throw error;
         }
         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
+  }
+
+  private isRetryableError(error: any): boolean {
+    // Retry on network errors, timeouts, or 5xx server errors
+    if (!error) return false;
+    const message = error.message || '';
+    return (
+      message.includes('timeout') ||
+      message.includes('ECONNRESET') ||
+      message.includes('ETIMEDOUT') ||
+      error.response?.status >= 500
+    );
   }
 
   async estimateFee(): Promise<string> {

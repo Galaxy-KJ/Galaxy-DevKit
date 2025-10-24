@@ -54,4 +54,4 @@ export {
   Networks,
   Operation,
   BASE_FEE,
-} from 'stellar-sdk';
+} from '@stellar/stellar-sdk';
