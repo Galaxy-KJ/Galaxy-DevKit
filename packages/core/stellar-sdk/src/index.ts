@@ -18,7 +18,7 @@ export type {
   TransactionInfo,
   Network,
   Asset,
-  TransactionStatus
+  TransactionStatus,
 } from './types/stellar-types';
 
 // Export services
@@ -43,16 +43,15 @@ export {
   isSameAddress,
   createMemo,
   calculateFee,
-  isValidAssetCode
+  isValidAssetCode,
 } from './utils/stellar-utils';
 
 // Re-export Stellar SDK for convenience
-export { 
-  Keypair, 
-  Transaction, 
+export {
+  Keypair,
+  Transaction,
   Account,
   Networks,
   Operation,
-  BASE_FEE
-} from 'stellar-sdk';
-
+  BASE_FEE,
+} from '@stellar/stellar-sdk';

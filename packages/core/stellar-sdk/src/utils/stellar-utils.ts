@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { Keypair } from 'stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 
 /**
  * Validates a Stellar public key
@@ -44,7 +44,7 @@ export const generateKeypair = () => {
   const keypair = Keypair.random();
   return {
     publicKey: keypair.publicKey(),
-    secretKey: keypair.secret()
+    secretKey: keypair.secret(),
   };
 };
 
@@ -74,7 +74,11 @@ export const fromStroops = (stroops: number): string => {
  * @param endChars - Number of characters to show at end
  * @returns formatted address
  */
-export const formatAddress = (address: string, startChars: number = 4, endChars: number = 4): string => {
+export const formatAddress = (
+  address: string,
+  startChars: number = 4,
+  endChars: number = 4
+): string => {
   if (address.length <= startChars + endChars) {
     return address;
   }
@@ -95,8 +99,10 @@ export const isValidMemo = (memo: string): boolean => {
  * @param network - Network name
  * @returns network passphrase
  */
-export const getNetworkPassphrase = (network: 'testnet' | 'mainnet'): string => {
-  return network === 'testnet' 
+export const getNetworkPassphrase = (
+  network: 'testnet' | 'mainnet'
+): string => {
+  return network === 'testnet'
     ? 'Test SDF Network ; September 2015'
     : 'Public Global Stellar Network ; September 2015';
 };
@@ -128,8 +134,12 @@ export const isValidAmount = (amount: string | number): boolean => {
  * @param decimals - Number of decimal places
  * @returns formatted balance string
  */
-export const formatBalance = (balance: string | number, decimals: number = 7): string => {
-  const numBalance = typeof balance === 'string' ? parseFloat(balance) : balance;
+export const formatBalance = (
+  balance: string | number,
+  decimals: number = 7
+): string => {
+  const numBalance =
+    typeof balance === 'string' ? parseFloat(balance) : balance;
   return numBalance.toFixed(decimals);
 };
 
@@ -161,7 +171,10 @@ export const createMemo = (text: string) => {
  * @param baseFee - Base fee per operation
  * @returns total fee
  */
-export const calculateFee = (operationCount: number, baseFee: number = 100): number => {
+export const calculateFee = (
+  operationCount: number,
+  baseFee: number = 100
+): number => {
   return operationCount * baseFee;
 };
 
@@ -175,3 +188,29 @@ export const isValidAssetCode = (assetCode: string): boolean => {
   return /^[A-Z0-9]{1,12}$/.test(assetCode);
 };
 
+/**
+ * Validates a Stellar wallet memo.
+ * @param memo - Memo to validate
+ * @throws Error if memo is invalid
+ */
+export function validateMemo(memo: string): void {
+  if (!memo || typeof memo !== 'string') {
+    throw new Error('Memo must be a non-empty string');
+  }
+
+  // Reject control characters
+  if (/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/.test(memo)) {
+    throw new Error('Memo contains invalid control characters');
+  }
+
+  // Validate allowed memo format (alphanumeric, spaces, hyphens, underscores, and dots)
+  if (!/^[a-zA-Z0-9 _.\-]*$/.test(memo)) {
+    throw new Error('Invalid Stellar memo format');
+  }
+
+  // Check memo byte length (Stellar limit = 28 bytes)
+  const memoBytes = new TextEncoder().encode(memo).length;
+  if (memoBytes > 28) {
+    throw new Error('Memo exceeds maximum length of 28 bytes');
+  }
+}

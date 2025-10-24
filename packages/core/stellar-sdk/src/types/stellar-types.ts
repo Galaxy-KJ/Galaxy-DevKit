@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { Keypair, Transaction, Account } from 'stellar-sdk';
+import { Keypair, Transaction, Account } from '@stellar/stellar-sdk';
 
 /**
  * Network configuration for Stellar operations
@@ -110,6 +110,7 @@ export interface PaymentParams {
   destination: string;
   amount: string;
   asset: string;
+  issuer?: string;
   memo?: string;
   fee?: number;
 }
@@ -169,4 +170,3 @@ export type Asset = 'XLM' | string;
  * @type TransactionStatus
  */
 export type TransactionStatus = 'pending' | 'success' | 'failed' | 'cancelled';
-
