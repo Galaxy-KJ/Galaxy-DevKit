@@ -1,7 +1,7 @@
 /**
  * @fileoverview Key Management Service for Invisible Wallet
  * @description Handles secure key storage, retrieval, and session management
- * @author Galaxy DevKit Team
+ * @author @ryzen_xp
  * @version 1.0.0
  * @since 2024-12-01
  */
@@ -14,8 +14,6 @@ import {
   encryptPrivateKey,
   decryptPrivateKey,
   generateSessionToken,
-  hashPassword,
-  verifyPassword,
   validatePassword,
 } from '../utils/encryption.utils';
 import {
@@ -31,7 +29,7 @@ import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client';
 export class KeyManagementService {
   private supabase = supabaseClient;
   private activeSessions: Map<string, WalletSession> = new Map();
-  private sessionTimeout: number = 3600000; // 1 hour default
+  private sessionTimeout: number = 3600000; 
 
   constructor(sessionTimeout?: number) {
     if (sessionTimeout) {
@@ -139,10 +137,8 @@ export class KeyManagementService {
       deviceInfo,
     };
 
-    // Store in memory
     this.activeSessions.set(sessionToken, session);
 
-    // Store in database
     try {
       const { error } = await this.supabase.from('wallet_sessions').insert([
         {
@@ -209,7 +205,6 @@ export class KeyManagementService {
     const newExpiresAt = new Date(Date.now() + this.sessionTimeout);
     validation.session.expiresAt = newExpiresAt;
 
-    // Update in database
     try {
       await this.supabase
         .from('wallet_sessions')
@@ -233,7 +228,6 @@ export class KeyManagementService {
       session.isActive = false;
       this.activeSessions.delete(sessionToken);
 
-      // Update in database
       try {
         await this.supabase
           .from('wallet_sessions')
@@ -250,7 +244,7 @@ export class KeyManagementService {
    * @param walletId - Wallet ID
    */
   async revokeAllWalletSessions(walletId: string): Promise<void> {
-    // Revoke from memory
+
     for (const [token, session] of this.activeSessions.entries()) {
       if (session.walletId === walletId) {
         session.isActive = false;
@@ -258,7 +252,6 @@ export class KeyManagementService {
       }
     }
 
-    // Revoke from database
     try {
       await this.supabase
         .from('wallet_sessions')
@@ -301,19 +294,16 @@ export class KeyManagementService {
     oldPassword: string,
     newPassword: string
   ): Promise<string> {
-    // Validate new password
+
     validatePassword(newPassword);
 
-    // Decrypt with old password
     const secretKey = this.retrievePrivateKey(
       wallet.encryptedPrivateKey,
       oldPassword
     );
 
-    // Encrypt with new password
     const newEncryptedKey = this.storePrivateKey(secretKey, newPassword);
 
-    // Update in database
     try {
       const { error } = await this.supabase
         .from('wallets')
@@ -332,7 +322,6 @@ export class KeyManagementService {
       );
     }
 
-    // Revoke all existing sessions for security
     await this.revokeAllWalletSessions(wallet.id);
 
     return newEncryptedKey;
@@ -372,7 +361,7 @@ export class KeyManagementService {
           this.revokeSession(token);
         }
       }
-    }, 60000); // Check every minute
+    }, 60000); 
   }
 
   /**

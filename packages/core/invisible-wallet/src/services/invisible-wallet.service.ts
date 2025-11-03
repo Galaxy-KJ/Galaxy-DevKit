@@ -1,7 +1,7 @@
 /**
  * @fileoverview Invisible Wallet Service
  * @description Main service for managing invisible wallets
- * @author Galaxy DevKit Team
+ * @author @ryzen_xp
  * @version 1.0.0
  * @since 2024-12-01
  */
@@ -29,10 +29,7 @@ import {
 } from '../../../stellar-sdk/src/types/stellar-types';
 import { validatePassword } from '../utils/encryption.utils';
 
-/**
- * Invisible Wallet Service
- * Provides seamless wallet management without exposing seed phrases
- */
+
 export class InvisibleWalletService {
   private keyManagement: KeyManagementService;
   private stellarService: StellarService;
@@ -58,19 +55,16 @@ export class InvisibleWalletService {
     deviceInfo?: DeviceInfo
   ): Promise<WalletCreationResult> {
     try {
-      // Validate password
+
       validatePassword(password);
 
-      // Generate keypair
       const keypair = this.keyManagement.generateKeypair();
 
-      // Encrypt private key
       const encryptedPrivateKey = this.keyManagement.storePrivateKey(
         keypair.secretKey,
         password
       );
 
-      // Create wallet object
       const wallet: InvisibleWallet = {
         id: this.generateWalletId(),
         userId: config.userId,
@@ -89,7 +83,6 @@ export class InvisibleWalletService {
         },
       };
 
-      // Save to database
       const { error } = await this.supabase.from('invisible_wallets').insert([
         {
           id: wallet.id,
@@ -108,14 +101,12 @@ export class InvisibleWalletService {
         throw new Error(`Failed to save wallet: ${error.message}`);
       }
 
-      // Create session
       const session = await this.keyManagement.createSession(
         wallet.id,
         wallet.userId,
         deviceInfo
       );
 
-      // Log event
       await this.logWalletEvent(
         wallet.id,
         wallet.userId,
@@ -152,11 +143,9 @@ export class InvisibleWalletService {
     try {
       validatePassword(password);
 
-      // Derive keypair from mnemonic
       const keypair =
         await this.keyManagement.deriveKeypairFromMnemonic(mnemonic);
 
-      // Encrypt both private key and mnemonic
       const encryptedPrivateKey = this.keyManagement.storePrivateKey(
         keypair.secretKey,
         password
@@ -242,7 +231,6 @@ export class InvisibleWalletService {
     deviceInfo?: DeviceInfo
   ): Promise<WalletUnlockResult> {
     try {
-      // Fetch wallet
       const wallet = await this.getWalletById(walletId);
 
       if (!wallet) {
@@ -252,7 +240,6 @@ export class InvisibleWalletService {
         };
       }
 
-      // Verify password
       const isValid = this.keyManagement.verifyPassword(
         wallet.encryptedPrivateKey,
         password
@@ -265,14 +252,12 @@ export class InvisibleWalletService {
         };
       }
 
-      // Create session
       const session = await this.keyManagement.createSession(
         wallet.id,
         wallet.userId,
         deviceInfo
       );
 
-      // Update last accessed
       await this.supabase
         .from('invisible_wallets')
         .update({

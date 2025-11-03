@@ -1,16 +1,14 @@
 /**
  * @fileoverview Type definitions for Invisible Wallet System
  * @description Contains all interfaces and types for invisible wallet functionality
- * @author Galaxy DevKit Team
+ * @author @ryzen_xp
  * @version 1.0.0
  * @since 2024-12-01
  */
 
 import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types';
 
-/**
- * Invisible wallet configuration
- */
+
 export interface InvisibleWalletConfig {
   userId: string;
   email?: string;
@@ -20,9 +18,7 @@ export interface InvisibleWalletConfig {
   biometricEnabled?: boolean;
 }
 
-/**
- * Invisible wallet structure
- */
+
 export interface InvisibleWallet {
   id: string;
   userId: string;
@@ -38,9 +34,6 @@ export interface InvisibleWallet {
 }
 
 
-/**
- * Backup status
- */
 export interface BackupStatus {
   isBackedUp: boolean;
   lastBackupAt?: Date;
@@ -48,9 +41,7 @@ export interface BackupStatus {
   backupLocation?: string;
 }
 
-/**
- * Wallet session
- */
+
 export interface WalletSession {
   walletId: string;
   userId: string;
@@ -61,9 +52,7 @@ export interface WalletSession {
   deviceInfo?: DeviceInfo;
 }
 
-/**
- * Device information
- */
+
 export interface DeviceInfo {
   deviceId?: string;
   deviceName?: string;
@@ -72,9 +61,7 @@ export interface DeviceInfo {
   ipAddress?: string;
 }
 
-/**
- * Key derivation parameters
- */
+
 export interface KeyDerivationParams {
   iterations: number;
   keyLength: number;
@@ -82,9 +69,7 @@ export interface KeyDerivationParams {
   salt?: Buffer;
 }
 
-/**
- * Encrypted data structure
- */
+
 export interface EncryptedData {
   ciphertext: string;
   iv: string;
@@ -93,9 +78,7 @@ export interface EncryptedData {
   algorithm: string;
 }
 
-/**
- * Wallet recovery options
- */
+
 export interface WalletRecoveryOptions {
   email?: string;
   phoneNumber?: string;
@@ -103,35 +86,27 @@ export interface WalletRecoveryOptions {
   recoveryPhrase?: string;
 }
 
-/**
- * Security question
- */
+
 export interface SecurityQuestion {
   question: string;
   answerHash: string;
 }
 
-/**
- * Wallet creation result
- */
+
 export interface WalletCreationResult {
   wallet: InvisibleWallet;
   session: WalletSession;
   backupRecommendation: string;
 }
 
-/**
- * Wallet unlock result
- */
+
 export interface WalletUnlockResult {
   success: boolean;
   session?: WalletSession;
   error?: string;
 }
 
-/**
- * Wallet operation result
- */
+
 export interface WalletOperationResult {
   success: boolean;
   data?: any;
@@ -139,9 +114,7 @@ export interface WalletOperationResult {
   timestamp: Date;
 }
 
-/**
- * Password strength
- */
+
 export enum PasswordStrength {
   WEAK = 'weak',
   MEDIUM = 'medium',
@@ -149,9 +122,7 @@ export enum PasswordStrength {
   VERY_STRONG = 'very_strong',
 }
 
-/**
- * Wallet status
- */
+
 export enum WalletStatus {
   ACTIVE = 'active',
   LOCKED = 'locked',
@@ -159,9 +130,7 @@ export enum WalletStatus {
   ARCHIVED = 'archived',
 }
 
-/**
- * Authentication method
- */
+
 export enum AuthMethod {
   PASSWORD = 'password',
   BIOMETRIC = 'biometric',
@@ -169,9 +138,7 @@ export enum AuthMethod {
   PASSKEY = 'passkey',
 }
 
-/**
- * Wallet event type
- */
+
 export enum WalletEventType {
   CREATED = 'created',
   UNLOCKED = 'unlocked',
@@ -182,9 +149,7 @@ export enum WalletEventType {
   RECOVERY_INITIATED = 'recovery_initiated',
 }
 
-/**
- * Wallet event
- */
+
 export interface WalletEvent {
   id: string;
   walletId: string;
