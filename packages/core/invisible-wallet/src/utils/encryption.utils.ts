@@ -68,6 +68,10 @@ export function decryptPrivateKey(
 ): string {
   const [saltB64, ivB64, authTagB64, encryptedB64] = encryptedData.split(':');
 
+  if (!saltB64 || !ivB64 || !authTagB64 || !encryptedB64) {
+    throw new Error('Invalid encrypted data format');
+  }
+
   const salt = Buffer.from(saltB64, 'base64');
   const iv = Buffer.from(ivB64, 'base64');
   const authTag = Buffer.from(authTagB64, 'base64');

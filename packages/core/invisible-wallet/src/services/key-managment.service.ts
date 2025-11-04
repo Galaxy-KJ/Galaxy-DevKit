@@ -29,7 +29,7 @@ import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client';
 export class KeyManagementService {
   private supabase = supabaseClient;
   private activeSessions: Map<string, WalletSession> = new Map();
-  private sessionTimeout: number = 3600000; 
+  private sessionTimeout: number = 3600000;
 
   constructor(sessionTimeout?: number) {
     if (sessionTimeout) {
@@ -137,8 +137,6 @@ export class KeyManagementService {
       deviceInfo,
     };
 
-    this.activeSessions.set(sessionToken, session);
-
     try {
       const { error } = await this.supabase.from('wallet_sessions').insert([
         {
@@ -153,6 +151,7 @@ export class KeyManagementService {
       ]);
 
       if (error) {
+        throw Error('Failed to store session in database ', error);
         console.warn('Failed to store session in database:', error);
       }
     } catch (error) {
@@ -244,7 +243,6 @@ export class KeyManagementService {
    * @param walletId - Wallet ID
    */
   async revokeAllWalletSessions(walletId: string): Promise<void> {
-
     for (const [token, session] of this.activeSessions.entries()) {
       if (session.walletId === walletId) {
         session.isActive = false;
@@ -294,7 +292,6 @@ export class KeyManagementService {
     oldPassword: string,
     newPassword: string
   ): Promise<string> {
-
     validatePassword(newPassword);
 
     const secretKey = this.retrievePrivateKey(
@@ -353,15 +350,28 @@ export class KeyManagementService {
   /**
    * Starts automatic session cleanup
    */
+  private cleanupTimer?: NodeJS.Timeout;
+
   private startSessionCleanup(): void {
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       const now = new Date();
       for (const [token, session] of this.activeSessions.entries()) {
         if (now > session.expiresAt) {
           this.revokeSession(token);
         }
       }
-    }, 60000); 
+    }, 60000);
+  }
+
+  /**
++ * Cleanup method to stop the session timer
++ * Should be called when the service is destroyed
++ */
+  public dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
   }
 
   /**

@@ -29,7 +29,6 @@ import {
 } from '../../../stellar-sdk/src/types/stellar-types';
 import { validatePassword } from '../utils/encryption.utils';
 
-
 export class InvisibleWalletService {
   private keyManagement: KeyManagementService;
   private stellarService: StellarService;
@@ -55,7 +54,6 @@ export class InvisibleWalletService {
     deviceInfo?: DeviceInfo
   ): Promise<WalletCreationResult> {
     try {
-
       validatePassword(password);
 
       const keypair = this.keyManagement.generateKeypair();
@@ -396,7 +394,6 @@ export class InvisibleWalletService {
     params: PaymentParams,
     password: string
   ): Promise<PaymentResult> {
-
     const validation = await this.keyManagement.validateSession(sessionToken);
     if (!validation.valid) {
       throw new Error('Invalid or expired session');
@@ -515,7 +512,7 @@ export class InvisibleWalletService {
 
     const backup = this.keyManagement.exportWalletBackup(wallet, password);
 
-    await this.supabase
+    let { error: update_error } = await this.supabase
       .from('invisible_wallets')
       .update({
         backup_status: {
@@ -526,6 +523,10 @@ export class InvisibleWalletService {
         },
       })
       .eq('id', walletId);
+
+    if (update_error) {
+      console.warn('Failed to update backup status:', update_error);
+    }
 
     await this.logWalletEvent(
       wallet.id,
