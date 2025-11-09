@@ -211,23 +211,51 @@ export class UserService {
    */
   async deactivateUser(userId: string): Promise<void> {
     try {
-      // Note: In a real implementation, you might want to set a status flag
-      // or delete the user from Supabase auth. For now, we'll just update the profile
-      const { error } = await this.supabase
+      // First fetch the current profile_data
+      const { data: userData, error: selectError } = await this.supabase
+        .from('users')
+        .select('profile_data')
+        .eq('id', userId)
+        .single();
+
+      if (selectError) {
+        throw new AuthenticationError(
+          AuthErrorCode.USER_NOT_FOUND,
+          `Failed to fetch user profile: ${selectError.message}`,
+          500
+        );
+      }
+
+      if (!userData) {
+        throw new AuthenticationError(
+          AuthErrorCode.USER_NOT_FOUND,
+          'User not found',
+          404
+        );
+      }
+
+      // Merge new fields into existing profile_data
+      // Handle null/undefined profile_data as empty object
+      const currentProfileData = (userData.profile_data as Record<string, unknown>) || {};
+      const mergedProfileData = {
+        ...currentProfileData,
+        status: 'inactive',
+        deactivated_at: new Date().toISOString(),
+      };
+
+      // Update with merged profile_data
+      const { error: updateError } = await this.supabase
         .from('users')
         .update({
-          profile_data: {
-            status: 'inactive',
-            deactivated_at: new Date().toISOString(),
-          },
+          profile_data: mergedProfileData,
           updated_at: new Date().toISOString(),
         })
         .eq('id', userId);
 
-      if (error) {
+      if (updateError) {
         throw new AuthenticationError(
           AuthErrorCode.USER_NOT_FOUND,
-          `Failed to deactivate user: ${error.message}`,
+          `Failed to deactivate user: ${updateError.message}`,
           500
         );
       }

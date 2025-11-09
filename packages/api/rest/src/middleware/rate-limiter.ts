@@ -66,6 +66,12 @@ export function userRateLimiter() {
 }
 
 /**
+ * Cache for per-API-key rate limiter instances in apiKeyRateLimiter
+ * Keyed by API key ID
+ */
+const apiKeyRateLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
+
+/**
  * API key-based rate limiter
  * Limits requests per API key (uses API key's custom rate limit if set)
  * @returns Express middleware
@@ -79,12 +85,20 @@ export function apiKeyRateLimiter() {
     try {
       // If API key is present, use its custom rate limit
       if (req.apiKey && req.authMethod === 'api_key') {
-        const rateLimiter = createRateLimiter({
-          windowMs: authConfig.rateLimit.windowMs,
-          maxRequests: req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests,
-          message: 'API key rate limit exceeded, please try again later.',
-          keyGenerator: () => `api_key:${req.apiKey!.id}`,
-        });
+        // Get or create rate limiter for this API key
+        let rateLimiter = apiKeyRateLimiterCache.get(req.apiKey.id);
+        if (!rateLimiter) {
+          const windowMs = authConfig.rateLimit.windowMs;
+          const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
+          
+          rateLimiter = createRateLimiter({
+            windowMs,
+            maxRequests,
+            message: 'API key rate limit exceeded, please try again later.',
+            keyGenerator: () => `api_key:${req.apiKey!.id}`,
+          });
+          apiKeyRateLimiterCache.set(req.apiKey.id, rateLimiter);
+        }
 
         rateLimiter(req, res, next);
         return;
@@ -144,6 +158,12 @@ export function endpointRateLimiter(endpoint: string, limit: number) {
 }
 
 /**
+ * Cache for per-API-key rate limiter instances
+ * Keyed by API key ID
+ */
+const apiKeyLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
+
+/**
  * General rate limiter middleware
  * Applies rate limiting based on authentication method
  * @returns Express middleware
@@ -163,13 +183,17 @@ export function rateLimiterMiddleware() {
 
       // If API key is present, use API key rate limiting
       if (req.apiKey && req.authMethod === 'api_key') {
-        // Apply API key rate limiting
-        const apiKeyLimiter = createRateLimiter({
-          windowMs: authConfig.rateLimit.windowMs,
-          maxRequests: req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests,
-          message: 'API key rate limit exceeded, please try again later.',
-          keyGenerator: () => `api_key:${req.apiKey!.id}`,
-        });
+        // Get or create rate limiter for this API key
+        let apiKeyLimiter = apiKeyLimiterCache.get(req.apiKey.id);
+        if (!apiKeyLimiter) {
+          apiKeyLimiter = createRateLimiter({
+            windowMs: authConfig.rateLimit.windowMs,
+            maxRequests: req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests,
+            message: 'API key rate limit exceeded, please try again later.',
+            keyGenerator: () => `api_key:${req.apiKey!.id}`,
+          });
+          apiKeyLimiterCache.set(req.apiKey.id, apiKeyLimiter);
+        }
         apiKeyLimiter(req, res, next);
         return;
       }

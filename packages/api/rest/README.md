@@ -190,7 +190,7 @@ Refresh JWT token.
 Logout and revoke session.
 
 **Headers:**
-```
+```text
 Authorization: Bearer jwt-token
 X-Session-Token: session-token
 ```
@@ -201,7 +201,7 @@ X-Session-Token: session-token
 Create a new API key.
 
 **Headers:**
-```
+```text
 Authorization: Bearer jwt-token
 ```
 
@@ -237,7 +237,7 @@ Authorization: Bearer jwt-token
 Get current user profile.
 
 **Headers:**
-```
+```text
 Authorization: Bearer jwt-token
 ```
 
@@ -257,7 +257,7 @@ Authorization: Bearer jwt-token
 Update current user profile.
 
 **Headers:**
-```
+```text
 Authorization: Bearer jwt-token
 ```
 

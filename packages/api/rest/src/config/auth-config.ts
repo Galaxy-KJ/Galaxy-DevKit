@@ -107,8 +107,18 @@ export function validateAuthConfig(): void {
     throw new Error('JWT_SECRET must be set in production environment');
   }
 
+  // Validate JWT expiry is a finite number
+  if (typeof authConfig.jwt.expiry !== 'number' || !Number.isFinite(authConfig.jwt.expiry)) {
+    throw new Error('JWT_EXPIRY must be a valid finite number');
+  }
+
   if (authConfig.jwt.expiry < 60) {
     throw new Error('JWT_EXPIRY must be at least 60 seconds');
+  }
+
+  // Validate JWT refresh expiry is a finite number
+  if (typeof authConfig.jwt.refreshExpiry !== 'number' || !Number.isFinite(authConfig.jwt.refreshExpiry)) {
+    throw new Error('JWT_REFRESH_EXPIRY must be a valid finite number');
   }
 
   if (authConfig.jwt.refreshExpiry < authConfig.jwt.expiry) {
@@ -116,8 +126,18 @@ export function validateAuthConfig(): void {
   }
 
   // Validate API key configuration
+  // Validate API key length is a finite number
+  if (typeof authConfig.apiKey.length !== 'number' || !Number.isFinite(authConfig.apiKey.length)) {
+    throw new Error('API_KEY_LENGTH must be a valid finite number');
+  }
+
   if (authConfig.apiKey.length < 16) {
     throw new Error('API_KEY_LENGTH must be at least 16 bytes');
+  }
+
+  // Validate API key prefix length is a finite number
+  if (typeof authConfig.apiKey.prefixLength !== 'number' || !Number.isFinite(authConfig.apiKey.prefixLength)) {
+    throw new Error('API_KEY_PREFIX_LENGTH must be a valid finite number');
   }
 
   if (authConfig.apiKey.prefixLength < 4 || authConfig.apiKey.prefixLength > authConfig.apiKey.length) {
@@ -125,8 +145,18 @@ export function validateAuthConfig(): void {
   }
 
   // Validate rate limiting configuration
+  // Validate rate limit window is a finite number
+  if (typeof authConfig.rateLimit.windowMs !== 'number' || !Number.isFinite(authConfig.rateLimit.windowMs)) {
+    throw new Error('RATE_LIMIT_WINDOW_MS must be a valid finite number');
+  }
+
   if (authConfig.rateLimit.windowMs < 60000) {
     throw new Error('RATE_LIMIT_WINDOW_MS must be at least 60000 milliseconds (1 minute)');
+  }
+
+  // Validate rate limit max requests is a finite number
+  if (typeof authConfig.rateLimit.maxRequests !== 'number' || !Number.isFinite(authConfig.rateLimit.maxRequests)) {
+    throw new Error('RATE_LIMIT_MAX_REQUESTS must be a valid finite number');
   }
 
   if (authConfig.rateLimit.maxRequests < 1) {
@@ -134,8 +164,18 @@ export function validateAuthConfig(): void {
   }
 
   // Validate session configuration
+  // Validate session expiry is a finite number
+  if (typeof authConfig.session.expiry !== 'number' || !Number.isFinite(authConfig.session.expiry)) {
+    throw new Error('SESSION_EXPIRY must be a valid finite number');
+  }
+
   if (authConfig.session.expiry < 60) {
     throw new Error('SESSION_EXPIRY must be at least 60 seconds');
+  }
+
+  // Validate session refresh expiry is a finite number
+  if (typeof authConfig.session.refreshExpiry !== 'number' || !Number.isFinite(authConfig.session.refreshExpiry)) {
+    throw new Error('SESSION_REFRESH_EXPIRY must be a valid finite number');
   }
 
   if (authConfig.session.refreshExpiry < authConfig.session.expiry) {
@@ -143,8 +183,18 @@ export function validateAuthConfig(): void {
   }
 
   // Validate security configuration
+  // Validate bcrypt rounds is a finite number
+  if (typeof authConfig.security.bcryptRounds !== 'number' || !Number.isFinite(authConfig.security.bcryptRounds)) {
+    throw new Error('BCRYPT_ROUNDS must be a valid finite number');
+  }
+
   if (authConfig.security.bcryptRounds < 10 || authConfig.security.bcryptRounds > 15) {
     throw new Error('BCRYPT_ROUNDS must be between 10 and 15');
+  }
+
+  // Validate password min length is a finite number
+  if (typeof authConfig.security.passwordMinLength !== 'number' || !Number.isFinite(authConfig.security.passwordMinLength)) {
+    throw new Error('PASSWORD_MIN_LENGTH must be a valid finite number');
   }
 
   if (authConfig.security.passwordMinLength < 8) {

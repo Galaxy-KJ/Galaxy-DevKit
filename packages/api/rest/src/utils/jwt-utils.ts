@@ -164,8 +164,9 @@ export function verifyTokenExpiry(token: string): boolean {
     }
 
     // Check if token is expired (with 60 second buffer)
+    // Tokens are considered expired slightly before actual expiry for timely refresh
     const now = Math.floor(Date.now() / 1000);
-    return payload.exp < now - 60;
+    return payload.exp < now + 60;
   } catch (error) {
     // If we can't parse the token, consider it expired
     return true;

@@ -259,6 +259,29 @@ export function requirePermission(permission: string) {
         return;
       }
 
+      // If authenticated with API key, check API key scopes first
+      if (req.authMethod === 'api_key' && req.apiKey) {
+        const apiKeyScopes = req.apiKey.scopes || [];
+        // Check if API key has the required permission in its scopes
+        // '*' means all permissions
+        const hasScope = apiKeyScopes.includes(permission) || apiKeyScopes.includes('*');
+        
+        if (!hasScope) {
+          res.status(403).json({
+            error: {
+              code: AuthErrorCode.INSUFFICIENT_PERMISSIONS,
+              message: `Insufficient permissions. Required: ${permission}`,
+              details: {
+                requiredPermission: permission,
+                apiKeyScopes: apiKeyScopes,
+              },
+            },
+          });
+          return;
+        }
+        // If API key scope allows, continue to user-based permission check as fallback
+      }
+
       // Check if user has permission
       const hasPermission = await authService.checkPermission(
         req.user.userId,
