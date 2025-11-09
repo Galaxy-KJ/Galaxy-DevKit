@@ -111,6 +111,8 @@ export function apiKeyRateLimiter() {
       next();
     } catch (error) {
       console.error('API key rate limiter error:', error);
+      // Fail open: allow request to proceed if rate limiting encounters an error
+      // to prioritize availability over strict enforcement
       next();
     }
   };
@@ -161,12 +163,6 @@ export function endpointRateLimiter(endpoint: string, limit: number) {
 }
 
 /**
- * Cache for per-API-key rate limiter instances in rateLimiterMiddleware
- * Keyed by composite key: `${apiKeyId}:${maxRequests}`
- */
-const apiKeyLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
-
-/**
  * General rate limiter middleware
  * Applies rate limiting based on authentication method
  * @returns Express middleware
@@ -175,6 +171,7 @@ export function rateLimiterMiddleware() {
   // Create separate limiters for different scenarios
   const ipLimiter = ipRateLimiter();
   const userLimiter = userRateLimiter();
+  const apiKeyLimiter = apiKeyRateLimiter();
 
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
@@ -186,23 +183,6 @@ export function rateLimiterMiddleware() {
 
       // If API key is present, use API key rate limiting
       if (req.apiKey && req.authMethod === 'api_key') {
-        const windowMs = authConfig.rateLimit.windowMs;
-        const maxRequests = req.apiKey.rateLimit ?? authConfig.rateLimit.apiKeyMaxRequests;
-        // Use composite cache key to handle quota changes
-        const cacheKey = `${req.apiKey.id}:${maxRequests}`;
-        
-        // Get or create rate limiter for this API key and quota
-        let apiKeyLimiter = apiKeyLimiterCache.get(cacheKey);
-        if (!apiKeyLimiter) {
-          // Use request-bound keyGenerator to avoid closing over req
-          apiKeyLimiter = createRateLimiter({
-            windowMs,
-            maxRequests,
-            message: 'API key rate limit exceeded, please try again later.',
-            keyGenerator: (req: Express.Request) => `api_key:${(req as any).apiKey!.id}`,
-          });
-          apiKeyLimiterCache.set(cacheKey, apiKeyLimiter);
-        }
         apiKeyLimiter(req, res, next);
         return;
       }
@@ -211,6 +191,8 @@ export function rateLimiterMiddleware() {
       ipLimiter(req, res, next);
     } catch (error) {
       console.error('Rate limiter middleware error:', error);
+      // Fail open: allow request to proceed if rate limiting encounters an error
+      // to prioritize availability over strict enforcement
       next();
     }
   };
