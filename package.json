@@ -18,7 +18,9 @@
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",
     "publish": "lerna publish",
-    "test": "jest"
+    "test": "jest",
+    "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
+    "serve:docs": "npx http-server docs -p 8080"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

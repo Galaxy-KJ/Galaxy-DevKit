@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Galaxy DevKit — GraphQL Playground</title>
+  <link rel="stylesheet" href="https://unpkg.com/graphiql@2.2.0/graphiql.css" />
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+    header { padding:12px 18px; background:#0f172a; color:#fff }
+    main { height: calc(100vh - 56px); }
+    #graphiql { height:100%; }
+    .controls { padding:12px; display:flex; gap:8px; align-items:center; }
+    input[type=text] { flex:1; padding:8px }
+  </style>
+</head>
+<body>
+  <header><strong>Galaxy DevKit — GraphQL Playground</strong></header>
+  <div class="controls">
+    <input id="endpoint" type="text" placeholder="GraphQL endpoint (e.g. http://127.0.0.1:54321/graphql/v1)" />
+    <button id="connect">Connect</button>
+  </div>
+  <main>
+    <div id="graphiql">Loading GraphiQL…</div>
+  </main>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/graphiql@2.2.0/graphiql.min.js"></script>
+  <script>
+    const endpointInput = document.getElementById('endpoint');
+    const connectBtn = document.getElementById('connect');
+
+    function createFetcher(url) {
+      return async (graphQLParams) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(graphQLParams),
+        });
+        return res.json().catch(() => res.text());
+      };
+    }
+
+    function mount(url) {
+      const fetcher = createFetcher(url);
+      ReactDOM.render(
+        React.createElement(GraphiQL.GraphiQL, { fetcher }),
+        document.getElementById('graphiql')
+      );
+    }
+
+    connectBtn.addEventListener('click', () => {
+      const url = endpointInput.value.trim();
+      if (!url) { alert('Enter GraphQL endpoint'); return; }
+      mount(url);
+    });
+
+    // optional: prefill with local supabase example
+    endpointInput.value = 'http://127.0.0.1:54321/graphql/v1';
+    // mount default
+    mount(endpointInput.value);
+  </script>
+</body>
+</html>
