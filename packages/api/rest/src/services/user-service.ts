@@ -20,15 +20,16 @@ let supabaseClient: SupabaseClient | null = null;
 function initializeSupabaseClient(): SupabaseClient {
   if (!supabaseClient) {
     const supabaseURL = process.env.SUPABASE_URL;
-    const supabaseANON = process.env.SUPABASE_ANON_KEY;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseURL || !supabaseANON) {
+    if (!supabaseURL || !supabaseServiceRoleKey) {
       throw new Error(
-        'Missing required environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
+        'Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set'
       );
     }
 
-    supabaseClient = createClient(supabaseURL, supabaseANON);
+    // Use service role key on the server to bypass RLS for internal user reads
+    supabaseClient = createClient(supabaseURL, supabaseServiceRoleKey);
   }
   return supabaseClient;
 }
