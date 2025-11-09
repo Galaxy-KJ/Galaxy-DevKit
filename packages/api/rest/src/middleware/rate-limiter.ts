@@ -12,6 +12,15 @@ import { RateLimitOptions, AuthErrorCode } from '../types/auth-types';
 import { authConfig } from '../config/auth-config';
 
 /**
+ * Get client IP address from request
+ * @param req - Express request object
+ * @returns string - Client IP address or 'unknown' if not available
+ */
+function getClientIP(req: Request): string {
+  return req.ip || (req.socket.remoteAddress as string) || 'unknown';
+}
+
+/**
  * Create a rate limiter with custom options
  * @param options - Rate limit options
  * @returns Express rate limit middleware
@@ -27,7 +36,7 @@ export function createRateLimiter(options: RateLimitOptions) {
     skipFailedRequests: options.skipFailedRequests || false,
     keyGenerator: (options.keyGenerator as any) || ((req: Request): string => {
       // Default: use IP address
-      return (req.ip || (req.socket.remoteAddress as string) || 'unknown');
+      return getClientIP(req);
     }),
     handler: (req: Request, res: Response) => {
       res.status(429).json({
@@ -54,7 +63,7 @@ export function userRateLimiter() {
       return `user:${req.user.userId}`;
     }
     // Fallback to IP if user not authenticated
-    return (req.ip || (req.socket.remoteAddress as string) || 'unknown');
+    return getClientIP(req);
   };
   
   return createRateLimiter({
@@ -64,6 +73,12 @@ export function userRateLimiter() {
     keyGenerator: keyGen as any,
   });
 }
+
+/**
+ * Maximum number of cached rate limiter instances
+ * When exceeded, oldest entries are evicted
+ */
+const MAX_CACHE_SIZE = 1000;
 
 /**
  * Cache for per-API-key rate limiter instances in apiKeyRateLimiter
@@ -98,8 +113,20 @@ export function apiKeyRateLimiter() {
             windowMs,
             maxRequests,
             message: 'API key rate limit exceeded, please try again later.',
-            keyGenerator: (req: Express.Request) => `api_key:${(req as any).apiKey!.id}`,
+            keyGenerator: (req: Express.Request) => {
+              const r = req as Request;
+              return `api_key:${r.apiKey!.id}`;
+            },
           });
+          
+          // Evict oldest entry if cache is full
+          if (apiKeyRateLimiterCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = apiKeyRateLimiterCache.keys().next().value;
+            if (firstKey !== undefined) {
+              apiKeyRateLimiterCache.delete(firstKey);
+            }
+          }
+          
           apiKeyRateLimiterCache.set(cacheKey, rateLimiter);
         }
 
@@ -125,7 +152,7 @@ export function apiKeyRateLimiter() {
  */
 export function ipRateLimiter() {
   const keyGen = (req: Request): string => {
-    return (req.ip || (req.socket.remoteAddress as string) || 'unknown');
+    return getClientIP(req);
   };
   
   return createRateLimiter({
@@ -151,7 +178,7 @@ export function endpointRateLimiter(endpoint: string, limit: number) {
     if (req.apiKey) {
       return `endpoint:${endpoint}:api_key:${req.apiKey.id}`;
     }
-    return `endpoint:${endpoint}:ip:${req.ip || (req.socket.remoteAddress as string) || 'unknown'}`;
+    return `endpoint:${endpoint}:ip:${getClientIP(req)}`;
   };
   
   return createRateLimiter({
@@ -211,7 +238,7 @@ export function strictRateLimiter() {
     if (req.apiKey) {
       return `strict:api_key:${req.apiKey.id}`;
     }
-    return `strict:ip:${req.ip || (req.socket.remoteAddress as string) || 'unknown'}`;
+    return `strict:ip:${getClientIP(req)}`;
   };
   
   return createRateLimiter({
