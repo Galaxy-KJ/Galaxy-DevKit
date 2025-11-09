@@ -86,7 +86,7 @@ export function apiKeyRateLimiter() {
       // If API key is present, use its custom rate limit
       if (req.apiKey && req.authMethod === 'api_key') {
         const windowMs = authConfig.rateLimit.windowMs;
-        const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
+        const maxRequests = req.apiKey.rateLimit ?? authConfig.rateLimit.apiKeyMaxRequests;
         // Use composite cache key to handle quota changes
         const cacheKey = `${req.apiKey.id}:${maxRequests}`;
         
@@ -187,7 +187,7 @@ export function rateLimiterMiddleware() {
       // If API key is present, use API key rate limiting
       if (req.apiKey && req.authMethod === 'api_key') {
         const windowMs = authConfig.rateLimit.windowMs;
-        const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
+        const maxRequests = req.apiKey.rateLimit ?? authConfig.rateLimit.apiKeyMaxRequests;
         // Use composite cache key to handle quota changes
         const cacheKey = `${req.apiKey.id}:${maxRequests}`;
         
