@@ -343,7 +343,9 @@ export function requireAnyPermission(permissions: string[]) {
 
       // Check if user has any of the required permissions
       const userPermissions = req.permissions || [];
+      // Wildcard '*' grants full access
       const hasAnyPermission =
+        userPermissions.includes('*') ||
         permissions.some((permission) =>
           userPermissions.includes(permission) || userPermissions.includes('admin')
         );
@@ -403,10 +405,13 @@ export function requireAllPermissions(permissions: string[]) {
 
       // Check if user has all required permissions
       const userPermissions = req.permissions || [];
-      const hasAllPermissions = permissions.every(
-        (permission) =>
-          userPermissions.includes(permission) || userPermissions.includes('admin')
-      );
+      // Wildcard '*' grants full access
+      const hasAllPermissions =
+        userPermissions.includes('*') ||
+        permissions.every(
+          (permission) =>
+            userPermissions.includes(permission) || userPermissions.includes('admin')
+        );
 
       if (!hasAllPermissions) {
         res.status(403).json({

@@ -67,7 +67,7 @@ export function userRateLimiter() {
 
 /**
  * Cache for per-API-key rate limiter instances in apiKeyRateLimiter
- * Keyed by API key ID
+ * Keyed by composite key: `${apiKeyId}:${maxRequests}`
  */
 const apiKeyRateLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
 
@@ -85,19 +85,22 @@ export function apiKeyRateLimiter() {
     try {
       // If API key is present, use its custom rate limit
       if (req.apiKey && req.authMethod === 'api_key') {
-        // Get or create rate limiter for this API key
-        let rateLimiter = apiKeyRateLimiterCache.get(req.apiKey.id);
+        const windowMs = authConfig.rateLimit.windowMs;
+        const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
+        // Use composite cache key to handle quota changes
+        const cacheKey = `${req.apiKey.id}:${maxRequests}`;
+        
+        // Get or create rate limiter for this API key and quota
+        let rateLimiter = apiKeyRateLimiterCache.get(cacheKey);
         if (!rateLimiter) {
-          const windowMs = authConfig.rateLimit.windowMs;
-          const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
-          
+          // Use request-bound keyGenerator to avoid closing over req
           rateLimiter = createRateLimiter({
             windowMs,
             maxRequests,
             message: 'API key rate limit exceeded, please try again later.',
-            keyGenerator: () => `api_key:${req.apiKey!.id}`,
+            keyGenerator: (req: Express.Request) => `api_key:${(req as any).apiKey!.id}`,
           });
-          apiKeyRateLimiterCache.set(req.apiKey.id, rateLimiter);
+          apiKeyRateLimiterCache.set(cacheKey, rateLimiter);
         }
 
         rateLimiter(req, res, next);
@@ -158,8 +161,8 @@ export function endpointRateLimiter(endpoint: string, limit: number) {
 }
 
 /**
- * Cache for per-API-key rate limiter instances
- * Keyed by API key ID
+ * Cache for per-API-key rate limiter instances in rateLimiterMiddleware
+ * Keyed by composite key: `${apiKeyId}:${maxRequests}`
  */
 const apiKeyLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
 
@@ -183,16 +186,22 @@ export function rateLimiterMiddleware() {
 
       // If API key is present, use API key rate limiting
       if (req.apiKey && req.authMethod === 'api_key') {
-        // Get or create rate limiter for this API key
-        let apiKeyLimiter = apiKeyLimiterCache.get(req.apiKey.id);
+        const windowMs = authConfig.rateLimit.windowMs;
+        const maxRequests = req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests;
+        // Use composite cache key to handle quota changes
+        const cacheKey = `${req.apiKey.id}:${maxRequests}`;
+        
+        // Get or create rate limiter for this API key and quota
+        let apiKeyLimiter = apiKeyLimiterCache.get(cacheKey);
         if (!apiKeyLimiter) {
+          // Use request-bound keyGenerator to avoid closing over req
           apiKeyLimiter = createRateLimiter({
-            windowMs: authConfig.rateLimit.windowMs,
-            maxRequests: req.apiKey.rateLimit || authConfig.rateLimit.apiKeyMaxRequests,
+            windowMs,
+            maxRequests,
             message: 'API key rate limit exceeded, please try again later.',
-            keyGenerator: () => `api_key:${req.apiKey!.id}`,
+            keyGenerator: (req: Express.Request) => `api_key:${(req as any).apiKey!.id}`,
           });
-          apiKeyLimiterCache.set(req.apiKey.id, apiKeyLimiter);
+          apiKeyLimiterCache.set(cacheKey, apiKeyLimiter);
         }
         apiKeyLimiter(req, res, next);
         return;

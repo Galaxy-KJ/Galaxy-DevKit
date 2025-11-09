@@ -50,22 +50,27 @@ export class UserService {
    * @returns Promise<User | null> - User object or null if not found
    */
   async getUserById(userId: string): Promise<User | null> {
-    try {
-      const { data, error } = await this.supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-      if (error || !data) {
-        return null;
-      }
-
-      return this.mapDatabaseToUser(data);
-    } catch (error) {
-      console.error('Failed to get user by ID:', error);
+    // "Not found" is expected, return null
+    if (error?.code === 'PGRST116' || !data) {
       return null;
     }
+
+    // Unexpected error, throw
+    if (error) {
+      throw new AuthenticationError(
+        AuthErrorCode.INTERNAL_ERROR,
+        `Database error fetching user: ${error.message}`,
+        500
+      );
+    }
+
+    return this.mapDatabaseToUser(data);
   }
 
   /**
@@ -74,22 +79,27 @@ export class UserService {
    * @returns Promise<User | null> - User object or null if not found
    */
   async getUserByEmail(email: string): Promise<User | null> {
-    try {
-      const { data, error } = await this.supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single();
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
 
-      if (error || !data) {
-        return null;
-      }
-
-      return this.mapDatabaseToUser(data);
-    } catch (error) {
-      console.error('Failed to get user by email:', error);
+    // "Not found" is expected, return null
+    if (error?.code === 'PGRST116' || !data) {
       return null;
     }
+
+    // Unexpected error, throw
+    if (error) {
+      throw new AuthenticationError(
+        AuthErrorCode.INTERNAL_ERROR,
+        `Database error fetching user: ${error.message}`,
+        500
+      );
+    }
+
+    return this.mapDatabaseToUser(data);
   }
 
   /**
@@ -132,7 +142,7 @@ export class UserService {
 
       if (error || !updatedUser) {
         throw new AuthenticationError(
-          AuthErrorCode.USER_NOT_FOUND,
+          AuthErrorCode.INTERNAL_ERROR,
           `Failed to update user profile: ${error?.message || 'Unknown error'}`,
           500
         );
@@ -145,7 +155,7 @@ export class UserService {
       }
 
       throw new AuthenticationError(
-        AuthErrorCode.USER_NOT_FOUND,
+        AuthErrorCode.INTERNAL_ERROR,
         `Failed to update user profile: ${error instanceof Error ? error.message : 'Unknown error'}`,
         500
       );
@@ -185,7 +195,7 @@ export class UserService {
 
       if (error) {
         throw new AuthenticationError(
-          AuthErrorCode.USER_NOT_FOUND,
+          AuthErrorCode.INTERNAL_ERROR,
           `Failed to update user permissions: ${error.message}`,
           500
         );
@@ -196,7 +206,7 @@ export class UserService {
       }
 
       throw new AuthenticationError(
-        AuthErrorCode.USER_NOT_FOUND,
+        AuthErrorCode.INTERNAL_ERROR,
         `Failed to update user permissions: ${error instanceof Error ? error.message : 'Unknown error'}`,
         500
       );
@@ -220,7 +230,7 @@ export class UserService {
 
       if (selectError) {
         throw new AuthenticationError(
-          AuthErrorCode.USER_NOT_FOUND,
+          AuthErrorCode.INTERNAL_ERROR,
           `Failed to fetch user profile: ${selectError.message}`,
           500
         );
@@ -254,7 +264,7 @@ export class UserService {
 
       if (updateError) {
         throw new AuthenticationError(
-          AuthErrorCode.USER_NOT_FOUND,
+          AuthErrorCode.INTERNAL_ERROR,
           `Failed to deactivate user: ${updateError.message}`,
           500
         );
@@ -265,7 +275,7 @@ export class UserService {
       }
 
       throw new AuthenticationError(
-        AuthErrorCode.USER_NOT_FOUND,
+        AuthErrorCode.INTERNAL_ERROR,
         `Failed to deactivate user: ${error instanceof Error ? error.message : 'Unknown error'}`,
         500
       );
