@@ -49,5 +49,10 @@
     "smart-contracts"
   ],
   "author": "Galaxy DevKit Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.3.1",
+    "node-cron": "^4.2.1",
+    "stellar-sdk": "^13.3.0"
+  }
 }
