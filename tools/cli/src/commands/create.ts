@@ -13,6 +13,10 @@ import inquirer from 'inquirer';
 import fs from 'fs-extra';
 import path from 'path';
 import { execa } from 'execa';
+import { ProjectScaffolder } from '../utils/project-scaffolder.js';
+import { DependencyInstaller } from '../utils/dependency-installer.js';
+import { TemplateLoader } from '../utils/template-loader.js';
+import { ProjectOptions } from '../types/template-types.js';
 
 const createCommand = new Command('create');
 
@@ -23,6 +27,10 @@ createCommand
   .option('-d, --directory <directory>', 'Directory to create project in')
   .option('--skip-install', 'Skip dependency installation')
   .action(async (name, options) => {
+    const templateLoader = new TemplateLoader();
+    const scaffolder = new ProjectScaffolder();
+    const installer = new DependencyInstaller();
+
     try {
       // If no name provided, prompt for it
       if (!name) {
@@ -45,54 +53,49 @@ createCommand
         name = answers.name;
       }
 
-      // Validate template
-      const availableTemplates = ['basic', 'defi', 'nft', 'enterprise'];
-      if (!availableTemplates.includes(options.template)) {
+      // Get available templates and validate
+      const availableTemplates = await templateLoader.listTemplates();
+      const templateNames = availableTemplates.map(t => t.name);
+
+      if (!templateNames.includes(options.template)) {
         console.error(chalk.red(`Invalid template: ${options.template}`));
-        console.error(chalk.yellow(`Available templates: ${availableTemplates.join(', ')}`));
+        console.error(chalk.yellow(`Available templates: ${templateNames.join(', ')}`));
         process.exit(1);
       }
 
-      // Determine project directory
-      const projectDir = options.directory || path.resolve(process.cwd(), name);
-      
-      // Check if directory already exists
-      if (await fs.pathExists(projectDir)) {
-        console.error(chalk.red(`Directory ${projectDir} already exists`));
-        process.exit(1);
-      }
+      const projectOptions: ProjectOptions = {
+        name,
+        template: options.template,
+        directory: options.directory,
+        skipInstall: options.skipInstall
+      };
 
       console.log(chalk.blue(`Creating Galaxy project: ${name}`));
       console.log(chalk.gray(`Template: ${options.template}`));
-      console.log(chalk.gray(`Directory: ${projectDir}`));
+      console.log(chalk.gray(`Directory: ${projectOptions.directory || path.resolve(process.cwd(), name)}`));
 
-      // Create project directory
-      const spinner = ora('Creating project directory...').start();
-      await fs.ensureDir(projectDir);
-      spinner.succeed('Project directory created');
+      // Scaffold project
+      const scaffoldSpinner = ora('Scaffolding project...').start();
+      const result = await scaffolder.scaffoldProject(projectOptions);
 
-      // Copy template files
-      const templateSpinner = ora('Copying template files...').start();
-      await copyTemplateFiles(options.template, projectDir);
-      templateSpinner.succeed('Template files copied');
-
-      // Update package.json with project name
-      const packageJsonPath = path.join(projectDir, 'package.json');
-      if (await fs.pathExists(packageJsonPath)) {
-        const packageJson = await fs.readJson(packageJsonPath);
-        packageJson.name = name;
-        await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 });
+      if (!result.success) {
+        scaffoldSpinner.fail('Project scaffolding failed');
+        if (result.errors && result.errors.length > 0) {
+          result.errors.forEach(error => console.error(chalk.red(`  ${error}`)));
+        }
+        process.exit(1);
       }
+
+      scaffoldSpinner.succeed('Project scaffolded successfully');
 
       // Install dependencies
       if (!options.skipInstall) {
-        const installSpinner = ora('Installing dependencies...').start();
-        try {
-          await execa('npm', ['install'], { cwd: projectDir });
-          installSpinner.succeed('Dependencies installed');
-        } catch (error) {
-          installSpinner.fail('Failed to install dependencies');
-          console.error(chalk.yellow('You can install dependencies manually with: npm install'));
+        const templateConfig = await templateLoader.loadTemplate(options.template);
+        const installSuccess = await installer.installDependencies(result.projectPath, templateConfig);
+
+        if (!installSuccess) {
+          console.error(chalk.yellow('Dependency installation failed, but project was created'));
+          console.error(chalk.gray('You can install dependencies manually with: npm install'));
         }
       }
 
@@ -111,29 +114,6 @@ createCommand
     }
   });
 
-/**
- * Copies template files to project directory
- * @param template - Template name
- * @param projectDir - Project directory
- */
-async function copyTemplateFiles(template: string, projectDir: string): Promise<void> {
-  const templateDir = path.join(__dirname, '../../templates', template);
-  
-  if (!await fs.pathExists(templateDir)) {
-    throw new Error(`Template ${template} not found`);
-  }
-
-  // Copy all files from template directory
-  await fs.copy(templateDir, projectDir, {
-    filter: (src) => {
-      // Skip node_modules and other unnecessary files
-      return !src.includes('node_modules') && 
-             !src.includes('.git') && 
-             !src.includes('dist') &&
-             !src.includes('.next');
-    }
-  });
-}
 
 export { createCommand };
 
