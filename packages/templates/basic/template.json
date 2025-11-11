@@ -1,0 +1,84 @@
+{
+  "name": "basic",
+  "description": "Basic Stellar DApp template for Galaxy DevKit",
+  "version": "1.0.0",
+  "author": "Galaxy DevKit Team",
+  "dependencies": [
+    "next@^15.3.1",
+    "react@^19.0.0",
+    "react-dom@^19.0.0",
+    "typescript@^5.8.3",
+    "tailwindcss@^4.0.13",
+    "framer-motion@^12.5.0",
+    "zustand@^5.0.8",
+    "axios@^1.6.2"
+  ],
+  "devDependencies": [
+    "@types/node@^20.0.0",
+    "@types/react@^18.0.0",
+    "@types/react-dom@^18.0.0",
+    "eslint@^9.0.0",
+    "eslint-config-next@^15.3.1",
+    "prettier@^3.0.0",
+    "jest@^30.0.5",
+    "ts-jest@^29.0.0"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "clean": "rm -rf .next dist"
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "content": "# {{PROJECT_NAME}}\n\nA Stellar DApp built with Galaxy DevKit.\n\n## Getting Started\n\n1. Install dependencies:\n   ```bash\n   npm install\n   ```\n\n2. Start the development server:\n   ```bash\n   npm run dev\n   ```\n\n3. Open [http://localhost:3000](http://localhost:3000) in your browser.\n\n## Features\n\n- Stellar SDK integration\n- Invisible wallet support\n- Next.js framework\n- TypeScript\n- Tailwind CSS\n- Framer Motion animations\n\n## Learn More\n\n- [Galaxy DevKit Documentation](https://galaxy-devkit.com)\n- [Stellar Documentation](https://developers.stellar.org)\n- [Next.js Documentation](https://nextjs.org)\n"
+    },
+    {
+      "path": "src/pages/index.tsx",
+      "content": "import { useState } from 'react';\nimport { useStellar } from '@galaxy/core-stellar-sdk';\nimport { useInvisibleWallet } from '@galaxy/core-invisible-wallet';\n\nconst Home = () => {\n  const { account, connect } = useStellar();\n  const { wallet, createWallet } = useInvisibleWallet();\n  const [isConnected, setIsConnected] = useState(false);\n\n  const handleConnect = async () => {\n    try {\n      await connect();\n      setIsConnected(true);\n    } catch (error) {\n      console.error('Failed to connect:', error);\n    }\n  };\n\n  const handleCreateWallet = async () => {\n    try {\n      await createWallet();\n    } catch (error) {\n      console.error('Failed to create wallet:', error);\n    }\n  };\n\n  return (\n    <div className=\"min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center\">\n      <div className=\"max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden\">\n        <div className=\"p-8\">\n          <div className=\"uppercase tracking-wide text-sm text-indigo-500 font-semibold\">{{PROJECT_NAME}}</div>\n          <h1 className=\"block mt-1 text-lg leading-tight font-medium text-black\">Welcome to Galaxy DevKit</h1>\n          <p className=\"mt-2 text-gray-500\">Build Stellar DApps with ease</p>\n          \n          <div className=\"mt-6 space-y-4\">\n            {!isConnected ? (\n              <button\n                onClick={handleConnect}\n                className=\"w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded\"\n              >\n                Connect to Stellar\n              </button>\n            ) : (\n              <div className=\"text-green-600 font-semibold\">Connected to Stellar!</div>\n            )}\n            \n            {!wallet && (\n              <button\n                onClick={handleCreateWallet}\n                className=\"w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded\"\n              >\n                Create Invisible Wallet\n              </button>\n            )}\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n};\n\nexport default Home;\n"
+    },
+    {
+      "path": "src/pages/_app.tsx",
+      "content": "import '../styles/globals.css';\nimport type { AppProps } from 'next/app';\nimport { StellarProvider } from '@galaxy/core-stellar-sdk';\nimport { InvisibleWalletProvider } from '@galaxy/core-invisible-wallet';\n\nfunction MyApp({ Component, pageProps }: AppProps) {\n  return (\n    <StellarProvider>\n      <InvisibleWalletProvider>\n        <Component {...pageProps} />\n      </InvisibleWalletProvider>\n    </StellarProvider>\n  );\n}\n\nexport default MyApp;\n"
+    },
+    {
+      "path": "src/styles/globals.css",
+      "content": "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nbody {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',\n    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',\n    sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -moz-osx-font-smoothing: grayscale;\n}\n\ncode {\n  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',\n    monospace;\n}\n"
+    },
+    {
+      "path": "tailwind.config.js",
+      "content": "/** @type {import('tailwindcss').Config} */\nmodule.exports = {\n  content: [\n    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',\n    './src/components/**/*.{js,ts,jsx,tsx,mdx}',\n    './src/app/**/*.{js,ts,jsx,tsx,mdx}',\n  ],\n  theme: {\n    extend: {},\n  },\n  plugins: [],\n}\n"
+    },
+    {
+      "path": "next.config.js",
+      "content": "/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  experimental: {\n    appDir: true,\n  },\n  images: {\n    domains: ['localhost'],\n  },\n}\n\nmodule.exports = nextConfig\n"
+    },
+    {
+      "path": "tsconfig.json",
+      "content": "{\n  \"compilerOptions\": {\n    \"target\": \"es5\",\n    \"lib\": [\"dom\", \"dom.iterable\", \"es6\"],\n    \"allowJs\": true,\n    \"skipLibCheck\": true,\n    \"strict\": true,\n    \"noEmit\": true,\n    \"esModuleInterop\": true,\n    \"module\": \"esnext\",\n    \"moduleResolution\": \"bundler\",\n    \"resolveJsonModule\": true,\n    \"isolatedModules\": true,\n    \"jsx\": \"preserve\",\n    \"incremental\": true,\n    \"plugins\": [\n      {\n        \"name\": \"next\"\n      }\n    ],\n    \"baseUrl\": \".\",\n    \"paths\": {\n      \"@/*\": [\"./src/*\"]\n    }\n  },\n  \"include\": [\"next-env.d.ts\", \"**/*.ts\", \"**/*.tsx\", \".next/types/**/*.ts\"],\n  \"exclude\": [\"node_modules\"]\n}\n"
+    },
+    {
+      "path": ".eslintrc.json",
+      "content": "{\n  \"extends\": \"next/core-web-vitals\"\n}\n"
+    },
+    {
+      "path": ".prettierrc",
+      "content": "{\n  \"semi\": true,\n  \"trailingComma\": \"es5\",\n  \"singleQuote\": true,\n  \"printWidth\": 80,\n  \"tabWidth\": 2,\n  \"useTabs\": false\n}\n"
+    },
+    {
+      "path": "jest.config.js",
+      "content": "const nextJest = require('next/jest')\n\nconst createJestConfig = nextJest({\n  // Provide the path to your Next.js app to load next.config.js and .env files\n  dir: './',\n})\n\n// Add any custom config to be passed to Jest\nconst customJestConfig = {\n  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],\n  moduleNameMapping: {\n    // Handle module aliases (this will be automatically configured for you based on your tsconfig.json paths)\n    '^@/(.*)$': '<rootDir>/src/$1',\n  },\n  testEnvironment: 'jest-environment-jsdom',\n}\n\n// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async\nmodule.exports = createJestConfig(customJestConfig)\n"
+    },
+    {
+      "path": "jest.setup.js",
+      "content": "import '@testing-library/jest-dom'\n"
+    }
+  ],
+  "postInstall": [
+    "echo 'Template setup complete!'"
+  ]
+}

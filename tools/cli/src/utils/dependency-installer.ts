@@ -82,13 +82,15 @@ export class DependencyInstaller {
    * @returns DependencyInfo
    */
   private parseDependency(dep: string): DependencyInfo {
-    const parts = dep.split('@');
-    if (parts.length === 1) {
+    // Handle scoped packages: @scope/name@version
+    const atIndex = dep.lastIndexOf('@');
+    if (atIndex === -1 || atIndex === 0) {
+      // No version specified, or starts with @ (scoped without version)
       return { name: dep, version: 'latest' };
     }
 
-    const version = parts.pop()!;
-    const name = parts.join('@');
+    const name = dep.substring(0, atIndex);
+    const version = dep.substring(atIndex + 1);
 
     return { name, version };
   }

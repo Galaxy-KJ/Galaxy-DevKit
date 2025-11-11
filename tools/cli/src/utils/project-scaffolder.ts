@@ -8,13 +8,11 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { execa } from 'execa';
 import chalk from 'chalk';
 import { TemplateConfig, ProjectOptions, ScaffoldResult } from '../types/template-types.js';
 import { TemplateLoader } from './template-loader.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class ProjectScaffolder {
   private templateLoader: TemplateLoader;
@@ -36,14 +34,11 @@ export class ProjectScaffolder {
       warnings: []
     };
 
-    // Ensure arrays are initialized
-    if (!result.errors) result.errors = [];
-    if (!result.warnings) result.warnings = [];
 
     try {
       // Validate template exists
       if (!await this.templateLoader.templateExists(options.template)) {
-        result.errors.push(`Template '${options.template}' not found`);
+        result.errors!.push(`Template '${options.template}' not found`);
         return result;
       }
 
@@ -55,7 +50,7 @@ export class ProjectScaffolder {
 
       // Check if directory already exists
       if (await fs.pathExists(projectDir)) {
-        result.errors.push(`Directory ${projectDir} already exists`);
+        result.errors!.push(`Directory ${projectDir} already exists`);
         return result;
       }
 
@@ -78,7 +73,7 @@ export class ProjectScaffolder {
       result.success = true;
 
     } catch (error) {
-      result.errors.push(`Scaffolding failed: ${(error as Error).message}`);
+      result.errors!.push(`Scaffolding failed: ${(error as Error).message}`);
     }
 
     return result;
@@ -95,14 +90,14 @@ export class ProjectScaffolder {
     projectDir: string,
     options: ProjectOptions
   ): Promise<void> {
-    const templateDir = path.join('/home/user/Galaxy-DevKit/packages/templates', options.template);
+    const templateDir = path.join(this.templateLoader.getTemplatesDir(), options.template);
 
     // Copy all files from template directory
     await fs.copy(templateDir, projectDir, {
       filter: (src) => {
         const relativePath = path.relative(templateDir, src);
         // Skip template.json and unnecessary files
-        return !relativePath.startsWith('template.json') &&
+        return path.basename(relativePath) !== 'template.json' &&
                !src.includes('node_modules') &&
                !src.includes('.git') &&
                !src.includes('dist') &&
@@ -183,12 +178,18 @@ export class ProjectScaffolder {
     projectName: string,
     config: TemplateConfig
   ): Promise<void> {
+    // Validate package name format
+    const sanitizedName = projectName.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+    if (sanitizedName !== projectName.toLowerCase()) {
+      console.warn(chalk.yellow(`Package name sanitized from '${projectName}' to '${sanitizedName}'`));
+    }
+
     const packageJsonPath = path.join(projectDir, 'package.json');
 
     if (!await fs.pathExists(packageJsonPath)) {
       // Create package.json if it doesn't exist
       const packageJson = {
-        name: projectName,
+        name: sanitizedName,
         version: config.version,
         description: config.description,
         author: config.author,
@@ -203,7 +204,7 @@ export class ProjectScaffolder {
 
     // Update existing package.json
     const packageJson = await fs.readJson(packageJsonPath);
-    packageJson.name = projectName;
+    packageJson.name = sanitizedName;
     packageJson.version = config.version;
     packageJson.description = config.description;
     packageJson.author = config.author;
@@ -224,11 +225,11 @@ export class ProjectScaffolder {
   private async runPostInstallScripts(scripts: string[], projectDir: string): Promise<void> {
     for (const script of scripts) {
       try {
-        // Note: In a real implementation, you'd use execa or similar to run these scripts
         console.log(chalk.gray(`Running post-install script: ${script}`));
-        // await execa(script, [], { cwd: projectDir, shell: true });
+        await execa(script, [], { cwd: projectDir, shell: true, stdio: 'inherit' });
       } catch (error) {
         console.warn(chalk.yellow(`Post-install script failed: ${script}`));
+        throw error; // Re-throw to let callers handle installation failures
       }
     }
   }

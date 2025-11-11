@@ -18,8 +18,16 @@ const __dirname = path.dirname(__filename);
 export class TemplateLoader {
   private templatesDir: string;
 
+  /**
+   * Gets the templates directory path
+   * @returns string
+   */
+  getTemplatesDir(): string {
+    return this.templatesDir;
+  }
+
   constructor(templatesDir?: string) {
-    this.templatesDir = templatesDir || '/home/user/Galaxy-DevKit/packages/templates';
+    this.templatesDir = templatesDir || process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../packages/templates');
   }
 
   /**
@@ -145,9 +153,9 @@ export class TemplateLoader {
     tags.push(config.name.toLowerCase());
 
     // Add dependency-based tags
-    if (config.dependencies.includes('react')) tags.push('react');
-    if (config.dependencies.includes('@stellar/stellar-sdk')) tags.push('stellar');
-    if (config.dependencies.includes('@supabase/supabase-js')) tags.push('supabase');
+    if (config.dependencies.some(dep => dep === 'react' || dep.startsWith('react@'))) tags.push('react');
+    if (config.dependencies.some(dep => dep === '@stellar/stellar-sdk' || dep.startsWith('@stellar/stellar-sdk@'))) tags.push('stellar');
+    if (config.dependencies.some(dep => dep === '@supabase/supabase-js' || dep.startsWith('@supabase/supabase-js@'))) tags.push('supabase');
 
     return [...new Set(tags)]; // Remove duplicates
   }
