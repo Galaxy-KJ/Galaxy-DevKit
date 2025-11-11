@@ -186,20 +186,20 @@ To add a new template:
 
 ### Common Issues
 
-**Template not found**
+### Template not found
 - Ensure the template directory exists in `packages/templates/`
 - Check that `template.json` is present and valid
 
-**Dependencies fail to install**
+### Dependencies fail to install
 - Check internet connection
 - Verify package manager is available (npm/yarn/pnpm)
 - Use `--skip-install` and install manually
 
-**Permission errors**
+### Permission errors
 - Ensure write permissions in target directory
 - Check if directory already exists
 
-### Debug Mode
+### Debug mode
 
 For debugging, you can run the CLI with verbose output by checking the console logs during execution.
 
