@@ -80,7 +80,9 @@
     clearBtn.addEventListener('click', () => {
       specUrlInput.value = '';
       rawSpec.value = '';
-      if (ui && ui.specSelectors) ui.specActions.updateSpec({});
+      if (ui && ui.specActions && ui.specActions.updateSpec) {
+        try { ui.specActions.updateSpec({}); } catch(e) {}
+      }
       document.getElementById('swagger-ui').innerHTML = '';
     });
   </script>

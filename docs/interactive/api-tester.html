@@ -56,21 +56,27 @@
     sendBtn.addEventListener('click', async () => {
       const url = urlInput.value.trim();
       if (!url) { alert('Enter a URL'); return; }
-      const method = methodInput.value;
+  const method = methodInput.value;
+  const timeoutMs = parseInt(document.getElementById('timeout').value, 10) || 15000;
       let headers = {};
       try { headers = headersInput.value ? JSON.parse(headersInput.value) : {}; } catch(e) { alert('Headers must be valid JSON'); return; }
       let body = bodyInput.value.trim();
       try { if (body) body = JSON.parse(body); } catch(e) { /* keep as string if not JSON */ }
 
       respPre.textContent = 'Sending...';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const res = await fetch(url, { method, headers, body: body && (typeof body === 'string' ? body : JSON.stringify(body)) });
+        const res = await fetch(url, { method, headers, body: body && (typeof body === 'string' ? body : JSON.stringify(body)), signal: controller.signal });
+        clearTimeout(timeoutId);
         const ct = res.headers.get('content-type') || '';
         let text = await res.text();
         try { if (ct.includes('application/json')) text = JSON.stringify(JSON.parse(text), null, 2); } catch(e){}
         respPre.textContent = `HTTP ${res.status} ${res.statusText}\n\n${text}`;
       } catch (err) {
-        respPre.textContent = 'Request failed: ' + err.message;
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') respPre.textContent = 'Request aborted due to timeout';
+        else respPre.textContent = 'Request failed: ' + err.message;
       }
     });
   </script>

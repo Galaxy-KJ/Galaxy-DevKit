@@ -14,6 +14,10 @@
 </head>
 <body>
   <header><strong>Example: Fetch a public API (browser)</strong></header>
+  <div style="background:#fef3c7;border:1px solid #f59e0b;padding:8px;margin:12px;">
+    <strong>⚠️ Security Notice:</strong> This page can execute arbitrary JavaScript in your browser. Only run code you trust. Execution is disabled by default — check <em>Enable execution</em> to run code.
+  </div>
+  <label style="display:block;margin-left:12px"><input id="enableExec" type="checkbox" /> Enable execution</label>
   <main>
     <p>This example shows a small JS snippet that fetches an endpoint. Update the <code>endpoint</code> variable and click <em>Run</em>. Watch the Response area for results (note: CORS applies).</p>
 
@@ -31,14 +35,19 @@ async function run(){
 run().then(d => window._last = d).catch(err => window._last = {error: String(err)});
     </textarea>
 
-    <button id="run">Run</button>
+  <button id="run" disabled>Run</button>
     <h3>Result</h3>
     <pre id="out">Run the snippet to see output here.</pre>
 
     <script>
       const runBtn = document.getElementById('run');
+      const enableExec = document.getElementById('enableExec');
+      enableExec.addEventListener('change', () => {
+        runBtn.disabled = !enableExec.checked;
+      });
       const out = document.getElementById('out');
       runBtn.addEventListener('click', async () => {
+        if (!enableExec.checked) { out.textContent = 'Execution disabled. Check "Enable execution" to run code.'; return; }
         const code = document.getElementById('code').value;
         try {
           // eslint-disable-next-line no-eval

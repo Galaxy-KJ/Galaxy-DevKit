@@ -19,7 +19,7 @@ function generateIndex(){
   ensureDir(root);
   const links = pages.map(p => `      <li><a href="${p.path}">${p.title}</a></li>`).join('\n');
   const html = `<!doctype html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Interactive Docs — Galaxy DevKit</title>
 <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0}header{background:#0f172a;color:#fff;padding:12px}main{padding:12px}</style>
 </head>
@@ -38,5 +38,14 @@ ${links}
 }
 
 generateIndex();
+
+// ensure code-examples directory exists and placeholder index
+const examplesDir = path.join(root, 'code-examples');
+ensureDir(examplesDir);
+const exampleIndex = path.join(examplesDir, 'index.html');
+if (!fs.existsSync(exampleIndex)){
+  fs.writeFileSync(exampleIndex, '<!doctype html><html lang="en"><body><p>Code examples index (auto-generated)</p></body></html>', 'utf8');
+  console.log('Created', exampleIndex);
+}
 
 // Usage: npx ts-node tools/docs/interactive-docs-generator.ts

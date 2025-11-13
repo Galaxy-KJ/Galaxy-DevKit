@@ -44,10 +44,15 @@
 
     function mount(url) {
       const fetcher = createFetcher(url);
-      ReactDOM.render(
-        React.createElement(GraphiQL.GraphiQL, { fetcher }),
-        document.getElementById('graphiql')
-      );
+      const container = document.getElementById('graphiql');
+      // Use React 18 createRoot API
+      if (ReactDOM.createRoot) {
+        const root = ReactDOM.createRoot(container);
+        root.render(React.createElement(GraphiQL.GraphiQL, { fetcher }));
+      } else {
+        // Fallback for older React versions
+        ReactDOM.render(React.createElement(GraphiQL.GraphiQL, { fetcher }), container);
+      }
     }
 
     connectBtn.addEventListener('click', () => {
