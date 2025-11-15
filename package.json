@@ -18,17 +18,21 @@
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",
     "publish": "lerna publish",
-    "test": "jest"
+    "test": "jest",
+    "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
+    "serve:docs": "npx http-server docs -p 8080"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "concurrently": "^8.0.0",
     "eslint": "^9.0.0",
+    "http-server": "^14.1.1",
     "jest": "^30.2.0",
     "lerna": "^8.0.0",
     "prettier": "^3.0.0",
     "ts-jest": "^29.4.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "engines": {

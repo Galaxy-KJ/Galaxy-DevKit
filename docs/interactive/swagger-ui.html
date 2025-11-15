@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Galaxy DevKit — Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@4.18.2/swagger-ui.css" />
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+    header { padding: 12px 18px; background:#0f172a; color: #fff; }
+    main { padding: 12px; }
+    #swagger-ui { height: 80vh; }
+    .controls { margin-bottom:12px; display:flex; gap:8px; align-items:center; }
+    input[type=text] { flex:1; padding:8px; font-size:14px }
+    button { padding:8px 12px }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Galaxy DevKit — Swagger UI</strong>
+  </header>
+  <main>
+    <p>Enter an OpenAPI JSON/YAML URL (example: <code>https://api.example.com/openapi.json</code>) or paste a raw spec URL and click <em>Load</em>.</p>
+    <div class="controls">
+      <input id="specUrl" type="text" placeholder="OpenAPI URL (or leave blank to paste JSON below)" />
+      <button id="loadBtn">Load</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+
+    <div>
+      <textarea id="rawSpec" rows="6" style="width:100%;font-family:monospace;" placeholder="Paste OpenAPI JSON or YAML here (optional)"></textarea>
+    </div>
+
+    <div id="swagger-ui"></div>
+  </main>
+
+  <script src="https://unpkg.com/swagger-ui-dist@4.18.2/swagger-ui-bundle.js"></script>
+  <script>
+    const loadBtn = document.getElementById('loadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const specUrlInput = document.getElementById('specUrl');
+    const rawSpec = document.getElementById('rawSpec');
+
+    let ui = null;
+
+    function createUI(spec) {
+      if (ui && ui.destroy) try { ui.destroy(); } catch(e){}
+      ui = SwaggerUIBundle({
+        spec,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout'
+      });
+    }
+
+    loadBtn.addEventListener('click', async () => {
+      const url = specUrlInput.value.trim();
+      const raw = rawSpec.value.trim();
+      if (raw) {
+        try {
+          // try parse JSON, else pass as YAML string (SwaggerUI accepts spec as object/string)
+          const parsed = JSON.parse(raw);
+          createUI(parsed);
+        } catch (e) {
+          createUI(raw);
+        }
+        return;
+      }
+      if (!url) { alert('Please paste a spec or enter a URL'); return; }
+      try {
+        const r = await fetch(url);
+        const t = await r.text();
+        try { createUI(JSON.parse(t)); } catch { createUI(t); }
+      } catch (err) {
+        alert('Failed to fetch spec: ' + err.message);
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      specUrlInput.value = '';
+      rawSpec.value = '';
+      if (ui && ui.specActions && ui.specActions.updateSpec) {
+        try { ui.specActions.updateSpec({}); } catch(e) {}
+      }
+      document.getElementById('swagger-ui').innerHTML = '';
+    });
+  </script>
+</body>
+</html>
