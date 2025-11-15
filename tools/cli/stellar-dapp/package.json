@@ -1,0 +1,47 @@
+{
+  "name": "stellar-dapp",
+  "version": "1.0.0",
+  "description": "Basic Stellar DApp template for Galaxy DevKit",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "clean": "rm -rf .next dist"
+  },
+  "dependencies": {
+    "@galaxy/core-stellar-sdk": "^1.0.0",
+    "@galaxy/core-invisible-wallet": "^1.0.0",
+    "@galaxy/sdk-typescript": "^1.0.0",
+    "next": "^15.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.8.3",
+    "tailwindcss": "^4.0.13",
+    "framer-motion": "^12.5.0",
+    "zustand": "^5.0.8",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.1",
+    "prettier": "^3.0.0",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.1.0"
+  },
+  "keywords": [
+    "stellar",
+    "dapp",
+    "template",
+    "galaxy",
+    "defi"
+  ],
+  "author": "Galaxy DevKit Team",
+  "license": "MIT"
+}

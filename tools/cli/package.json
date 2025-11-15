@@ -2,6 +2,7 @@
   "name": "@galaxy/cli",
   "version": "1.0.0",
   "description": "Galaxy CLI - Command line tools for Galaxy DevKit",
+  "type": "module",
   "main": "dist/index.js",
   "bin": {
     "galaxy": "./dist/index.js"
@@ -13,16 +14,16 @@
   },
   "dependencies": {
     "commander": "^11.1.0",
-    "inquirer": "^9.2.12",
+    "inquirer": "^8.2.6",
     "chalk": "^5.3.0",
-    "ora": "^7.0.1",
+    "ora": "^5.4.1",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
     "execa": "^8.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/inquirer": "^9.0.7",
+    "@types/inquirer": "^8.2.10",
     "@types/fs-extra": "^11.0.4",
     "typescript": "^5.8.3"
   },

@@ -19,32 +19,11 @@ program
   .description('Galaxy DevKit CLI - Build Stellar applications with ease')
   .version('1.0.0');
 
-// Create command
-program
-  .command('create <project-name>')
-  .description('Create a new Galaxy project')
-  .option('-t, --template <template>', 'Project template', 'basic')
-  .option('-d, --directory <dir>', 'Project directory', '.')
-  .action(async (projectName: string, options: any) => {
-    const spinner = ora('Creating Galaxy project...').start();
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate work
-      spinner.succeed(chalk.green(`✅ Project "${projectName}" created successfully!`));
-      console.log(chalk.blue('\n📁 Project structure:'));
-      console.log(chalk.gray('  ├── src/'));
-      console.log(chalk.gray('  ├── contracts/'));
-      console.log(chalk.gray('  ├── supabase/'));
-      console.log(chalk.gray('  └── package.json'));
-      console.log(chalk.yellow('\n🚀 Next steps:'));
-      console.log(chalk.gray('  cd ' + projectName));
-      console.log(chalk.gray('  npm install'));
-      console.log(chalk.gray('  npm run dev'));
-    } catch (error) {
-      spinner.fail(chalk.red('Failed to create project'));
-      process.exit(1);
-    }
-  });
+// Import create command
+import { createCommand } from './commands/create.js';
+
+// Register create command
+program.addCommand(createCommand);
 
 // Init command
 program
