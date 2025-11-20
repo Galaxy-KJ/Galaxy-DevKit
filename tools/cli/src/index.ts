@@ -19,32 +19,13 @@ program
   .description('Galaxy DevKit CLI - Build Stellar applications with ease')
   .version('1.0.0');
 
-// Import create command
+// Import commands
 import { createCommand } from './commands/create.js';
+import { initCommand } from './commands/init.js';
 
-// Register create command
+// Register commands
 program.addCommand(createCommand);
-
-// Init command
-program
-  .command('init')
-  .description('Initialize Galaxy DevKit in current directory')
-  .option('-n, --name <name>', 'Project name')
-  .action(async (options: any) => {
-    const spinner = ora('Initializing Galaxy DevKit...').start();
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
-      spinner.succeed(chalk.green('✅ Galaxy DevKit initialized!'));
-      console.log(chalk.blue('\n🔧 Configuration:'));
-      console.log(chalk.gray('  ├── Stellar SDK configured'));
-      console.log(chalk.gray('  ├── Supabase connected'));
-      console.log(chalk.gray('  └── CLI tools ready'));
-    } catch (error) {
-      spinner.fail(chalk.red('Failed to initialize'));
-      process.exit(1);
-    }
-  });
+program.addCommand(initCommand);
 
 // Build command
 program
