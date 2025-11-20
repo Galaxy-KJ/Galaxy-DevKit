@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Galaxy DevKit — API Tester</title>
+  <style>
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; margin:0 }
+    header { background:#0f172a; color:#fff; padding:12px 16px }
+    main { padding:12px }
+    label { display:block; margin-top:8px; font-weight:600 }
+    input, select, textarea { width:100%; padding:8px; box-sizing:border-box }
+    .row { display:flex; gap:8px }
+    .row > * { flex:1 }
+    button { margin-top:8px; padding:8px 12px }
+    pre { background:#0b1220; color:#d6e4ff; padding:12px; overflow:auto }
+  </style>
+</head>
+<body>
+  <header><strong>Galaxy DevKit — API Tester</strong></header>
+  <main>
+    <label>Request URL</label>
+    <input id="url" placeholder="https://api.example.com/v1/endpoint" />
+
+    <div class="row">
+      <div>
+        <label>Method</label>
+        <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option></select>
+      </div>
+      <div>
+        <label>Timeout (ms)</label>
+        <input id="timeout" type="number" value="15000" />
+      </div>
+    </div>
+
+    <label>Headers (JSON)</label>
+    <textarea id="headers" rows="4">{ "Content-Type": "application/json" }</textarea>
+
+    <label>Body (JSON)</label>
+    <textarea id="body" rows="8" placeholder='{"hello":"world"}'></textarea>
+
+    <button id="send">Send Request</button>
+
+    <h3>Response</h3>
+    <div id="response"><pre id="respPre">Send a request to see the response here.</pre></div>
+  </main>
+
+  <script>
+    const urlInput = document.getElementById('url');
+    const methodInput = document.getElementById('method');
+    const headersInput = document.getElementById('headers');
+    const bodyInput = document.getElementById('body');
+    const sendBtn = document.getElementById('send');
+    const respPre = document.getElementById('respPre');
+
+    sendBtn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      if (!url) { alert('Enter a URL'); return; }
+  const method = methodInput.value;
+  const timeoutMs = parseInt(document.getElementById('timeout').value, 10) || 15000;
+      let headers = {};
+      try { headers = headersInput.value ? JSON.parse(headersInput.value) : {}; } catch(e) { alert('Headers must be valid JSON'); return; }
+      let body = bodyInput.value.trim();
+      try { if (body) body = JSON.parse(body); } catch(e) { /* keep as string if not JSON */ }
+
+      respPre.textContent = 'Sending...';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { method, headers, body: body && (typeof body === 'string' ? body : JSON.stringify(body)), signal: controller.signal });
+        clearTimeout(timeoutId);
+        const ct = res.headers.get('content-type') || '';
+        let text = await res.text();
+        try { if (ct.includes('application/json')) text = JSON.stringify(JSON.parse(text), null, 2); } catch(e){}
+        respPre.textContent = `HTTP ${res.status} ${res.statusText}\n\n${text}`;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') respPre.textContent = 'Request aborted due to timeout';
+        else respPre.textContent = 'Request failed: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

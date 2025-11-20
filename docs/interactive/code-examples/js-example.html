@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Galaxy DevKit — JS Example</title>
+  <style>
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; margin:0 }
+    header { background:#0f172a; color:#fff; padding:12px 16px }
+    main { padding:12px }
+    textarea { width:100%; height:200px; font-family:monospace }
+    pre { background:#f7f7fb; padding:8px }
+  </style>
+</head>
+<body>
+  <header><strong>Example: Fetch a public API (browser)</strong></header>
+  <div style="background:#fef3c7;border:1px solid #f59e0b;padding:8px;margin:12px;">
+    <strong>⚠️ Security Notice:</strong> This page can execute arbitrary JavaScript in your browser. Only run code you trust. Execution is disabled by default — check <em>Enable execution</em> to run code.
+  </div>
+  <label style="display:block;margin-left:12px"><input id="enableExec" type="checkbox" /> Enable execution</label>
+  <main>
+    <p>This example shows a small JS snippet that fetches an endpoint. Update the <code>endpoint</code> variable and click <em>Run</em>. Watch the Response area for results (note: CORS applies).</p>
+
+    <label>Endpoint</label>
+    <input id="endpoint" style="width:100%;padding:8px" value="https://jsonplaceholder.typicode.com/todos/1" />
+
+    <label>Code</label>
+    <textarea id="code">// simple fetch example
+const endpoint = document.getElementById('endpoint').value;
+async function run(){
+  const res = await fetch(endpoint);
+  const data = await res.json();
+  return data;
+}
+run().then(d => window._last = d).catch(err => window._last = {error: String(err)});
+    </textarea>
+
+  <button id="run" disabled>Run</button>
+    <h3>Result</h3>
+    <pre id="out">Run the snippet to see output here.</pre>
+
+    <script>
+      const runBtn = document.getElementById('run');
+      const enableExec = document.getElementById('enableExec');
+      enableExec.addEventListener('change', () => {
+        runBtn.disabled = !enableExec.checked;
+      });
+      const out = document.getElementById('out');
+      runBtn.addEventListener('click', async () => {
+        if (!enableExec.checked) { out.textContent = 'Execution disabled. Check "Enable execution" to run code.'; return; }
+        const code = document.getElementById('code').value;
+        try {
+          // eslint-disable-next-line no-eval
+          const fn = new Function(code + '\nreturn window._last;');
+          // run code and wait briefly (note: many snippets set window._last)
+          await Promise.resolve(fn());
+          out.textContent = JSON.stringify(window._last, null, 2);
+        } catch (err) {
+          out.textContent = 'Error: ' + String(err);
+        }
+      });
+    </script>
+  </main>
+</body>
+</html>
