@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { ConfigOptions } from '../utils/config-generator.js';
+import type { ConfigOptions } from '../utils/config-generator.js';
 
 export class GalaxyConfig {
   /**
