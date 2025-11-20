@@ -15,6 +15,7 @@ export interface ConfigOptions {
   projectType: 'react' | 'vue' | 'angular' | 'node' | 'next' | 'nuxt' | 'svelte' | 'vanilla';
   features: string[];
   stellarNetwork: 'testnet' | 'mainnet' | 'futurenet';
+  ecosystemProviderUrl?: string;
   apiKeys?: {
     stellar?: string;
     supabase?: string;

@@ -15,7 +15,26 @@ export class GalaxyConfig {
    * @returns string
    */
   static generate(options: ConfigOptions): string {
-    const { projectType, features, stellarNetwork } = options;
+    const { projectType, features, stellarNetwork, ecosystemProviderUrl } = options;
+
+    // Determine RPC URL based on network
+    let rpcUrl: string;
+    switch (stellarNetwork) {
+      case 'futurenet':
+        rpcUrl = 'https://rpc-futurenet.stellar.org';
+        break;
+      case 'testnet':
+        rpcUrl = 'https://soroban-testnet.stellar.org';
+        break;
+      case 'mainnet':
+        if (!ecosystemProviderUrl) {
+          throw new Error('For mainnet, an ecosystem provider URL must be provided via ecosystemProviderUrl option.');
+        }
+        rpcUrl = ecosystemProviderUrl;
+        break;
+      default:
+        throw new Error(`Unsupported stellar network: ${stellarNetwork}`);
+    }
 
     let config = `/**
  * Galaxy DevKit Configuration
@@ -91,7 +110,7 @@ export default {
     networks: {
       ${stellarNetwork}: {
         networkId: '${this.getNetworkId(stellarNetwork)}',
-        rpcUrl: 'https://soroban${stellarNetwork === 'mainnet' ? '' : `-${stellarNetwork}`}.stellar.org',
+        rpcUrl: '${rpcUrl}',
       },
     },
   },
