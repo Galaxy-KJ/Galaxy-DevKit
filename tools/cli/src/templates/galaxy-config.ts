@@ -18,7 +18,7 @@ export class GalaxyConfig {
     const { projectType, features, stellarNetwork, ecosystemProviderUrl } = options;
 
     // Determine RPC URL based on network
-    let rpcUrl: string;
+    let rpcUrl: string | undefined;
     switch (stellarNetwork) {
       case 'futurenet':
         rpcUrl = 'https://rpc-futurenet.stellar.org';
@@ -27,10 +27,10 @@ export class GalaxyConfig {
         rpcUrl = 'https://soroban-testnet.stellar.org';
         break;
       case 'mainnet':
-        if (!ecosystemProviderUrl) {
-          throw new Error('For mainnet, an ecosystem provider URL must be provided via ecosystemProviderUrl option.');
-        }
         rpcUrl = ecosystemProviderUrl;
+        if (!rpcUrl) {
+          console.error('For mainnet, an ecosystem provider URL must be provided via ecosystemProviderUrl option.');
+        }
         break;
       default:
         throw new Error(`Unsupported stellar network: ${stellarNetwork}`);
@@ -110,7 +110,7 @@ export default {
     networks: {
       ${stellarNetwork}: {
         networkId: '${this.getNetworkId(stellarNetwork)}',
-        rpcUrl: '${rpcUrl}',
+        ${rpcUrl ? `rpcUrl: '${rpcUrl}',` : ''}
       },
     },
   },
