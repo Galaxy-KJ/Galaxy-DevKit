@@ -6,10 +6,17 @@
 type Listener = (event: any) => void;
 type UnsubscribeFunction = () => void;
 
+interface QueueMetrics {
+  droppedEvents: number;
+  maxQueueSize: number;
+}
+
 export class SubscriptionManager {
   private listeners: Map<string, Set<Listener>> = new Map();
   private eventQueue: Map<string, any[]> = new Map();
   private maxQueueSize = 100;
+  private localMaxQueueSize = 100; // Limit per-subscriber queue size
+  private queueMetrics: Map<string, QueueMetrics> = new Map();
 
   /**
    * Subscribe to a channel and return an async iterator for subscriptions
@@ -21,10 +28,30 @@ export class SubscriptionManager {
       async *[Symbol.asyncIterator]() {
         const queue: any[] = [];
         let isSubscribed = true;
+        let droppedCount = 0;
+        let pendingResolve: (() => void) | null = null;
 
         const listener = (event: any) => {
           if (isSubscribed) {
+            // Enforce per-subscriber queue size limit with backpressure
+            if (queue.length >= self.localMaxQueueSize) {
+              droppedCount++;
+              if (droppedCount % 10 === 0) {
+                console.warn(
+                  `Subscription queue for channel '${channel}' at limit; dropped ${droppedCount} events`
+                );
+              }
+              // Drop oldest event to make room (FIFO backpressure)
+              queue.shift();
+            }
             queue.push(event);
+
+            // Signal waiting iterator that new event arrived
+            if (pendingResolve) {
+              const resolve = pendingResolve;
+              pendingResolve = null;
+              resolve();
+            }
           }
         };
 
@@ -38,23 +65,34 @@ export class SubscriptionManager {
               yield queue.shift();
             }
 
-            // Wait for new events or timeout
-            await new Promise((resolve) => {
-              const timeout = setTimeout(resolve, 30000); // 30 second timeout
-              const checkQueue = () => {
-                if (queue.length > 0) {
+            // Wait for new events or timeout using event-driven signaling
+            await new Promise<void>((resolve) => {
+              let resolved = false;
+              const timeout = setTimeout(() => {
+                if (!resolved) {
+                  resolved = true;
+                  pendingResolve = null;
+                  resolve();
+                }
+              }, 30000); // 30 second timeout
+
+              // Store resolve callback for listener to call
+              pendingResolve = () => {
+                if (!resolved) {
+                  resolved = true;
                   clearTimeout(timeout);
-                  resolve(null);
-                } else {
-                  setTimeout(checkQueue, 100);
+                  resolve();
                 }
               };
-              checkQueue();
             });
           }
         } finally {
           isSubscribed = false;
+          pendingResolve = null;
           self.off(channel, listener);
+          if (droppedCount > 0) {
+            console.info(`Subscription to '${channel}' ended with ${droppedCount} dropped events`);
+          }
         }
       },
     };
@@ -62,17 +100,28 @@ export class SubscriptionManager {
 
   /**
    * Emit an event to all subscribers on a channel
+   * @param throwOnError If true, throws AggregateError if any listener throws
    */
-  public emit(channel: string, event: any): void {
+  public emit(channel: string, event: any, throwOnError: boolean = false): void {
     const listeners = this.listeners.get(channel);
+    const errors: Error[] = [];
+
     if (listeners) {
       listeners.forEach((listener) => {
         try {
           listener(event);
         } catch (error) {
           console.error(`Error in subscription listener for ${channel}:`, error);
+          if (throwOnError) {
+            errors.push(error as Error);
+          }
         }
       });
+    }
+
+    // Throw if errors occurred and throwOnError is true
+    if (throwOnError && errors.length > 0) {
+      throw new AggregateError(errors, `${errors.length} listener(s) failed for channel '${channel}'`);
     }
 
     // Store event in queue for late subscribers
@@ -152,6 +201,22 @@ export class SubscriptionManager {
   public clear(): void {
     this.listeners.clear();
     this.eventQueue.clear();
+    this.queueMetrics.clear();
+  }
+
+  /**
+   * Get queue metrics for observability
+   */
+  public getMetrics(): { totalListeners: number; channels: number; droppedEvents: number } {
+    let droppedEvents = 0;
+    for (const [, metrics] of this.queueMetrics) {
+      droppedEvents += metrics.droppedEvents;
+    }
+    return {
+      totalListeners: this.getTotalListenerCount(),
+      channels: this.listeners.size,
+      droppedEvents,
+    };
   }
 
   /**
@@ -173,10 +238,30 @@ export class SubscriptionManager {
       async *[Symbol.asyncIterator]() {
         const queue: any[] = [];
         let isSubscribed = true;
+        let droppedCount = 0;
+        let pendingResolve: (() => void) | null = null;
 
         const createListener = (channel: string) => (event: any) => {
           if (isSubscribed) {
+            // Enforce per-subscriber queue size limit with backpressure
+            if (queue.length >= self.localMaxQueueSize) {
+              droppedCount++;
+              if (droppedCount % 10 === 0) {
+                console.warn(
+                  `Multi-channel subscription queue at limit; dropped ${droppedCount} events`
+                );
+              }
+              // Drop oldest event to make room (FIFO backpressure)
+              queue.shift();
+            }
             queue.push({ channel, event });
+
+            // Signal waiting iterator that new event arrived
+            if (pendingResolve) {
+              const resolve = pendingResolve;
+              pendingResolve = null;
+              resolve();
+            }
           }
         };
 
@@ -193,22 +278,34 @@ export class SubscriptionManager {
               yield queue.shift();
             }
 
-            await new Promise((resolve) => {
-              const timeout = setTimeout(resolve, 30000);
-              const checkQueue = () => {
-                if (queue.length > 0) {
+            // Wait for new events or timeout using event-driven signaling
+            await new Promise<void>((resolve) => {
+              let resolved = false;
+              const timeout = setTimeout(() => {
+                if (!resolved) {
+                  resolved = true;
+                  pendingResolve = null;
+                  resolve();
+                }
+              }, 30000); // 30 second timeout
+
+              // Store resolve callback for listener to call
+              pendingResolve = () => {
+                if (!resolved) {
+                  resolved = true;
                   clearTimeout(timeout);
-                  resolve(null);
-                } else {
-                  setTimeout(checkQueue, 100);
+                  resolve();
                 }
               };
-              checkQueue();
             });
           }
         } finally {
           isSubscribed = false;
+          pendingResolve = null;
           unsubscribers.forEach((unsubscribe) => unsubscribe());
+          if (droppedCount > 0) {
+            console.info(`Multi-channel subscription ended with ${droppedCount} dropped events`);
+          }
         }
       },
     };
@@ -219,12 +316,13 @@ export class SubscriptionManager {
    */
   public batchEmit(events: Array<{ channel: string; event: any }>): void {
     events.forEach(({ channel, event }) => {
-      this.emit(channel, event);
+      this.emit(channel, event, false);
     });
   }
 
   /**
    * Emit event with retry logic
+   * Throws AggregateError if all retries fail
    */
   public async emitWithRetry(
     channel: string,
@@ -236,17 +334,19 @@ export class SubscriptionManager {
 
     for (let i = 0; i < retries; i++) {
       try {
-        this.emit(channel, event);
+        // Pass throwOnError=true to enable retry on listener failures
+        this.emit(channel, event, true);
         return;
       } catch (error) {
         lastError = error as Error;
         if (i < retries - 1) {
+          // Exponential backoff: wait before retrying
           await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, i)));
         }
       }
     }
 
-    throw lastError || new Error('Failed to emit event after retries');
+    throw lastError || new Error(`Failed to emit event to channel '${channel}' after ${retries} retries`);
   }
 }
 
