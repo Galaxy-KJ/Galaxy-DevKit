@@ -1,5 +1,3 @@
-import { AsyncIterableIterator } from 'graphql';
-
 /**
  * Subscription Manager for GraphQL
  * Manages real-time subscriptions using an event emitter pattern
@@ -16,7 +14,7 @@ export class SubscriptionManager {
   /**
    * Subscribe to a channel and return an async iterator for subscriptions
    */
-  public subscribe(channel: string): AsyncIterableIterator<any> {
+  public subscribe(channel: string): AsyncIterable<any> {
     const self = this;
 
     return {
@@ -168,7 +166,7 @@ export class SubscriptionManager {
   /**
    * Subscribe to multiple channels
    */
-  public subscribeToMultiple(channels: string[]): AsyncIterableIterator<any> {
+  public subscribeToMultiple(channels: string[]): AsyncIterable<any> {
     const self = this;
 
     return {
