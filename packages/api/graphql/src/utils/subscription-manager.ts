@@ -127,6 +127,13 @@ export class SubscriptionManager {
     // Store event in queue for late subscribers
     if (!this.eventQueue.has(channel)) {
       this.eventQueue.set(channel, []);
+      // Initialize metrics for this channel
+      if (!this.queueMetrics.has(channel)) {
+        this.queueMetrics.set(channel, {
+          droppedEvents: 0,
+          maxQueueSize: this.maxQueueSize,
+        });
+      }
     }
     const queue = this.eventQueue.get(channel)!;
     queue.push({
@@ -134,9 +141,16 @@ export class SubscriptionManager {
       timestamp: Date.now(),
     });
 
-    // Trim queue to max size
+    // Trim queue to max size and track dropped events
     if (queue.length > this.maxQueueSize) {
-      queue.shift();
+      const droppedCount = queue.length - this.maxQueueSize;
+      queue.splice(0, droppedCount);
+      
+      // Update central metrics
+      const metrics = this.queueMetrics.get(channel);
+      if (metrics) {
+        metrics.droppedEvents += droppedCount;
+      }
     }
   }
 
@@ -193,6 +207,7 @@ export class SubscriptionManager {
   public clearChannel(channel: string): void {
     this.listeners.delete(channel);
     this.eventQueue.delete(channel);
+    this.queueMetrics.delete(channel);
   }
 
   /**
@@ -207,15 +222,20 @@ export class SubscriptionManager {
   /**
    * Get queue metrics for observability
    */
-  public getMetrics(): { totalListeners: number; channels: number; droppedEvents: number } {
+  public getMetrics(): { totalListeners: number; channels: number; droppedEvents: number; channelMetrics?: Record<string, QueueMetrics> } {
     let droppedEvents = 0;
-    for (const [, metrics] of this.queueMetrics) {
+    const channelMetrics: Record<string, QueueMetrics> = {};
+
+    for (const [channel, metrics] of this.queueMetrics) {
       droppedEvents += metrics.droppedEvents;
+      channelMetrics[channel] = metrics;
     }
+
     return {
       totalListeners: this.getTotalListenerCount(),
       channels: this.listeners.size,
       droppedEvents,
+      channelMetrics,
     };
   }
 
@@ -318,35 +338,6 @@ export class SubscriptionManager {
     events.forEach(({ channel, event }) => {
       this.emit(channel, event, false);
     });
-  }
-
-  /**
-   * Emit event with retry logic
-   * Throws AggregateError if all retries fail
-   */
-  public async emitWithRetry(
-    channel: string,
-    event: any,
-    retries: number = 3,
-    delayMs: number = 100
-  ): Promise<void> {
-    let lastError: Error | null = null;
-
-    for (let i = 0; i < retries; i++) {
-      try {
-        // Pass throwOnError=true to enable retry on listener failures
-        this.emit(channel, event, true);
-        return;
-      } catch (error) {
-        lastError = error as Error;
-        if (i < retries - 1) {
-          // Exponential backoff: wait before retrying
-          await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, i)));
-        }
-      }
-    }
-
-    throw lastError || new Error(`Failed to emit event to channel '${channel}' after ${retries} retries`);
   }
 }
 
