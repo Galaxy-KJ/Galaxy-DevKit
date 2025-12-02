@@ -81,7 +81,13 @@ export const automationResolvers = {
           actions,
           enabled: enabled !== false,
         });
-        context.subscriptionManager.emit('automationCreated', automation);
+        // Emit ID-scoped events so subscribers listening to `automation:<id>:*` receive updates
+        if (automation && automation.id) {
+          context.subscriptionManager.emit(`automation:${automation.id}:created`, automation);
+          context.subscriptionManager.emit(`automation:${automation.id}:status-changed`, automation);
+        } else {
+          context.subscriptionManager.emit('automationCreated', automation);
+        }
         return automation;
       } catch (error) {
         throw new Error(`Failed to create automation: ${(error as Error).message}`);
@@ -104,7 +110,12 @@ export const automationResolvers = {
             enabled,
           }
         );
-        context.subscriptionManager.emit('automationUpdated', automation);
+        if (automation && automation.id) {
+          context.subscriptionManager.emit(`automation:${automation.id}:updated`, automation);
+          context.subscriptionManager.emit(`automation:${automation.id}:status-changed`, automation);
+        } else {
+          context.subscriptionManager.emit('automationUpdated', automation);
+        }
         return automation;
       } catch (error) {
         throw new Error(`Failed to update automation: ${(error as Error).message}`);
@@ -114,7 +125,9 @@ export const automationResolvers = {
     executeAutomation: async (_: any, { id }: { id: string }, context: any) => {
       try {
         const result = await context.dataSources.automationService.executeAutomation(id);
-        context.subscriptionManager.emit('automationExecuted', { id, result });
+        // Emit both executed and triggered channels for consumers
+        context.subscriptionManager.emit(`automation:${id}:executed`, { id, result });
+        context.subscriptionManager.emit(`automation:${id}:triggered`, { id, result });
         return result;
       } catch (error) {
         throw new Error(`Failed to execute automation: ${(error as Error).message}`);
@@ -124,7 +137,8 @@ export const automationResolvers = {
     deleteAutomation: async (_: any, { id }: { id: string }, context: any) => {
       try {
         await context.dataSources.automationService.deleteAutomation(id);
-        context.subscriptionManager.emit('automationDeleted', { id });
+        // Emit ID-scoped deletion event
+        context.subscriptionManager.emit(`automation:${id}:deleted`, { id });
         return true;
       } catch (error) {
         throw new Error(`Failed to delete automation: ${(error as Error).message}`);
@@ -134,7 +148,12 @@ export const automationResolvers = {
     pauseAutomation: async (_: any, { id }: { id: string }, context: any) => {
       try {
         const automation = await context.dataSources.automationService.pauseAutomation(id);
-        context.subscriptionManager.emit('automationPaused', automation);
+        if (automation && automation.id) {
+          context.subscriptionManager.emit(`automation:${automation.id}:status-changed`, automation);
+          context.subscriptionManager.emit(`automation:${automation.id}:stopped`, automation);
+        } else {
+          context.subscriptionManager.emit('automationPaused', automation);
+        }
         return automation;
       } catch (error) {
         throw new Error(`Failed to pause automation: ${(error as Error).message}`);
@@ -144,7 +163,12 @@ export const automationResolvers = {
     resumeAutomation: async (_: any, { id }: { id: string }, context: any) => {
       try {
         const automation = await context.dataSources.automationService.resumeAutomation(id);
-        context.subscriptionManager.emit('automationResumed', automation);
+        if (automation && automation.id) {
+          context.subscriptionManager.emit(`automation:${automation.id}:status-changed`, automation);
+          context.subscriptionManager.emit(`automation:${automation.id}:started`, automation);
+        } else {
+          context.subscriptionManager.emit('automationResumed', automation);
+        }
         return automation;
       } catch (error) {
         throw new Error(`Failed to resume automation: ${(error as Error).message}`);

@@ -1,8 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import { ApolloServer } from 'apollo-server-express';
-import { GraphQLSchema } from 'graphql';
+import type { ApolloServerPlugin } from 'apollo-server-core';
 import { mergeTypeDefs, mergeResolvers } from '@graphql-tools/merge';
-import { GraphQLScalarType } from 'graphql';
 import { GraphQLDateTime, GraphQLJSON, GraphQLBigInt } from 'graphql-scalars';
 import { typeDefs as typeDefinitions } from './schema/types';
 import { queryTypeDefs } from './schema/queries';
@@ -12,7 +11,7 @@ import { walletResolvers } from './resolvers/wallet-resolvers';
 import { contractResolvers } from './resolvers/contract-resolvers';
 import { automationResolvers } from './resolvers/automation-resolvers';
 import { marketResolvers } from './resolvers/market-resolvers';
-import { createContext, contextMiddleware } from './utils/context';
+import { contextMiddleware } from './utils/context';
 import { createSubscriptionManager } from './utils/subscription-manager';
 
 /**
@@ -146,6 +145,7 @@ const mergedResolvers = mergeResolvers([
 export class GraphQLAPIServer {
   private app: Express;
   private server: ApolloServer | null = null;
+  private httpServer: import('http').Server | null = null;
   private subscriptionManager: any;
   private config: {
     port: number;
@@ -190,13 +190,30 @@ export class GraphQLAPIServer {
     // Metrics endpoint
     this.app.get('/metrics', (_req: Request, res: Response) => {
       res.json({
-        subscriptions: this.subscriptionManager.getListenerCount('*'),
+        subscriptions: this.subscriptionManager.getTotalListenerCount(),
         timestamp: new Date(),
       });
     });
 
     // Create data sources
     const dataSources = createMockDataSources();
+
+    // Lightweight logging plugin compatible with Apollo Server lifecycle hooks
+    const loggingPlugin: ApolloServerPlugin = {
+      async serverWillStart() {
+        console.log('Apollo Server starting (loggingPlugin)');
+        return;
+      },
+      requestDidStart(requestContext) {
+        const opName = requestContext.request.operationName || '<unnamed>';
+        console.log(`GraphQL request started: ${opName}`);
+        return {
+          didEncounterErrors(ctx) {
+            console.error('GraphQL errors for operation', opName, ctx.errors);
+          },
+        } as any;
+      },
+    };
 
     // Create Apollo Server
     this.server = new ApolloServer({
@@ -208,11 +225,7 @@ export class GraphQLAPIServer {
         this.config.supabaseUrl,
         this.config.supabaseKey
       ) as any,
-      plugins: {
-        didResolveOperation: async () => {
-          // Log operations if needed
-        },
-      },
+      plugins: [loggingPlugin],
       formatError: (error) => {
         console.error('GraphQL Error:', error);
         return error;
@@ -235,15 +248,20 @@ export class GraphQLAPIServer {
     await this.initialize();
 
     return new Promise((resolve, reject) => {
-      this.app
-        .listen(this.config.port, this.config.host, () => {
+      try {
+        this.httpServer = this.app.listen(this.config.port, this.config.host, () => {
           console.log(
             `🚀 GraphQL API Server running at http://${this.config.host}:${this.config.port}/graphql`
           );
           console.log(`📊 Metrics available at http://${this.config.host}:${this.config.port}/metrics`);
           resolve();
-        })
-        .on('error', reject);
+        });
+
+        // attach error handler
+        this.httpServer.on('error', (err) => reject(err));
+      } catch (err) {
+        reject(err);
+      }
     });
   }
 
@@ -255,6 +273,17 @@ export class GraphQLAPIServer {
       await this.server.stop();
     }
     this.subscriptionManager.clear();
+
+    if (this.httpServer) {
+      await new Promise<void>((resolve, reject) => {
+        this.httpServer!.close((err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+      this.httpServer = null;
+    }
+
     console.log('GraphQL API Server stopped');
   }
 

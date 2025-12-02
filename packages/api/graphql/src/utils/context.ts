@@ -29,6 +29,8 @@ export interface GraphQLContext {
   dataSources: DataSources;
   subscriptionManager: any;
   cache?: Map<string, any>;
+  // explicit boolean to indicate authentication status (useful for non-Supabase identities)
+  isAuthenticated?: boolean;
 }
 
 /**
@@ -71,6 +73,7 @@ export const createContext = async (
     dataSources,
     subscriptionManager,
     cache,
+    isAuthenticated: Boolean(userId || config.userId),
   };
 };
 
@@ -104,10 +107,10 @@ export const contextMiddleware = (
  * Utility function to verify user authentication
  */
 export const requireAuth = (context: GraphQLContext): string => {
-  if (!context.userId && !context.token) {
+  if (!context.userId) {
     throw new Error('Authentication required');
   }
-  return context.userId || '';
+  return context.userId;
 };
 
 /**

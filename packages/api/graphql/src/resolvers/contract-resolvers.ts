@@ -24,6 +24,14 @@ interface InvokeContractFunctionInput {
   signers?: string[];
 }
 
+import {
+  CONTRACT_DEPLOYED,
+  CONTRACT_UPDATED,
+  CONTRACT_DELETED,
+  CONTRACT_FUNCTION_INVOKED,
+  contractScoped,
+} from '../utils/channels';
+
 export const contractResolvers = {
   Query: {
     contract: async (_: any, { id }: { id: string }, context: any) => {
@@ -92,7 +100,8 @@ export const contractResolvers = {
           language,
           metadata,
         });
-        context.subscriptionManager.emit('contractDeployed', contract);
+        // Emit using centralized channel name so subscribers receive it
+        context.subscriptionManager.emit(CONTRACT_DEPLOYED, contract);
         return contract;
       } catch (error) {
         throw new Error(`Failed to deploy contract: ${(error as Error).message}`);
@@ -110,7 +119,7 @@ export const contractResolvers = {
           description,
           metadata,
         });
-        context.subscriptionManager.emit('contractUpdated', contract);
+        context.subscriptionManager.emit(CONTRACT_UPDATED, contract);
         return contract;
       } catch (error) {
         throw new Error(`Failed to update contract: ${(error as Error).message}`);
@@ -129,7 +138,7 @@ export const contractResolvers = {
           parameters,
           signers
         );
-        context.subscriptionManager.emit('contractFunctionInvoked', {
+        context.subscriptionManager.emit(CONTRACT_FUNCTION_INVOKED, {
           contractId,
           functionName,
           result,
@@ -143,7 +152,7 @@ export const contractResolvers = {
     deleteContract: async (_: any, { id }: { id: string }, context: any) => {
       try {
         await context.dataSources.contractService.deleteContract(id);
-        context.subscriptionManager.emit('contractDeleted', { id });
+        context.subscriptionManager.emit(CONTRACT_DELETED, { id });
         return true;
       } catch (error) {
         throw new Error(`Failed to delete contract: ${(error as Error).message}`);
@@ -154,14 +163,14 @@ export const contractResolvers = {
   Subscription: {
     contractDeployed: {
       subscribe: (_: any, __: any, context: any) => {
-        return context.subscriptionManager.subscribe('contract:deployed');
+        return context.subscriptionManager.subscribe(CONTRACT_DEPLOYED);
       },
       resolve: (payload: any) => payload,
     },
 
     contractUpdated: {
       subscribe: (_: any, __: any, context: any) => {
-        return context.subscriptionManager.subscribe('contract:updated');
+        return context.subscriptionManager.subscribe(CONTRACT_UPDATED);
       },
       resolve: (payload: any) => payload,
     },

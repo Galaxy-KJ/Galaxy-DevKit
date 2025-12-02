@@ -128,7 +128,29 @@ export const marketResolvers = {
           memo,
           signers,
         });
+
+        // Emit generic event
         context.subscriptionManager.emit('transactionSubmitted', transaction);
+
+        // Emit per-address and per-hash scoped events so subscribers receive them
+        if (transaction) {
+          if (transaction.hash) {
+            context.subscriptionManager.emit(`transaction:${transaction.hash}:status-changed`, transaction);
+          }
+          if (transaction.source) {
+            context.subscriptionManager.emit(`transaction:${transaction.source}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.source}:confirmed`, transaction);
+            }
+          }
+          if (transaction.destination) {
+            context.subscriptionManager.emit(`transaction:${transaction.destination}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.destination}:confirmed`, transaction);
+            }
+          }
+        }
+
         return transaction;
       } catch (error) {
         throw new Error(`Failed to send payment: ${(error as Error).message}`);
@@ -163,7 +185,29 @@ export const marketResolvers = {
           price,
           signers,
         });
+
+        // Generic event
         context.subscriptionManager.emit('offerCreated', transaction);
+
+        // Scoped emits
+        if (transaction) {
+          if (transaction.hash) {
+            context.subscriptionManager.emit(`transaction:${transaction.hash}:status-changed`, transaction);
+          }
+          if (transaction.source) {
+            context.subscriptionManager.emit(`transaction:${transaction.source}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.source}:confirmed`, transaction);
+            }
+          }
+          if (transaction.destination) {
+            context.subscriptionManager.emit(`transaction:${transaction.destination}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.destination}:confirmed`, transaction);
+            }
+          }
+        }
+
         return transaction;
       } catch (error) {
         throw new Error(`Failed to create offer: ${(error as Error).message}`);
@@ -198,7 +242,29 @@ export const marketResolvers = {
           receiveAmount,
           signers,
         });
+
+        // Generic event
         context.subscriptionManager.emit('swapExecuted', transaction);
+
+        // Scoped emits
+        if (transaction) {
+          if (transaction.hash) {
+            context.subscriptionManager.emit(`transaction:${transaction.hash}:status-changed`, transaction);
+          }
+          if (transaction.source) {
+            context.subscriptionManager.emit(`transaction:${transaction.source}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.source}:confirmed`, transaction);
+            }
+          }
+          if (transaction.destination) {
+            context.subscriptionManager.emit(`transaction:${transaction.destination}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.destination}:confirmed`, transaction);
+            }
+          }
+        }
+
         return transaction;
       } catch (error) {
         throw new Error(`Failed to swap assets: ${(error as Error).message}`);
@@ -214,7 +280,29 @@ export const marketResolvers = {
         const transaction = await context.dataSources.transactionService.submitTransaction(
           transactionEnvelope
         );
+
+        // Generic event
         context.subscriptionManager.emit('transactionSubmitted', transaction);
+
+        // Scoped emits
+        if (transaction) {
+          if (transaction.hash) {
+            context.subscriptionManager.emit(`transaction:${transaction.hash}:status-changed`, transaction);
+          }
+          if (transaction.source) {
+            context.subscriptionManager.emit(`transaction:${transaction.source}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.source}:confirmed`, transaction);
+            }
+          }
+          if (transaction.destination) {
+            context.subscriptionManager.emit(`transaction:${transaction.destination}:submitted`, transaction);
+            if (transaction.status === 'SUCCESS') {
+              context.subscriptionManager.emit(`transaction:${transaction.destination}:confirmed`, transaction);
+            }
+          }
+        }
+
         return transaction;
       } catch (error) {
         throw new Error(`Failed to submit transaction: ${(error as Error).message}`);

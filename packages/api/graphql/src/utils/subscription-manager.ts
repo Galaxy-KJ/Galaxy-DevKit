@@ -130,6 +130,17 @@ export class SubscriptionManager {
   }
 
   /**
+   * Get total number of listeners across all channels
+   */
+  public getTotalListenerCount(): number {
+    let total = 0;
+    for (const [, set] of this.listeners) {
+      total += set.size;
+    }
+    return total;
+  }
+
+  /**
    * Clear all listeners for a channel
    */
   public clearChannel(channel: string): void {
