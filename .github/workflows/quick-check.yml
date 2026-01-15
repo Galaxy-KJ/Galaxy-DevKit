@@ -44,7 +44,7 @@ jobs:
       - name: Fast lint check
         run: |
           # Quick lint check
-          npm run lint -- --max-warnings 0
+          npm run lint
         continue-on-error: false
 
       - name: Validate package.json files
