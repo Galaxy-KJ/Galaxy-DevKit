@@ -75,17 +75,82 @@ Event-driven system for DeFi automation with:
 - `packages/core/automation/src/services/automation.service.ts`
 - `packages/core/automation/src/types/automation-types.ts`
 
-### 4. DeFi Protocol Integration (🆕 To be implemented)
-Integration with Stellar DeFi protocols:
+### 4. DeFi Protocol Integration
+Integration layer for Stellar DeFi protocols providing unified interfaces for:
 - **Blend Protocol**: Lending and borrowing
 - **Soroswap**: Decentralized exchange
 - **Aquarius**: Liquidity pools
 - **Custom DEX aggregators**
 
-**Target files:**
-- `packages/core/defi-protocols/src/protocols/blend/`
-- `packages/core/defi-protocols/src/protocols/soroswap/`
-- `packages/core/defi-protocols/src/types/defi-types.ts`
+**Architecture Pattern**: Factory pattern with abstract base class
+- All protocols implement `IDefiProtocol` interface
+- Common functionality in `BaseProtocol` abstract class
+- Protocol-specific implementations in separate classes
+- Factory service for protocol instantiation
+
+**Key Components:**
+
+**Base Interface & Types:**
+- `packages/core/defi-protocols/src/types/protocol-interface.ts` - IDefiProtocol interface
+- `packages/core/defi-protocols/src/types/defi-types.ts` - Type definitions
+- `packages/core/defi-protocols/src/protocols/base-protocol.ts` - Abstract base class
+
+**Services:**
+- `packages/core/defi-protocols/src/services/protocol-factory.ts` - Factory for protocol instantiation
+
+**Utilities:**
+- `packages/core/defi-protocols/src/utils/validation.ts` - Input validation helpers
+- `packages/core/defi-protocols/src/constants/` - Network configs and constants
+
+**Usage Example:**
+```typescript
+import { getProtocolFactory, ProtocolConfig } from '@galaxy/core-defi-protocols';
+
+// Create protocol configuration
+const config: ProtocolConfig = {
+  protocolId: 'blend',
+  name: 'Blend Protocol',
+  network: TESTNET_CONFIG,
+  contractAddresses: {
+    pool: 'CBLEND_POOL_ADDRESS'
+  },
+  metadata: {}
+};
+
+// Get protocol instance from factory
+const factory = getProtocolFactory();
+const blend = factory.createProtocol(config);
+
+// Initialize protocol
+await blend.initialize();
+
+// Supply assets
+const result = await blend.supply(
+  walletAddress,
+  privateKey,
+  { code: 'USDC', issuer: 'ISSUER_ADDRESS', type: 'credit_alphanum4' },
+  '1000'
+);
+
+// Get position info
+const position = await blend.getPosition(walletAddress);
+console.log('Health Factor:', position.healthFactor);
+```
+
+**Protocol Implementation Pattern:**
+When adding a new protocol (e.g., Blend, Soroswap):
+1. Create protocol directory: `src/protocols/[protocol-name]/`
+2. Extend `BaseProtocol` abstract class
+3. Implement required abstract methods
+4. Register in factory: `factory.register('protocol-id', ProtocolClass)`
+5. Add protocol-specific types to `defi-types.ts`
+6. Write comprehensive tests
+
+**Security Considerations:**
+- Private keys are passed to methods but never stored
+- All inputs are validated (addresses, amounts, assets)
+- Transaction building includes slippage protection
+- Health factor checks before risky operations
 
 ### 5. Oracle System (🆕 To be implemented)
 Price and data oracles for Stellar:
@@ -220,11 +285,49 @@ pub fn create_swap_condition(
 
 ### Adding a new DeFi protocol integration
 1. Create protocol directory: `packages/core/defi-protocols/src/protocols/[protocol-name]/`
-2. Implement protocol service extending `IDefiProtocol` interface
-3. Add protocol types to `defi-types.ts`
-4. Register protocol in factory: `DefiProtocolFactory.register()`
-5. Add tests in `__tests__/` directory
-6. Update documentation
+2. Create protocol class extending `BaseProtocol` abstract class
+3. Implement all required abstract methods from `IDefiProtocol` interface
+4. Add protocol-specific types to `src/types/defi-types.ts`
+5. Register protocol in factory: `factory.register('protocol-id', ProtocolClass)`
+6. Add comprehensive tests in `__tests__/protocols/[protocol-name]/`
+7. Update `docs/AI.md` and package README with usage examples
+8. Add example to `docs/examples/defi-protocols/`
+
+**Example Protocol Implementation:**
+```typescript
+// src/protocols/blend/blend-protocol.ts
+import { BaseProtocol } from '../base-protocol';
+import { ProtocolType, TransactionResult, Asset } from '../../types/defi-types';
+
+export class BlendProtocol extends BaseProtocol {
+  protected getProtocolType(): ProtocolType {
+    return ProtocolType.LENDING;
+  }
+
+  protected async setupProtocol(): Promise<void> {
+    // Initialize Blend-specific connections
+    this.poolContract = this.getContractAddress('pool');
+  }
+
+  public async supply(
+    walletAddress: string,
+    privateKey: string,
+    asset: Asset,
+    amount: string
+  ): Promise<TransactionResult> {
+    this.ensureInitialized();
+    this.validateAddress(walletAddress);
+    this.validateAsset(asset);
+    this.validateAmount(amount);
+
+    // Implement Blend-specific supply logic
+    // Build and submit transaction
+    // Return transaction result
+  }
+
+  // Implement other required methods...
+}
+```
 
 ### Adding a new CLI command
 1. Create command file: `tools/cli/src/commands/[command-name].ts`
