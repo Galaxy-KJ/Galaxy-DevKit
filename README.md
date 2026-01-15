@@ -4,8 +4,6 @@
 
 **The Complete Development Framework for Stellar Ecosystem**
 
-[![CI](https://github.com/galaxy-devkit/galaxy-devkit/workflows/CI/badge.svg)](https://github.com/galaxy-devkit/galaxy-devkit/actions)
-[![Security](https://github.com/galaxy-devkit/galaxy-devkit/workflows/Security%20Audit/badge.svg)](https://github.com/galaxy-devkit/galaxy-devkit/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
