@@ -1,0 +1,249 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Cancel previous runs for the same PR
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-metadata:
+    name: PR Metadata Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check PR title format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const validPrefixes = ['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore', 'perf'];
+
+            const hasValidPrefix = validPrefixes.some(prefix =>
+              title.toLowerCase().startsWith(prefix + ':') ||
+              title.toLowerCase().startsWith(prefix + '(')
+            );
+
+            if (!hasValidPrefix) {
+              core.setFailed(
+                `❌ PR title must start with a valid prefix: ${validPrefixes.join(', ')}\n` +
+                `Example: "feat: add new feature" or "fix(defi): resolve bug"\n` +
+                `Current title: "${title}"`
+              );
+            } else {
+              core.info(`✅ PR title format is valid: "${title}"`);
+            }
+
+      - name: Check PR description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+
+            if (body.length < 20) {
+              core.setFailed(
+                '❌ PR description is too short. Please provide:\n' +
+                '  - What changes were made\n' +
+                '  - Why these changes are needed\n' +
+                '  - How to test the changes'
+              );
+            } else {
+              core.info('✅ PR description is adequate');
+            }
+
+      - name: Check for issue reference
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const title = context.payload.pull_request.title;
+
+            // Look for issue references like #123, fixes #123, closes #123, etc.
+            const issueRef = /(?:fix(?:es|ed)?|close(?:s|d)?|resolve(?:s|d)?|implement(?:s|ed)?)\s*#\d+|#\d+/i;
+
+            if (!issueRef.test(body) && !issueRef.test(title)) {
+              core.warning(
+                '⚠️ No issue reference found in PR title or description.\n' +
+                'Consider linking to an issue using "Fixes #123" or "Closes #123"'
+              );
+            } else {
+              core.info('✅ Issue reference found');
+            }
+
+  changed-files:
+    name: Analyze Changed Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      has-code-changes: ${{ steps.filter.outputs.code }}
+      has-doc-changes: ${{ steps.filter.outputs.docs }}
+      has-test-changes: ${{ steps.filter.outputs.tests }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'packages/**/*.ts'
+              - 'packages/**/*.js'
+              - '!packages/**/*.test.ts'
+              - '!packages/**/__tests__/**'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+            tests:
+              - '**/*.test.ts'
+              - '**/__tests__/**'
+            config:
+              - '**/package.json'
+              - '**/tsconfig.json'
+              - '**/jest.config.js'
+
+      - name: Validate changes
+        run: |
+          echo "Code changes: ${{ steps.filter.outputs.code }}"
+          echo "Doc changes: ${{ steps.filter.outputs.docs }}"
+          echo "Test changes: ${{ steps.filter.outputs.tests }}"
+          echo "Config changes: ${{ steps.filter.outputs.config }}"
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    needs: changed-files
+    if: needs.changed-files.outputs.has-code-changes == 'true'
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for documentation updates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasCodeChanges = '${{ needs.changed-files.outputs.has-code-changes }}' === 'true';
+            const hasDocChanges = '${{ needs.changed-files.outputs.has-doc-changes }}' === 'true';
+
+            if (hasCodeChanges && !hasDocChanges) {
+              core.warning(
+                '⚠️ Code changes detected but no documentation updates found.\n' +
+                'Consider updating:\n' +
+                '  - README.md files\n' +
+                '  - docs/AI.md for AI context\n' +
+                '  - docs/ARCHITECTURE.md for architectural changes\n' +
+                '  - Package-specific documentation'
+              );
+            } else if (hasCodeChanges && hasDocChanges) {
+              core.info('✅ Documentation updates found with code changes');
+            }
+
+  test-coverage-check:
+    name: Test Coverage Check
+    runs-on: ubuntu-latest
+    needs: changed-files
+    if: needs.changed-files.outputs.has-code-changes == 'true'
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for test updates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasCodeChanges = '${{ needs.changed-files.outputs.has-code-changes }}' === 'true';
+            const hasTestChanges = '${{ needs.changed-files.outputs.has-test-changes }}' === 'true';
+
+            if (hasCodeChanges && !hasTestChanges) {
+              core.warning(
+                '⚠️ Code changes detected but no test updates found.\n' +
+                'Please ensure:\n' +
+                '  - New features have tests\n' +
+                '  - Bug fixes have regression tests\n' +
+                '  - Coverage remains above 90%'
+              );
+            } else if (hasCodeChanges && hasTestChanges) {
+              core.info('✅ Test updates found with code changes');
+            }
+
+  size-check:
+    name: Bundle Size Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Check package sizes
+        run: |
+          echo "## 📦 Package Sizes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|------|" >> $GITHUB_STEP_SUMMARY
+
+          for dist in packages/core/*/dist; do
+            if [ -d "$dist" ]; then
+              package_name=$(basename $(dirname $dist))
+              size=$(du -sh "$dist" | cut -f1)
+              echo "| $package_name | $size |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+  validation-summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [pr-metadata, changed-files, documentation-check, test-coverage-check, size-check]
+    if: always()
+
+    steps:
+      - name: Create summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const metadata = '${{ needs.pr-metadata.result }}';
+            const changedFiles = '${{ needs.changed-files.result }}';
+            const docs = '${{ needs.documentation-check.result }}';
+            const tests = '${{ needs.test-coverage-check.result }}';
+            const size = '${{ needs.size-check.result }}';
+
+            let summary = '## 🔍 PR Validation Summary\n\n';
+            summary += '| Check | Status |\n';
+            summary += '|-------|--------|\n';
+            summary += `| Metadata | ${metadata === 'success' ? '✅' : '❌'} |\n`;
+            summary += `| Changed Files | ${changedFiles === 'success' ? '✅' : '❌'} |\n`;
+            summary += `| Documentation | ${docs === 'success' ? '✅' : docs === 'skipped' ? '⏭️' : '⚠️'} |\n`;
+            summary += `| Tests | ${tests === 'success' ? '✅' : tests === 'skipped' ? '⏭️' : '⚠️'} |\n`;
+            summary += `| Size Check | ${size === 'success' ? '✅' : '❌'} |\n`;
+
+            core.summary.addRaw(summary);
+            await core.summary.write();
+
+            if (metadata !== 'success' || changedFiles !== 'success' || size !== 'success') {
+              core.setFailed('Some validation checks failed. Please review the details above.');
+            }
