@@ -549,9 +549,9 @@ Any other relevant information
 
 ## 🆘 Getting Help
 
-- **GitHub Discussions**: For questions and ideas
+- **Telegram Discussions**: https://t.me/+ZrTHg48xDv0yYTlh
 - **GitHub Issues**: For bugs and feature requests
-- **Discord**: For real-time chat
+- **Discord**: https://discord.gg/mRsbdaxF
 - **Documentation**: For detailed guides
 
 ## 📄 License
