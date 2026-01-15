@@ -1,0 +1,70 @@
+name: Quick Check (Fast)
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize ]
+
+# This workflow runs FAST checks only - perfect for quick feedback
+# More comprehensive checks run in ci.yml
+
+concurrency:
+  group: quick-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-validation:
+    name: ⚡ Quick Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # Shallow clone for speed
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (fast)
+        run: npm ci --prefer-offline --no-audit
+        env:
+          NODE_ENV: development
+
+      - name: Quick type check
+        run: |
+          # Only type-check changed packages for speed
+          npm run type-check
+        continue-on-error: false
+
+      - name: Fast lint check
+        run: |
+          # Quick lint check
+          npm run lint
+        continue-on-error: false
+
+      - name: Validate package.json files
+        run: |
+          # Check for valid JSON in all package.json files
+          find . -name "package.json" -not -path "*/node_modules/*" -exec node -e "JSON.parse(require('fs').readFileSync('{}'))" \;
+          echo "✅ All package.json files are valid"
+
+      - name: Check for console.log
+        run: |
+          # Warn about console.log in source files
+          if grep -r "console\.log" packages/*/src --include="*.ts" --exclude-dir=node_modules; then
+            echo "⚠️ Warning: Found console.log statements. Consider using proper logging."
+            exit 0
+          fi
+
+      - name: Quick summary
+        if: success()
+        run: |
+          echo "✅ Quick validation passed!"
+          echo "- Type checking: ✅"
+          echo "- Linting: ✅"
+          echo "- Package validation: ✅"

@@ -334,31 +334,209 @@ sequenceDiagram
 
 ## 💰 DeFi Integration Architecture
 
+### Overview
+
+The DeFi protocols package (`@galaxy/core-defi-protocols`) provides a unified integration layer for Stellar DeFi protocols. It uses the **Abstract Factory** pattern combined with **Template Method** pattern to ensure consistent interfaces while allowing protocol-specific implementations.
+
+### Architecture Layers
+
+```mermaid
+graph TD
+    subgraph "Application Layer"
+        App[Application Code]
+        API[REST/GraphQL APIs]
+    end
+
+    subgraph "DeFi Protocols Package"
+        Factory[ProtocolFactory<br/>Singleton]
+        IProtocol[IDefiProtocol<br/>Interface]
+        BaseProtocol[BaseProtocol<br/>Abstract Class]
+
+        subgraph "Protocol Implementations"
+            Blend[BlendProtocol]
+            Soroswap[SoroswapProtocol]
+            Custom[CustomProtocol]
+        end
+    end
+
+    subgraph "Infrastructure"
+        Horizon[Stellar Horizon]
+        Soroban[Soroban Runtime]
+    end
+
+    App --> Factory
+    API --> Factory
+    Factory --> IProtocol
+    IProtocol <|.. BaseProtocol
+    BaseProtocol <|-- Blend
+    BaseProtocol <|-- Soroswap
+    BaseProtocol <|-- Custom
+
+    Blend --> Horizon
+    Blend --> Soroban
+    Soroswap --> Horizon
+    Soroswap --> Soroban
+
+    style Factory fill:#e3f2fd
+    style IProtocol fill:#f3e5f5
+    style BaseProtocol fill:#fff3e0
+```
+
 ### Protocol Abstraction Layer
+
+The `IDefiProtocol` interface defines the contract that all protocols must implement:
 
 ```typescript
 interface IDefiProtocol {
-  readonly name: string;
+  // Protocol Identification
   readonly protocolId: string;
-  readonly contractAddress: string;
+  readonly name: string;
+  readonly type: ProtocolType;
+  readonly config: ProtocolConfig;
 
-  // Lending & Borrowing
-  supply(asset: Asset, amount: string): Promise<TransactionResult>;
-  borrow(asset: Asset, amount: string): Promise<TransactionResult>;
-  repay(asset: Asset, amount: string): Promise<TransactionResult>;
-  withdraw(asset: Asset, amount: string): Promise<TransactionResult>;
+  // Lifecycle Management
+  initialize(): Promise<void>;
+  isInitialized(): boolean;
+  getStats(): Promise<ProtocolStats>;
+
+  // Lending & Borrowing Operations
+  supply(walletAddress: string, privateKey: string, asset: Asset, amount: string): Promise<TransactionResult>;
+  borrow(walletAddress: string, privateKey: string, asset: Asset, amount: string): Promise<TransactionResult>;
+  repay(walletAddress: string, privateKey: string, asset: Asset, amount: string): Promise<TransactionResult>;
+  withdraw(walletAddress: string, privateKey: string, asset: Asset, amount: string): Promise<TransactionResult>;
 
   // Position Management
   getPosition(address: string): Promise<Position>;
-  getHealth(address: string): Promise<HealthFactor>;
+  getHealthFactor(address: string): Promise<HealthFactor>;
 
-  // Protocol Info
-  getSupplyAPY(asset: Asset): Promise<number>;
-  getBorrowAPY(asset: Asset): Promise<number>;
+  // Protocol Information
+  getSupplyAPY(asset: Asset): Promise<APYInfo>;
+  getBorrowAPY(asset: Asset): Promise<APYInfo>;
   getTotalSupply(asset: Asset): Promise<string>;
   getTotalBorrow(asset: Asset): Promise<string>;
+
+  // DEX Operations (Optional)
+  swap?(walletAddress: string, privateKey: string, tokenIn: Asset, tokenOut: Asset, amountIn: string, minAmountOut: string): Promise<TransactionResult>;
+  getSwapQuote?(tokenIn: Asset, tokenOut: Asset, amountIn: string): Promise<SwapQuote>;
+  addLiquidity?(walletAddress: string, privateKey: string, tokenA: Asset, tokenB: Asset, amountA: string, amountB: string): Promise<TransactionResult>;
+  removeLiquidity?(walletAddress: string, privateKey: string, poolAddress: string, liquidity: string): Promise<TransactionResult>;
 }
 ```
+
+### BaseProtocol Abstract Class
+
+The `BaseProtocol` class provides common functionality and enforces implementation patterns:
+
+```typescript
+abstract class BaseProtocol implements IDefiProtocol {
+  // Common properties
+  protected horizonServer: HorizonServer;
+  protected sorobanRpcUrl: string;
+  protected networkPassphrase: string;
+  protected initialized: boolean;
+
+  // Template methods (implemented)
+  public async initialize(): Promise<void> {
+    await this.validateConfiguration();
+    await this.setupProtocol(); // Abstract - must be implemented
+    this.initialized = true;
+  }
+
+  // Validation utilities (implemented)
+  protected validateAddress(address: string): void;
+  protected validateAmount(amount: string): void;
+  protected validateAsset(asset: Asset): void;
+
+  // Abstract methods (must be implemented by subclasses)
+  protected abstract getProtocolType(): ProtocolType;
+  protected abstract setupProtocol(): Promise<void>;
+  public abstract supply(...): Promise<TransactionResult>;
+  public abstract borrow(...): Promise<TransactionResult>;
+  // ... other abstract methods
+}
+```
+
+### Protocol Factory Pattern
+
+The factory uses singleton pattern for global protocol registry:
+
+```typescript
+class ProtocolFactory {
+  private static instance: ProtocolFactory;
+  private protocols: Map<string, ProtocolConstructor>;
+
+  // Singleton access
+  public static getInstance(): ProtocolFactory;
+
+  // Protocol registration
+  public register(protocolId: string, constructor: ProtocolConstructor): void;
+  public createProtocol(config: ProtocolConfig): IDefiProtocol;
+
+  // Protocol discovery
+  public getSupportedProtocols(): string[];
+  public isProtocolRegistered(protocolId: string): boolean;
+}
+```
+
+### Protocol Integration Flow
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Factory as ProtocolFactory
+    participant Protocol as BlendProtocol
+    participant Base as BaseProtocol
+    participant Horizon as Stellar Network
+
+    App->>Factory: createProtocol(config)
+    Factory->>Protocol: new BlendProtocol(config)
+    Factory-->>App: protocol instance
+
+    App->>Protocol: initialize()
+    Protocol->>Base: validateConfiguration()
+    Base->>Horizon: Check network connectivity
+    Horizon-->>Base: Connection OK
+    Protocol->>Protocol: setupProtocol()
+    Protocol-->>App: Initialized
+
+    App->>Protocol: supply(wallet, key, asset, amount)
+    Protocol->>Base: validateAddress(wallet)
+    Protocol->>Base: validateAsset(asset)
+    Protocol->>Base: validateAmount(amount)
+    Protocol->>Protocol: buildTransaction()
+    Protocol->>Horizon: submitTransaction()
+    Horizon-->>Protocol: TransactionResult
+    Protocol->>Base: buildTransactionResult()
+    Protocol-->>App: TransactionResult
+```
+
+### Security Architecture
+
+**Input Validation Flow:**
+
+```mermaid
+graph LR
+    Input[User Input] --> Validate{Validate}
+    Validate -->|Invalid| Error[Throw Error]
+    Validate -->|Valid| Process[Process Request]
+
+    Process --> BuildTx[Build Transaction]
+    BuildTx --> Sign[Sign with Private Key]
+    Sign --> Submit[Submit to Network]
+
+    Submit -->|Success| Result[Return Result]
+    Submit -->|Failure| Error
+
+    style Validate fill:#fff3e0
+    style Process fill:#e8f5e9
+    style Error fill:#ffebee
+```
+
+**Validation Layers:**
+1. **Type Validation** - TypeScript compile-time checks
+2. **Input Validation** - Runtime validation of addresses, amounts, assets
+3. **Business Logic Validation** - Protocol-specific rules (e.g., health factor checks)
+4. **Network Validation** - Stellar network validation before submission
 
 ### Blend Protocol Integration
 
