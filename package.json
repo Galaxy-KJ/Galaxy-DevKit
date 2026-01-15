@@ -29,7 +29,7 @@
     "eslint": "^9.0.0",
     "http-server": "^14.1.1",
     "jest": "^30.2.0",
-    "lerna": "^8.0.0",
+    "lerna": "^9.0.3",
     "prettier": "^3.0.0",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
@@ -55,8 +55,7 @@
   "author": "Galaxy DevKit Team",
   "license": "MIT",
   "dependencies": {
-    "@stellar/stellar-sdk": "^14.3.1",
-    "node-cron": "^4.2.1",
-    "stellar-sdk": "^13.3.0"
+    "@stellar/stellar-sdk": "^14.4.3",
+    "node-cron": "^4.2.1"
   }
 }
