@@ -74,7 +74,7 @@ export class ClaimableBalanceManager {
       const stellarClaimants = params.claimants.map((claimant) => ({
         destination: claimant.destination,
         predicate: toStellarPredicate(claimant.predicate),
-      }));
+      })) as any;
 
       // Estimate fee
       const fee = params.fee || (await this.estimateFee());
@@ -368,7 +368,7 @@ export class ClaimableBalanceManager {
       // Find the createClaimableBalance operation
       const createOp = operations.records.find(
         (op: any) => op.type === 'create_claimable_balance'
-      );
+      ) as any;
 
       if (createOp && createOp.balance_id) {
         return createOp.balance_id;
@@ -395,7 +395,7 @@ export class ClaimableBalanceManager {
    * @returns ClaimableBalance
    */
   private mapHorizonBalanceToClaimableBalance(
-    horizonBalance: Horizon.HorizonApi.ClaimableBalanceResponse
+    horizonBalance: any
   ): ClaimableBalance {
     const asset =
       horizonBalance.asset_type === 'native'
@@ -405,7 +405,7 @@ export class ClaimableBalanceManager {
             horizonBalance.asset_issuer!
           );
 
-    const claimants: Claimant[] = horizonBalance.claimants.map((c) => ({
+    const claimants: Claimant[] = horizonBalance.claimants.map((c: any) => ({
       destination: c.destination,
       predicate: this.mapHorizonPredicateToPredicate(c.predicate),
     }));
@@ -427,7 +427,7 @@ export class ClaimableBalanceManager {
    * @returns ClaimPredicate
    */
   private mapHorizonPredicateToPredicate(
-    horizonPredicate: Horizon.HorizonApi.ClaimPredicate
+    horizonPredicate: any
   ): any {
     if (horizonPredicate.unconditional) {
       return { unconditional: true };
@@ -439,7 +439,7 @@ export class ClaimableBalanceManager {
 
     if (horizonPredicate.and) {
       return {
-        and: horizonPredicate.and.map((p) =>
+        and: horizonPredicate.and.map((p: any) =>
           this.mapHorizonPredicateToPredicate(p)
         ),
       };
@@ -447,7 +447,7 @@ export class ClaimableBalanceManager {
 
     if (horizonPredicate.or) {
       return {
-        or: horizonPredicate.or.map((p) =>
+        or: horizonPredicate.or.map((p: any) =>
           this.mapHorizonPredicateToPredicate(p)
         ),
       };
