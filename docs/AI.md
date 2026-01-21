@@ -58,11 +58,95 @@ Abstraction layer over `@stellar/stellar-sdk` providing simplified interfaces fo
 - Account operations (balance, info, history)
 - Payments and transactions
 - Trustlines for custom assets
+- Claimable balances
 - Network switching (testnet/mainnet)
 
 **Files to understand:**
 - `packages/core/stellar-sdk/src/services/stellar-service.ts`
 - `packages/core/stellar-sdk/src/types/stellar-types.ts`
+- `packages/core/stellar-sdk/src/claimable-balances/` - Claimable balance implementation
+
+**Claimable Balance Patterns:**
+
+**Creating Claimable Balances:**
+```typescript
+import { StellarService, Asset, beforeAbsoluteTime, unconditional } from '@galaxy/core-stellar-sdk';
+
+const service = new StellarService(networkConfig);
+
+// Create unconditional balance
+await service.createClaimableBalance(wallet, {
+  asset: Asset.native(),
+  amount: '100.0000000',
+  claimants: [{
+    destination: 'G...',
+    predicate: unconditional()
+  }]
+}, password);
+
+// Create time-locked balance
+const unlockDate = new Date('2025-12-31');
+await service.createClaimableBalance(wallet, {
+  asset: Asset.native(),
+  amount: '1000.0000000',
+  claimants: [{
+    destination: 'G...',
+    predicate: beforeAbsoluteTime(unlockDate)
+  }]
+}, password);
+```
+
+**Predicate Usage:**
+- `unconditional()` - Can claim anytime
+- `beforeAbsoluteTime(date)` - Must claim before timestamp
+- `beforeRelativeTime(seconds)` - Must claim within seconds
+- `and(pred1, pred2)` - Both conditions must be true
+- `or(pred1, pred2)` - Either condition must be true
+- `not(predicate)` - Negation
+
+**Common Use Cases:**
+
+**Vesting Schedule:**
+```typescript
+import { createVestingSchedule } from '@galaxy/core-stellar-sdk';
+
+const operations = createVestingSchedule(sourceAccount, {
+  asset: Asset.native(),
+  totalAmount: '10000.0000000',
+  claimant: 'G...',
+  vestingPeriods: [
+    { date: new Date('2025-01-01'), percentage: 25 },
+    { date: new Date('2025-04-01'), percentage: 25 },
+    { date: new Date('2025-07-01'), percentage: 25 },
+    { date: new Date('2025-10-01'), percentage: 25 }
+  ]
+});
+```
+
+**Escrow:**
+```typescript
+import { createEscrow } from '@galaxy/core-stellar-sdk';
+
+const operation = createEscrow({
+  asset: Asset.native(),
+  amount: '5000.0000000',
+  parties: ['G...', 'G...'],
+  releaseDate: new Date('2025-06-01'),
+  arbitrator: 'G...' // Optional
+});
+```
+
+**Querying Claimable Balances:**
+```typescript
+// Get balances for account
+const balances = await service.getClaimableBalancesForAccount(publicKey, 10);
+
+// Get balances by asset
+const xlmBalances = await service.getClaimableBalancesByAsset(Asset.native(), 10);
+
+// Get specific balance
+const balance = await service.getClaimableBalance(balanceId);
+```
 
 ### 3. Automation Engine
 Event-driven system for DeFi automation with:
