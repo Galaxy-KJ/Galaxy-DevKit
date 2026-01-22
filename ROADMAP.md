@@ -44,7 +44,7 @@ gantt
 
 ### Stellar SDK Extensions (5 issues)
 - [ ] **#11** Add liquidity pool operations
-- [ ] **#12** Add claimable balances support
+- [x] **#12** Add claimable balances support
 - [ ] **#13** Add sponsored reserves functionality
 - [ ] **#14** Implement path payment (swap) improvements
 - [ ] **#15** Add Soroban contract invocation utilities
@@ -191,7 +191,7 @@ gantt
 ## 🎯 Current Status
 
 **Phase**: Phase 1 - Foundation & Core
-**Progress**: 0/20 issues completed
+**Progress**: 1/20 issues completed
 **Next Milestone**: Setup DeFi protocols package structure (#1)
 
 ---
@@ -206,5 +206,5 @@ gantt
 
 ---
 
-**Last Updated**: 2024-01-15
+**Last Updated**: 2024-12-01
 **Maintained By**: Galaxy DevKit Team
