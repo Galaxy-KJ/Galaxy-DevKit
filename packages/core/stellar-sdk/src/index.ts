@@ -79,6 +79,58 @@ export {
   createRefundableBalance,
 } from './claimable-balances';
 
+// Export liquidity pools
+export type {
+  LiquidityPool,
+  LiquidityPoolDeposit,
+  LiquidityPoolWithdraw,
+  QueryPoolsParams,
+  LiquidityPoolResult,
+  PoolAnalytics,
+  PriceImpact,
+  DepositEstimate,
+  WithdrawEstimate,
+  PoolShare,
+  PoolTrade,
+} from './liquidity-pools/types';
+
+export {
+  LiquidityPoolManager,
+  // Calculation functions
+  calculateConstantProduct,
+  calculateSpotPrice,
+  calculateDepositShares,
+  calculateWithdrawAmounts,
+  calculatePriceImpact,
+  calculateSwapOutput,
+  estimateDeposit,
+  estimateWithdraw,
+  calculateMinimumAmounts,
+  calculatePriceBounds,
+  // Validation functions
+  validatePoolId,
+  validateAmount,
+  validateSlippage,
+  validatePrice,
+  validatePublicKey,
+  validateDepositParams,
+  validateWithdrawParams,
+  validateSufficientShares,
+  validateMinimumLiquidity,
+  // Helper functions
+  calculateOptimalDeposit,
+  formatPoolAssets,
+  calculateShareValue,
+  wouldImpactPrice,
+  calculateBreakEvenPrice,
+  calculateImpermanentLoss,
+  hasSufficientLiquidity,
+  calculateAPRFromFees,
+  toStellarPrecision,
+  assetsEqual,
+  sortAssets,
+} from './liquidity-pools';
+
 // Re-export Stellar SDK for convenience
 export {
   Keypair,
