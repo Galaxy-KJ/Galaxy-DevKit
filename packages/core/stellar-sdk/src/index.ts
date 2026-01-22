@@ -55,3 +55,6 @@ export {
   Operation,
   BASE_FEE,
 } from '@stellar/stellar-sdk';
+
+// Export sponsored reserves module
+export * from './sponsored-reserves';
