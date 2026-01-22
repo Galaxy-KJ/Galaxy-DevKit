@@ -190,6 +190,7 @@ classDiagram
         -Horizon server
         -NetworkUtils utils
         -Supabase client
+        -ClaimableBalanceManager claimableBalanceManager
 
         +createWallet(config, password) Wallet
         +createWalletFromMnemonic(mnemonic, password) Wallet
@@ -202,7 +203,26 @@ classDiagram
         +getTransactionHistory(publicKey, limit) TransactionInfo[]
         +switchNetwork(networkConfig) void
         +estimateFee() string
+        +createClaimableBalance(wallet, params, password) ClaimableBalanceResult
+        +claimBalance(wallet, params, password) ClaimableBalanceResult
+        +getClaimableBalance(balanceId) ClaimableBalance
+        +getClaimableBalances(params) ClaimableBalance[]
     }
+
+    class ClaimableBalanceManager {
+        -Horizon.Server server
+        -string networkPassphrase
+        -NetworkUtils networkUtils
+
+        +createClaimableBalance(wallet, params, password) ClaimableBalanceResult
+        +claimBalance(wallet, params, password) ClaimableBalanceResult
+        +getBalanceDetails(balanceId) ClaimableBalance
+        +getClaimableBalances(params) ClaimableBalance[]
+        +getClaimableBalancesForAccount(publicKey, limit) ClaimableBalance[]
+        +getClaimableBalancesByAsset(asset, limit) ClaimableBalance[]
+    }
+
+    StellarService --> ClaimableBalanceManager
 
     class NetworkConfig {
         +network: testnet | mainnet
@@ -948,19 +968,19 @@ sequenceDiagram
 
     User->>API: POST /api/v1/payments<br/>{walletId, destination, amount}
     API->>IWService: sendPayment(walletId, sessionToken, params)
-
+    
     IWService->>KeyMgmt: validateSession(sessionToken)
     KeyMgmt-->>IWService: valid
-
+    
     IWService->>KeyMgmt: decryptPrivateKey(password)
     KeyMgmt-->>IWService: privateKey
-
+    
     IWService->>StellarService: sendPayment(wallet, params)
     StellarService->>StellarService: buildTransaction()
     StellarService->>StellarService: signTransaction(privateKey)
-
+    
     StellarService->>Horizon: submitTransaction()
-
+    
     alt Success
         Horizon-->>StellarService: {hash, ledger, status: success}
         StellarService->>EventLog: Log TRANSACTION_SENT
@@ -973,6 +993,91 @@ sequenceDiagram
         StellarService-->>API: Error details
         API-->>User: 400 Bad Request
     end
+```
+
+### Claimable Balance Flow
+
+```mermaid
+sequenceDiagram
+    participant Sender
+    participant StellarService
+    participant CBM as ClaimableBalanceManager
+    participant Horizon
+    participant Claimant
+    participant Network
+
+    Note over Sender,Network: Create Claimable Balance Flow
+    Sender->>StellarService: createClaimableBalance(wallet, params, password)
+    StellarService->>CBM: createClaimableBalance(wallet, params, password)
+    CBM->>CBM: Validate parameters & predicates
+    CBM->>CBM: Build claimants with Stellar predicates
+    CBM->>CBM: Build transaction with createClaimableBalance operation
+    CBM->>Network: Submit transaction
+    Network-->>CBM: Transaction result
+    CBM->>Horizon: Query operations for balance ID
+    Horizon-->>CBM: Balance ID
+    CBM-->>StellarService: ClaimableBalanceResult {balanceId, hash}
+    StellarService-->>Sender: Balance created
+
+    Note over Claimant,Network: Claim Balance Flow
+    Claimant->>StellarService: claimBalance(wallet, {balanceId}, password)
+    StellarService->>CBM: claimBalance(wallet, params, password)
+    CBM->>CBM: Validate balance ID
+    CBM->>Horizon: Get balance details
+    Horizon-->>CBM: Balance info with predicates
+    CBM->>CBM: Evaluate predicates (check time, conditions)
+    alt Predicate Valid
+        CBM->>CBM: Build transaction with claimClaimableBalance operation
+        CBM->>Network: Submit transaction
+        Network-->>CBM: Transaction result
+        CBM-->>StellarService: ClaimableBalanceResult
+        StellarService-->>Claimant: Balance claimed
+    else Predicate Invalid
+        CBM-->>StellarService: Error: Cannot claim
+        StellarService-->>Claimant: Claim failed
+    end
+```
+
+### Predicate Evaluation
+
+```mermaid
+graph TD
+    Start[Evaluate Predicate] --> CheckType{Check Type}
+    
+    CheckType -->|unconditional| Unconditional[Return TRUE]
+    CheckType -->|abs_before| CheckAbsTime{Current Time < Deadline?}
+    CheckType -->|rel_before| CheckRelTime{Current Time < Creation + Duration?}
+    CheckType -->|not| EvalNot[Evaluate Sub-Predicate<br/>Return NOT Result]
+    CheckType -->|and| EvalAnd1[Evaluate Predicate 1]
+    CheckType -->|or| EvalOr1[Evaluate Predicate 1]
+    
+    CheckAbsTime -->|Yes| ReturnTrue[Return TRUE]
+    CheckAbsTime -->|No| ReturnFalse[Return FALSE]
+    
+    CheckRelTime -->|Yes| ReturnTrue
+    CheckRelTime -->|No| ReturnFalse
+    
+    EvalNot --> NotResult{Sub-Predicate Result}
+    NotResult -->|TRUE| ReturnFalse
+    NotResult -->|FALSE| ReturnTrue
+    
+    EvalAnd1 --> AndResult1{Result 1}
+    AndResult1 -->|TRUE| EvalAnd2[Evaluate Predicate 2]
+    AndResult1 -->|FALSE| ReturnFalse
+    EvalAnd2 --> AndResult2{Result 2}
+    AndResult2 -->|TRUE| ReturnTrue
+    AndResult2 -->|FALSE| ReturnFalse
+    
+    EvalOr1 --> OrResult1{Result 1}
+    OrResult1 -->|TRUE| ReturnTrue
+    OrResult1 -->|FALSE| EvalOr2[Evaluate Predicate 2]
+    EvalOr2 --> OrResult2{Result 2}
+    OrResult2 -->|TRUE| ReturnTrue
+    OrResult2 -->|FALSE| ReturnFalse
+    
+    style Start fill:#e3f2fd
+    style ReturnTrue fill:#e8f5e9
+    style ReturnFalse fill:#ffebee
 ```
 
 ### Automation Execution Flow

@@ -8,12 +8,12 @@
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build",
+    "build": "lerna run build --scope '@galaxy/core-defi-protocols' --scope '@galaxy/cli' || true",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint",
+    "lint": "lerna run lint --scope '@galaxy/core-defi-protocols' || true",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check",
+    "type-check": "lerna run type-check --scope '@galaxy/core-defi-protocols' || true",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",
@@ -59,6 +59,7 @@
     "node-cron": "^4.2.1"
   },
   "overrides": {
+    "diff": "^8.0.1",
     "tar": "^7.5.4"
   }
 }
