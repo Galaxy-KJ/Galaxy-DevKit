@@ -11,7 +11,7 @@ describe('Encryption Utils', () => {
   const longPassword = 'a'.repeat(1000);
 
   // Debug helper
-  const debug = (testName: string, data: any) => {
+  const debug = (testName: string, data: unknown) => {
     console.log(`\n[DEBUG - ${testName}]`, JSON.stringify(data, null, 2));
   };
 
@@ -238,25 +238,26 @@ describe('Encryption Utils', () => {
 
     it('should throw error with corrupted encrypted data', () => {
       const encrypted = encryptPrivateKey(testPrivateKey, testPassword);
-      const corrupted = encrypted.replace(/A/g, 'B');
+      const parts = encrypted.split(':');
+
+      // Corrupt the ciphertext significantly (flip multiple bytes)
+      const corruptedCiphertext = Buffer.from(parts[3], 'base64');
+      // Flip multiple bytes to ensure decryption fails
+      for (let i = 0; i < Math.min(5, corruptedCiphertext.length); i++) {
+        corruptedCiphertext[i] ^= 0xFF; // Flip all bits
+      }
+      parts[3] = corruptedCiphertext.toString('base64');
+
+      const corrupted = parts.join(':');
 
       debug('Corrupted Data Test', {
         original: encrypted,
         corrupted,
-        changesCount: encrypted.split('').filter((c, i) => c !== corrupted[i])
-          .length,
+        changesCount: 5,
       });
 
       expect(() => {
-        try {
-          decryptPrivateKey(corrupted, testPassword);
-        } catch (error) {
-          debug('Corrupted Data Error', {
-            errorMessage:
-              error instanceof Error ? error.message : 'Unknown error',
-          });
-          throw error;
-        }
+        decryptPrivateKey(corrupted, testPassword);
       }).toThrow();
     });
 
