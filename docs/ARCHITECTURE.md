@@ -3,6 +3,10 @@
 ## 📋 Table of Contents
 - [System Overview](#system-overview)
 - [Core Components](#core-components)
+  - [Invisible Wallet System](#1-invisible-wallet-system)
+  - [Hardware Wallet Integration (Ledger)](#2-hardware-wallet-integration-ledger)
+  - [Stellar SDK Wrapper](#3-stellar-sdk-wrapper)
+  - [Automation Engine](#4-automation-engine)
 - [DeFi Integration Architecture](#defi-integration-architecture)
 - [Oracle System](#oracle-system)
 - [Data Flow](#data-flow)
@@ -179,7 +183,614 @@ CREATE TABLE wallet_events (
 
 ---
 
-### 2. Stellar SDK Wrapper
+### 2. Hardware Wallet Integration (Ledger)
+
+**Purpose**: Provide secure transaction signing and key management using Ledger hardware wallets.
+
+#### Architecture Overview
+
+Hardware wallet integration enables users to leverage Ledger devices for secure key storage and transaction signing without exposing private keys to the application layer. The architecture consists of three main layers:
+
+1. **Application Layer**: High-level wallet operations and user interactions
+2. **Transport Layer**: Communication protocol between application and Ledger device
+3. **Stellar App Layer**: On-device transaction processing and signing
+
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        App[Galaxy DevKit Application]
+        LedgerService[LedgerWalletService]
+        TxBuilder[TransactionBuilder]
+    end
+
+    subgraph "Transport Layer"
+        Transport[Transport Interface]
+        USB[USB Transport<br/>@ledgerhq/hw-transport-node-hid]
+        WebUSB[WebUSB Transport<br/>@ledgerhq/hw-transport-webusb]
+        BLE[Bluetooth Transport<br/>@ledgerhq/hw-transport-web-ble]
+    end
+
+    subgraph "Stellar App Layer (On-Device)"
+        StellarApp[Stellar App]
+        AppConfig[App Configuration]
+        HashSign[Hash & Sign Engine]
+        Display[Secure Display]
+        Confirm[User Confirmation]
+    end
+
+    subgraph "Hardware Device"
+        SecureElement[Secure Element<br/>Private Keys]
+        UserButton[Physical Buttons]
+    end
+
+    App --> LedgerService
+    LedgerService --> TxBuilder
+    LedgerService --> Transport
+
+    Transport --> USB
+    Transport --> WebUSB
+    Transport --> BLE
+
+    USB --> StellarApp
+    WebUSB --> StellarApp
+    BLE --> StellarApp
+
+    StellarApp --> AppConfig
+    StellarApp --> HashSign
+    StellarApp --> Display
+
+    Display --> Confirm
+    Confirm --> UserButton
+    UserButton --> SecureElement
+    SecureElement --> HashSign
+
+    style LedgerService fill:#e3f2fd
+    style Transport fill:#fff3e0
+    style StellarApp fill:#f3e5f5
+    style SecureElement fill:#ffebee
+```
+
+#### Component Diagram
+
+```mermaid
+classDiagram
+    class LedgerWalletService {
+        -Transport transport
+        -StellarApp stellarApp
+        -NetworkConfig networkConfig
+        -string currentPath
+
+        +connect(transportType) Promise~boolean~
+        +disconnect() Promise~void~
+        +getPublicKey(path, verify) Promise~PublicKey~
+        +signTransaction(path, transaction) Promise~Signature~
+        +signHash(path, hash) Promise~Signature~
+        +getAppConfiguration() Promise~AppConfig~
+        +checkConnection() Promise~boolean~
+        +setNetworkPassphrase(passphrase) void
+    }
+
+    class Transport {
+        <<interface>>
+        +open() Promise~void~
+        +close() Promise~void~
+        +exchange(apdu) Promise~Buffer~
+        +setScrambleKey(key) void
+        +isSupported() Promise~boolean~
+    }
+
+    class USBTransport {
+        -device: HIDDevice
+        -channel: number
+        +listen(observer) Subscription
+        +create(descriptor) Promise~Transport~
+    }
+
+    class WebUSBTransport {
+        -device: USBDevice
+        +request() Promise~Transport~
+        +openConnected() Promise~Transport~
+    }
+
+    class BLETransport {
+        -device: BluetoothDevice
+        -characteristic: BluetoothCharacteristic
+        +connect(deviceId) Promise~Transport~
+        +scan(timeout) Observable~Device~
+    }
+
+    class StellarApp {
+        -Transport transport
+        -CLA: number
+        -VERSION: string
+
+        +getPublicKey(path, boolDisplay, boolChain) Promise~PublicKeyResponse~
+        +signTransaction(path, rawTx) Promise~SignatureResponse~
+        +signHash(path, hash) Promise~SignatureResponse~
+        +getAppConfiguration() Promise~AppConfiguration~
+    }
+
+    class TransactionBuilder {
+        -NetworkConfig network
+        -Transaction transaction
+
+        +buildForLedger(params) LedgerTransaction
+        +serialize() Buffer
+        +deserialize(buffer) Transaction
+    }
+
+    class BIP44Path {
+        -number purpose
+        -number coinType
+        -number account
+        -number change
+        -number addressIndex
+
+        +toString() string
+        +fromString(path) BIP44Path
+        +validate() boolean
+    }
+
+    LedgerWalletService --> Transport
+    LedgerWalletService --> StellarApp
+    LedgerWalletService --> TransactionBuilder
+    LedgerWalletService --> BIP44Path
+
+    Transport <|.. USBTransport
+    Transport <|.. WebUSBTransport
+    Transport <|.. BLETransport
+
+    StellarApp --> Transport
+    TransactionBuilder --> StellarApp
+```
+
+#### Connection and Signing Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Galaxy DevKit
+    participant LedgerService as LedgerWalletService
+    participant Transport as Transport Layer
+    participant Device as Ledger Device
+    participant StellarApp as Stellar App
+    participant SecureElement as Secure Element
+
+    Note over User,SecureElement: Connection Phase
+    User->>App: Request Ledger Connection
+    App->>LedgerService: connect(transportType)
+    LedgerService->>Transport: create(transportType)
+
+    alt USB Connection
+        Transport->>Device: USB Handshake
+    else WebUSB Connection
+        Transport->>User: Request Device Permission
+        User->>Transport: Grant Permission
+        Transport->>Device: WebUSB Connect
+    else Bluetooth Connection
+        Transport->>Transport: Scan for devices
+        Transport->>User: Select Device
+        User->>Transport: Device Selected
+        Transport->>Device: BLE Connect
+    end
+
+    Device-->>Transport: Connection Established
+    Transport-->>LedgerService: Transport Ready
+
+    LedgerService->>StellarApp: getAppConfiguration()
+    StellarApp->>Device: APDU: Get Config
+    Device-->>StellarApp: App Version, Flags
+    StellarApp-->>LedgerService: Configuration
+    LedgerService-->>App: Connected
+
+    Note over User,SecureElement: Public Key Retrieval
+    App->>LedgerService: getPublicKey(path, verify=true)
+    LedgerService->>StellarApp: getPublicKey(path, display=true)
+    StellarApp->>Device: APDU: Get Public Key
+    Device->>SecureElement: Derive Key at Path
+    SecureElement-->>Device: Public Key
+    Device->>Device: Display Address on Screen
+    Device->>User: Confirm Address on Device
+    User->>Device: Press Button to Confirm
+    Device-->>StellarApp: Public Key + Confirmation
+    StellarApp-->>LedgerService: PublicKey
+    LedgerService-->>App: PublicKey
+
+    Note over User,SecureElement: Transaction Signing Phase
+    App->>App: Build Transaction
+    App->>LedgerService: signTransaction(path, transaction)
+    LedgerService->>LedgerService: Validate Transaction
+    LedgerService->>LedgerService: Set Network Passphrase
+    LedgerService->>TransactionBuilder: buildForLedger(transaction)
+    TransactionBuilder-->>LedgerService: Serialized TX
+
+    LedgerService->>StellarApp: signTransaction(path, rawTx)
+    StellarApp->>Device: APDU: Sign Transaction (chunks)
+    Device->>Device: Parse Transaction
+    Device->>Device: Display TX Details
+
+    loop For Each Operation
+        Device->>User: Show Operation Type
+        Device->>User: Show Amount/Destination
+        Device->>User: Show Asset Info
+    end
+
+    Device->>User: Final Confirmation Request
+    User->>Device: Press Button to Approve
+
+    Device->>SecureElement: Sign Transaction Hash
+    SecureElement->>SecureElement: ECDSA Sign with Private Key
+    SecureElement-->>Device: Signature (r, s, v)
+    Device-->>StellarApp: Signature
+    StellarApp-->>LedgerService: Signature
+
+    LedgerService->>LedgerService: Attach Signature to TX
+    LedgerService-->>App: Signed Transaction
+    App->>App: Submit to Stellar Network
+```
+
+#### Security Architecture for Hardware Wallets
+
+```mermaid
+graph TB
+    subgraph "Security Layers"
+        subgraph "Application Security"
+            InputVal[Input Validation]
+            PathVal[BIP44 Path Validation]
+            TxVal[Transaction Validation]
+            NetworkVal[Network Validation]
+        end
+
+        subgraph "Transport Security"
+            EncComm[Encrypted Communication<br/>APDU Protocol]
+            DeviceAuth[Device Authentication]
+            SessionMgmt[Session Management]
+            AntiTamper[Anti-Tampering Detection]
+        end
+
+        subgraph "Device Security"
+            SecureDisplay[Secure Display<br/>OLED/LCD]
+            PhysicalButton[Physical Button<br/>Confirmation]
+            PINProtection[PIN Protection<br/>Anti-Bruteforce]
+            SecureElement[Secure Element<br/>CC EAL5+]
+        end
+
+        subgraph "Key Security"
+            KeyGen[Key Generation<br/>True RNG]
+            KeyDerivation[BIP32/BIP44<br/>Hierarchical Derivation]
+            KeyStorage[Encrypted Storage<br/>Never Exported]
+            SigningIsolation[Signing Isolation<br/>Air-Gapped]
+        end
+    end
+
+    subgraph "Threat Mitigation"
+        Phishing[Phishing Protection<br/>Verify on Device]
+        MITM[MITM Protection<br/>Device Validation]
+        Malware[Malware Protection<br/>Physical Confirmation]
+        KeyTheft[Key Theft Protection<br/>Never Leaves Device]
+    end
+
+    InputVal --> EncComm
+    PathVal --> EncComm
+    TxVal --> EncComm
+    NetworkVal --> EncComm
+
+    EncComm --> SecureDisplay
+    DeviceAuth --> SecureDisplay
+    SessionMgmt --> PhysicalButton
+    AntiTamper --> PINProtection
+
+    SecureDisplay --> KeyDerivation
+    PhysicalButton --> SigningIsolation
+    PINProtection --> KeyStorage
+    SecureElement --> KeyGen
+
+    KeyGen --> Phishing
+    KeyDerivation --> MITM
+    KeyStorage --> Malware
+    SigningIsolation --> KeyTheft
+
+    style InputVal fill:#e3f2fd
+    style EncComm fill:#fff3e0
+    style SecureDisplay fill:#f3e5f5
+    style KeyGen fill:#e8f5e9
+    style Phishing fill:#ffebee
+```
+
+**Security Features**:
+
+1. **Private Key Isolation**
+   - Private keys never leave the secure element
+   - All signing operations occur on-device
+   - Encrypted storage with tamper detection
+   - Physical device required for every transaction
+
+2. **Transaction Verification**
+   - Human-readable transaction display
+   - Multi-step confirmation process
+   - Network passphrase validation
+   - Operation-by-operation review
+
+3. **Communication Security**
+   - APDU (Application Protocol Data Unit) encryption
+   - Device authentication handshake
+   - Session timeout and auto-lock
+   - Transport layer validation
+
+4. **Physical Security**
+   - PIN protection (3-8 attempts before wipe)
+   - Secure bootloader
+   - Tamper-resistant hardware
+   - Supply chain attack mitigation
+
+#### BIP44 Path Structure
+
+```mermaid
+graph LR
+    Root[m<br/>Master Key] --> Purpose[44'<br/>BIP44]
+    Purpose --> CoinType[148'<br/>Stellar]
+    CoinType --> Account[0'-2147483647'<br/>Account Index]
+    Account --> Change[0'<br/>External Chain]
+    Change --> Address[0-2147483647<br/>Address Index]
+
+    subgraph "Path Components"
+        PathInfo["m / purpose' / coin_type' / account' / change / address_index"]
+    end
+
+    subgraph "Stellar Standard Path"
+        DefaultPath["m/44'/148'/0'<br/>Default Account"]
+        Account0["m/44'/148'/0'<br/>Account 0"]
+        Account1["m/44'/148'/1'<br/>Account 1"]
+        AccountN["m/44'/148'/N'<br/>Account N"]
+    end
+
+    subgraph "Path Validation Rules"
+        Rule1["✓ purpose must be 44' (hardened)"]
+        Rule2["✓ coin_type must be 148' (Stellar)"]
+        Rule3["✓ account must be hardened (0'-2147483647')"]
+        Rule4["✓ change must be 0' (external)"]
+        Rule5["✓ address_index: 0-2147483647 (non-hardened)"]
+    end
+
+    style Root fill:#e3f2fd
+    style Purpose fill:#f3e5f5
+    style CoinType fill:#fff3e0
+    style Account fill:#e8f5e9
+    style Change fill:#fce4ec
+    style Address fill:#f1f8e9
+```
+
+**BIP44 Path Examples**:
+
+```typescript
+// Default Stellar account
+const defaultPath = "m/44'/148'/0'";
+
+// Multi-account structure
+const account0 = "m/44'/148'/0'"; // Primary account
+const account1 = "m/44'/148'/1'"; // Secondary account
+const account2 = "m/44'/148'/2'"; // Trading account
+
+// Path validation
+interface BIP44PathComponents {
+  purpose: 44;        // Always 44 for BIP44
+  coinType: 148;      // Stellar coin type
+  account: number;    // 0-2147483647 (hardened)
+  change: 0;          // Always 0 for Stellar (external)
+  addressIndex: 0;    // Always 0 for Stellar (not used)
+}
+```
+
+**Path Derivation Process**:
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Ledger as Ledger Device
+    participant SE as Secure Element
+
+    App->>Ledger: Request Public Key<br/>Path: m/44'/148'/0'
+    Ledger->>SE: Parse Path Components
+    SE->>SE: Load Master Seed
+
+    Note over SE: Hierarchical Derivation
+    SE->>SE: Derive Level 1: purpose (44')
+    SE->>SE: Derive Level 2: coin_type (148')
+    SE->>SE: Derive Level 3: account (0')
+    SE->>SE: Derive Level 4: change (0')
+    SE->>SE: Derive Level 5: address_index (0)
+
+    SE->>SE: Compute Public Key from Private Key
+    SE-->>Ledger: Public Key (ED25519)
+    Ledger-->>App: Public Key + Chain Code
+```
+
+#### Error Handling Flow
+
+```mermaid
+flowchart TD
+    Start[Ledger Operation] --> CheckConnection{Device<br/>Connected?}
+
+    CheckConnection -->|No| ErrorNoDevice[Error: DEVICE_NOT_CONNECTED]
+    CheckConnection -->|Yes| CheckApp{Stellar App<br/>Open?}
+
+    CheckApp -->|No| ErrorNoApp[Error: APP_NOT_OPEN]
+    CheckApp -->|Yes| CheckVersion{App Version<br/>Compatible?}
+
+    CheckVersion -->|No| ErrorVersion[Error: INCOMPATIBLE_VERSION]
+    CheckVersion -->|Yes| ValidateInput{Validate<br/>Input}
+
+    ValidateInput -->|Invalid Path| ErrorPath[Error: INVALID_BIP44_PATH]
+    ValidateInput -->|Invalid TX| ErrorTx[Error: INVALID_TRANSACTION]
+    ValidateInput -->|Invalid Network| ErrorNetwork[Error: NETWORK_MISMATCH]
+    ValidateInput -->|Valid| SendAPDU[Send APDU Command]
+
+    SendAPDU --> CheckResponse{Check<br/>Response}
+
+    CheckResponse -->|Timeout| ErrorTimeout[Error: DEVICE_TIMEOUT]
+    CheckResponse -->|User Rejected| ErrorRejected[Error: USER_REJECTED_ON_DEVICE]
+    CheckResponse -->|Device Locked| ErrorLocked[Error: DEVICE_LOCKED_PIN_REQUIRED]
+    CheckResponse -->|Wrong Device| ErrorWrongDevice[Error: WRONG_DEVICE]
+    CheckResponse -->|Transport Error| ErrorTransport[Error: TRANSPORT_ERROR]
+    CheckResponse -->|Success| Success[Operation Successful]
+
+    ErrorNoDevice --> Retry{Retry?}
+    ErrorNoApp --> UserAction1[User Action: Open Stellar App]
+    ErrorVersion --> UserAction2[User Action: Update Firmware]
+    ErrorPath --> LogError[Log Error & Return]
+    ErrorTx --> LogError
+    ErrorNetwork --> LogError
+    ErrorTimeout --> Retry
+    ErrorRejected --> LogError
+    ErrorLocked --> UserAction3[User Action: Enter PIN]
+    ErrorWrongDevice --> UserAction4[User Action: Connect Correct Device]
+    ErrorTransport --> Retry
+
+    Retry -->|Yes| Start
+    Retry -->|No| LogError
+    UserAction1 --> Start
+    UserAction2 --> Start
+    UserAction3 --> Start
+    UserAction4 --> Start
+
+    Success --> Return[Return Result]
+    LogError --> Return
+
+    style Start fill:#e3f2fd
+    style Success fill:#e8f5e9
+    style ErrorNoDevice fill:#ffebee
+    style ErrorNoApp fill:#ffebee
+    style ErrorVersion fill:#ffebee
+    style ErrorPath fill:#ffebee
+    style ErrorTx fill:#ffebee
+    style ErrorNetwork fill:#ffebee
+    style ErrorTimeout fill:#ffebee
+    style ErrorRejected fill:#ffebee
+    style ErrorLocked fill:#ffebee
+    style ErrorWrongDevice fill:#ffebee
+    style ErrorTransport fill:#ffebee
+```
+
+**Error Types and Recovery**:
+
+```typescript
+enum LedgerErrorType {
+  // Connection Errors
+  DEVICE_NOT_CONNECTED = 'DEVICE_NOT_CONNECTED',
+  TRANSPORT_ERROR = 'TRANSPORT_ERROR',
+  DEVICE_TIMEOUT = 'DEVICE_TIMEOUT',
+
+  // App Errors
+  APP_NOT_OPEN = 'APP_NOT_OPEN',
+  INCOMPATIBLE_VERSION = 'INCOMPATIBLE_VERSION',
+
+  // Security Errors
+  DEVICE_LOCKED_PIN_REQUIRED = 'DEVICE_LOCKED_PIN_REQUIRED',
+  WRONG_DEVICE = 'WRONG_DEVICE',
+  USER_REJECTED_ON_DEVICE = 'USER_REJECTED_ON_DEVICE',
+
+  // Validation Errors
+  INVALID_BIP44_PATH = 'INVALID_BIP44_PATH',
+  INVALID_TRANSACTION = 'INVALID_TRANSACTION',
+  NETWORK_MISMATCH = 'NETWORK_MISMATCH',
+
+  // APDU Errors
+  APDU_ERROR = 'APDU_ERROR',
+  INVALID_RESPONSE = 'INVALID_RESPONSE'
+}
+
+interface LedgerError {
+  type: LedgerErrorType;
+  message: string;
+  code?: number;
+  recoverable: boolean;
+  userAction?: string;
+  retryable: boolean;
+}
+
+// Error recovery strategies
+const errorRecovery: Record<LedgerErrorType, RecoveryStrategy> = {
+  [LedgerErrorType.DEVICE_NOT_CONNECTED]: {
+    retry: true,
+    maxRetries: 3,
+    userAction: 'Please connect your Ledger device and try again',
+    delay: 2000
+  },
+  [LedgerErrorType.APP_NOT_OPEN]: {
+    retry: false,
+    userAction: 'Please open the Stellar app on your Ledger device',
+    delay: 0
+  },
+  [LedgerErrorType.USER_REJECTED_ON_DEVICE]: {
+    retry: false,
+    userAction: 'Transaction was rejected on device',
+    delay: 0
+  },
+  [LedgerErrorType.DEVICE_LOCKED_PIN_REQUIRED]: {
+    retry: false,
+    userAction: 'Please unlock your Ledger device by entering your PIN',
+    delay: 0
+  }
+};
+```
+
+**Integration Example**:
+
+```typescript
+import { LedgerWalletService } from '@galaxy/ledger';
+
+// Initialize Ledger service
+const ledgerService = new LedgerWalletService({
+  network: 'mainnet',
+  transportType: 'webusb'
+});
+
+try {
+  // Connect to device
+  await ledgerService.connect();
+
+  // Get public key with device verification
+  const publicKey = await ledgerService.getPublicKey(
+    "m/44'/148'/0'",
+    true // verify on device
+  );
+
+  // Build transaction
+  const transaction = await buildStellarTransaction({
+    source: publicKey,
+    destination: 'GDEST...',
+    amount: '100',
+    asset: 'XLM'
+  });
+
+  // Sign transaction on Ledger
+  const signedTx = await ledgerService.signTransaction(
+    "m/44'/148'/0'",
+    transaction
+  );
+
+  // Submit to network
+  await submitTransaction(signedTx);
+
+} catch (error) {
+  if (error.type === LedgerErrorType.USER_REJECTED_ON_DEVICE) {
+    console.log('User rejected transaction on device');
+  } else if (error.recoverable) {
+    // Retry logic
+    await retryWithBackoff(error);
+  } else {
+    // Show user action required
+    showUserError(error.userAction);
+  }
+} finally {
+  // Cleanup
+  await ledgerService.disconnect();
+}
+```
+
+---
+
+### 3. Stellar SDK Wrapper
 
 **Purpose**: Abstract and simplify Stellar SDK operations.
 
@@ -272,7 +883,7 @@ classDiagram
 
 ---
 
-### 3. Automation Engine
+### 4. Automation Engine
 
 **Purpose**: Enable DeFi automation with triggers, conditions, and actions.
 
