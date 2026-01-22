@@ -57,5 +57,8 @@
   "dependencies": {
     "@stellar/stellar-sdk": "^14.4.3",
     "node-cron": "^4.2.1"
+  },
+  "overrides": {
+    "tar": "^7.5.4"
   }
 }
