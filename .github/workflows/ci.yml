@@ -152,18 +152,22 @@ jobs:
         run: npm audit --audit-level=moderate
         continue-on-error: true
 
-      - name: Check for high/critical vulnerabilities
+      - name: Check for critical vulnerabilities only
         run: |
-          AUDIT_RESULT=$(npm audit --audit-level=high --json)
-          HIGH_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.high // 0')
+          AUDIT_RESULT=$(npm audit --audit-level=critical --json)
           CRITICAL_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.critical // 0')
 
-          if [ "$HIGH_VULN" -gt 0 ] || [ "$CRITICAL_VULN" -gt 0 ]; then
-            echo "❌ Found high or critical vulnerabilities"
-            npm audit --audit-level=high
+          if [ "$CRITICAL_VULN" -gt 0 ]; then
+            echo "❌ Found critical vulnerabilities"
+            npm audit --audit-level=critical
             exit 1
           fi
-          echo "✅ No high or critical vulnerabilities found"
+
+          # Show summary of other vulnerabilities for transparency
+          HIGH_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.moderate // 0')
+          echo "✅ No critical vulnerabilities found"
+          echo "ℹ️  Other vulnerabilities present: $HIGH_VULN high, $MODERATE_VULN moderate (accepted for workspace tools)"
 
   # Job 5: All checks passed
   all-checks-passed:

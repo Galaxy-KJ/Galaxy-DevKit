@@ -654,33 +654,185 @@ sequenceDiagram
 
 ```mermaid
 graph TB
-    subgraph "Oracle Service"
-        OC[On-Chain Oracle<br/>Soroban Contract]
-        OA[Off-Chain Aggregator<br/>Node.js Service]
-
-        subgraph "Price Sources"
-            Soroswap[Soroswap DEX]
-            SDEX[Stellar DEX]
-            CG[CoinGecko API]
-            CMC[CoinMarketCap API]
+    subgraph "Oracle Aggregator"
+        OA[OracleAggregator<br/>Main Aggregator]
+        Cache[PriceCache<br/>TTL Cache]
+        Validator[PriceValidator<br/>Validation Logic]
+        Outlier[OutlierDetection<br/>Statistical Filtering]
+        
+        subgraph "Strategies"
+            Median[MedianStrategy]
+            Weighted[WeightedAverageStrategy]
+            TWAP[TWAPStrategy]
         end
     end
 
-    OA -->|Fetch| Soroswap
-    OA -->|Fetch| SDEX
-    OA -->|Fetch| CG
-    OA -->|Fetch| CMC
+    subgraph "Oracle Sources"
+        CG[CoinGecko<br/>IOracleSource]
+        CMC[CoinMarketCap<br/>IOracleSource]
+        Soroswap[Soroswap DEX<br/>IOracleSource]
+        SDEX[Stellar DEX<br/>IOracleSource]
+    end
 
-    OA -->|Aggregate| Med[Calculate Median]
-    Med -->|Update| OC
+    subgraph "Circuit Breaker"
+        CB[Circuit Breaker<br/>Health Monitoring]
+    end
 
-    OC -->|Store| Prices[(Price History)]
-    OC -->|Provide| Contracts[Smart Contracts]
-    OC -->|Provide| Automation[Automation Engine]
+    CG -->|getPrice| OA
+    CMC -->|getPrice| OA
+    Soroswap -->|getPrice| OA
+    SDEX -->|getPrice| OA
 
-    style OC fill:#e3f2fd
-    style OA fill:#f3e5f5
-    style Med fill:#fff3e0
+    OA -->|Validate| Validator
+    OA -->|Filter| Outlier
+    OA -->|Cache| Cache
+    OA -->|Monitor| CB
+
+    OA -->|Aggregate| Median
+    OA -->|Aggregate| Weighted
+    OA -->|Aggregate| TWAP
+
+    CB -->|Block Failed| CG
+    CB -->|Block Failed| CMC
+
+    style OA fill:#e3f2fd
+    style Cache fill:#f3e5f5
+    style Validator fill:#fff3e0
+    style Outlier fill:#e8f5e9
+    style CB fill:#ffebee
+```
+
+### Oracle Aggregation Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Aggregator as OracleAggregator
+    participant Source1 as Source 1
+    participant Source2 as Source 2
+    participant Source3 as Source 3
+    participant Cache as PriceCache
+    participant Validator as PriceValidator
+    participant Outlier as OutlierDetection
+    participant Strategy as AggregationStrategy
+
+    Client->>Aggregator: getAggregatedPrice('XLM')
+
+    Note over Aggregator: Check cache first
+    Aggregator->>Cache: getAggregatedPrice('XLM')
+    Cache-->>Aggregator: null (cache miss)
+
+    Note over Aggregator: Fetch from all sources in parallel
+    par Parallel Fetch
+        Aggregator->>Source1: getPrice('XLM')
+        Aggregator->>Source2: getPrice('XLM')
+        Aggregator->>Source3: getPrice('XLM')
+    end
+
+    Source1-->>Aggregator: PriceData {price: 100, source: 'source1'}
+    Source2-->>Aggregator: PriceData {price: 101, source: 'source2'}
+    Source3-->>Aggregator: PriceData {price: 200, source: 'source3'} (outlier)
+
+    Note over Aggregator: Validate prices
+    Aggregator->>Validator: validatePrices(prices)
+    Validator-->>Aggregator: {valid: [...], invalid: []}
+
+    Note over Aggregator: Detect outliers
+    Aggregator->>Outlier: filterOutliers(prices)
+    Outlier-->>Aggregator: {filtered: [source1, source2], outliers: [source3]}
+
+    Note over Aggregator: Check minimum sources
+    Aggregator->>Validator: requireMinimumSources(filtered, 2)
+    Validator-->>Aggregator: true
+
+    Note over Aggregator: Aggregate using strategy
+    Aggregator->>Strategy: aggregate(filteredPrices)
+    Strategy-->>Aggregator: 100.5 (median)
+
+    Note over Aggregator: Cache result
+    Aggregator->>Cache: setAggregatedPrice(result)
+
+    Aggregator-->>Client: AggregatedPrice {price: 100.5, confidence: 0.67, sourcesUsed: ['source1', 'source2'], outliersFiltered: ['source3']}
+```
+
+### Price Validation Logic
+
+```mermaid
+graph TD
+    Start[Price Data Received] --> Validate{Validate Price}
+    
+    Validate -->|Invalid Number| Reject1[Reject: Invalid Price]
+    Validate -->|Invalid Symbol| Reject2[Reject: Invalid Symbol]
+    Validate -->|Invalid Timestamp| Reject3[Reject: Invalid Timestamp]
+    Validate -->|Stale| Reject4[Reject: Stale Price]
+    Validate -->|Valid| CheckMin{Check Minimum<br/>Sources}
+    
+    CheckMin -->|Insufficient| Reject5[Reject: Need More Sources]
+    CheckMin -->|Sufficient| CheckDev{Check Deviation}
+    
+    CheckDev -->|High Deviation| FilterDev[Filter by Deviation]
+    CheckDev -->|Within Limits| CheckOutlier{Check Outliers}
+    FilterDev --> CheckOutlier
+    
+    CheckOutlier -->|Has Outliers| FilterOutlier[Filter Outliers]
+    CheckOutlier -->|No Outliers| Aggregate[Aggregate Prices]
+    FilterOutlier --> Aggregate
+    
+    Aggregate --> Cache[Cache Result]
+    Cache --> Return[Return Aggregated Price]
+
+    style Validate fill:#fff3e0
+    style CheckMin fill:#e3f2fd
+    style CheckDev fill:#f3e5f5
+    style CheckOutlier fill:#e8f5e9
+    style Aggregate fill:#e1f5ff
+```
+
+### Caching Architecture
+
+```mermaid
+graph LR
+    Request[Price Request] --> Cache{Check Cache}
+    
+    Cache -->|Hit| CheckTTL{Check TTL}
+    Cache -->|Miss| Fetch[Fetch from Sources]
+    
+    CheckTTL -->|Valid| ReturnCache[Return Cached]
+    CheckTTL -->|Expired| Fetch
+    
+    Fetch --> Validate[Validate Prices]
+    Validate --> Aggregate[Aggregate]
+    Aggregate --> StoreCache[Store in Cache]
+    StoreCache --> Return[Return Price]
+    
+    StoreCache --> Evict{Check Max Size}
+    Evict -->|Exceeded| LRU[Evict LRU Entry]
+    Evict -->|OK| Keep[Keep Entry]
+    
+    style Cache fill:#e3f2fd
+    style Fetch fill:#fff3e0
+    style StoreCache fill:#e8f5e9
+    style LRU fill:#ffebee
+```
+
+### Source Health Monitoring
+
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED: Source Added
+    
+    CLOSED --> CLOSED: Success
+    CLOSED --> HALF_OPEN: Failure Count >= Threshold
+    
+    HALF_OPEN --> CLOSED: Success (Recovered)
+    HALF_OPEN --> OPEN: Failure in Half-Open
+    
+    OPEN --> HALF_OPEN: Reset Timeout Expired
+    OPEN --> OPEN: Still Failing
+    
+    CLOSED: Source Healthy<br/>Calls Allowed
+    HALF_OPEN: Testing Recovery<br/>Limited Calls
+    OPEN: Source Unhealthy<br/>Calls Blocked
 ```
 
 ### On-Chain Oracle Contract

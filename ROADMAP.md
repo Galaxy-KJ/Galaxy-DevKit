@@ -32,7 +32,7 @@ gantt
 - [ ] **#1** Setup DeFi protocols package structure
 - [ ] **#2** Setup oracles package structure
 - [ ] **#3** Create IDefiProtocol interface and base classes
-- [ ] **#4** Create IOracleSource interface and aggregator
+- [x] **#4** Create IOracleSource interface and aggregator
 - [ ] **#5** Setup integration tests infrastructure
 
 ### Wallet Enhancements (5 issues)
