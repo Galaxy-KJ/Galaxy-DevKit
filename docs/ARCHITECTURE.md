@@ -252,6 +252,126 @@ classDiagram
 
 ---
 
+### 2.1 Sponsored Reserves System
+
+**Purpose**: Allow sponsor accounts to pay base reserves for another account's ledger entries, enabling user onboarding without requiring new users to hold XLM.
+
+```mermaid
+graph TB
+    subgraph "SponsoredReservesManager"
+        direction TB
+
+        subgraph "Core Operations"
+            Begin[beginSponsoringFutureReserves]
+            End[endSponsoringFutureReserves]
+            Revoke[revokeSponsorship]
+        end
+
+        subgraph "Builders"
+            AccBuilder[SponsoredAccountBuilder]
+            TLBuilder[SponsoredTrustlineBuilder]
+            CBBuilder[SponsoredClaimableBalanceBuilder]
+            SignBuilder[SponsoredSignerBuilder]
+            DataBuilder[SponsoredDataEntryBuilder]
+        end
+
+        subgraph "Templates"
+            Onboard[UserOnboardingTemplate]
+            Airdrop[ClaimableBalanceTemplate]
+            Multi[MultiOperationTemplate]
+        end
+
+        subgraph "Utilities"
+            Validate[Validation Utils]
+            Cost[Cost Calculator]
+        end
+    end
+
+    Begin --> TxBuilder[Transaction Builder]
+    End --> TxBuilder
+    AccBuilder --> TxBuilder
+    TLBuilder --> TxBuilder
+    CBBuilder --> TxBuilder
+
+    TxBuilder --> Sign[Sign with Both Keys]
+    Sign --> Submit[Submit to Horizon]
+    Submit --> Result[SponsorshipResult]
+
+    Onboard --> AccBuilder
+    Onboard --> TLBuilder
+    Airdrop --> CBBuilder
+
+    Validate --> Begin
+    Validate --> End
+    Cost --> Onboard
+
+    style Begin fill:#e3f2fd
+    style End fill:#e3f2fd
+    style Onboard fill:#fff3e0
+    style TxBuilder fill:#f3e5f5
+```
+
+**Sponsorship Transaction Flow**:
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Manager as SponsoredReservesManager
+    participant Template as UserOnboardingTemplate
+    participant Horizon as Stellar Horizon
+    participant Sponsor as Sponsor Account
+    participant NewUser as New User Account
+
+    App->>Template: onboardUser(config, sponsorSecret, userSecret)
+    Template->>Manager: buildOnboardingOperations(config)
+    Manager->>Manager: validatePublicKeys()
+    Manager->>Manager: calculateCost()
+
+    Manager-->>Template: operations[]
+
+    Template->>Horizon: loadAccount(sponsorPublicKey)
+    Horizon-->>Template: sponsorAccount
+
+    Template->>Template: Build Transaction
+    Note over Template: 1. beginSponsoringFutureReserves
+    Note over Template: 2. createAccount (source: sponsor)
+    Note over Template: 3. changeTrust (source: newUser)
+    Note over Template: 4. endSponsoringFutureReserves (source: newUser)
+
+    Template->>Sponsor: sign(transaction)
+    Template->>NewUser: sign(transaction)
+
+    Template->>Horizon: submitTransaction(signedTx)
+
+    alt Success
+        Horizon-->>Template: {hash, ledger, successful: true}
+        Template-->>App: SponsorshipResult
+        Note over Sponsor: Reserves deducted
+        Note over NewUser: Account created with sponsored reserves
+    else Failure
+        Horizon-->>Template: Error
+        Template-->>App: Error details
+    end
+```
+
+**Base Reserve Costs**:
+
+| Entry Type | Base Reserves | XLM Cost |
+|------------|---------------|----------|
+| Account | 2 | 1.0 XLM |
+| Trustline | 1 | 0.5 XLM |
+| Offer | 1 | 0.5 XLM |
+| Data Entry | 1 | 0.5 XLM |
+| Signer | 1 | 0.5 XLM |
+| Claimable Balance | 1 | 0.5 XLM |
+
+**Key Files**:
+- `packages/core/stellar-sdk/src/sponsored-reserves/services/sponsored-reserves-manager.ts`
+- `packages/core/stellar-sdk/src/sponsored-reserves/builders/`
+- `packages/core/stellar-sdk/src/sponsored-reserves/templates/`
+
+---
+
 ### 3. Automation Engine
 
 **Purpose**: Enable DeFi automation with triggers, conditions, and actions.
