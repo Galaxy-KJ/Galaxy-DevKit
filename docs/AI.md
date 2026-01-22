@@ -236,16 +236,110 @@ When adding a new protocol (e.g., Blend, Soroswap):
 - Transaction building includes slippage protection
 - Health factor checks before risky operations
 
-### 5. Oracle System (🆕 To be implemented)
-Price and data oracles for Stellar:
-- On-chain oracle contracts (Soroban)
-- Off-chain oracle aggregators
-- Price feeds for XLM, USDC, and other assets
-- TWAP (Time-Weighted Average Price) calculations
+### 5. Oracle System
+Price and data oracles for Stellar with aggregation capabilities:
+- **IOracleSource Interface** - Standard interface for oracle sources
+- **OracleAggregator** - Aggregates prices from multiple sources
+- **Multiple Strategies** - Median, Weighted Average, TWAP
+- **Outlier Detection** - Statistical methods (IQR, Z-score)
+- **Validation** - Staleness, deviation, minimum sources checks
+- **Caching** - In-memory cache with TTL
+- **Circuit Breaker** - Automatic source health monitoring
 
-**Target files:**
-- `packages/core/oracles/src/services/oracle-service.ts`
-- `packages/contracts/oracle-aggregator/src/lib.rs`
+**Key Files:**
+- `packages/core/oracles/src/types/IOracleSource.ts` - Oracle source interface
+- `packages/core/oracles/src/aggregator/OracleAggregator.ts` - Main aggregator
+- `packages/core/oracles/src/aggregator/strategies/` - Aggregation strategies
+- `packages/core/oracles/src/validation/price-validator.ts` - Validation logic
+- `packages/core/oracles/src/cache/price-cache.ts` - Caching layer
+- `packages/core/oracles/src/utils/outlier-detection.ts` - Outlier detection
+
+**Oracle Source Implementation Pattern:**
+When implementing a new oracle source (e.g., CoinGecko, CoinMarketCap):
+1. Implement `IOracleSource` interface
+2. Implement `getPrice(symbol)` and `getPrices(symbols[])` methods
+3. Implement `getSourceInfo()` for metadata
+4. Implement `isHealthy()` for health checks
+5. Add to aggregator: `aggregator.addSource(source, weight)`
+
+**Example Oracle Source:**
+```typescript
+class CoinGeckoSource implements IOracleSource {
+  readonly name = 'coingecko';
+
+  async getPrice(symbol: string): Promise<PriceData> {
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
+    const data = await response.json();
+    return {
+      symbol,
+      price: data[symbol].usd,
+      timestamp: new Date(),
+      source: this.name,
+    };
+  }
+
+  async getPrices(symbols: string[]): Promise<PriceData[]> {
+    return Promise.all(symbols.map(s => this.getPrice(s)));
+  }
+
+  getSourceInfo(): SourceInfo {
+    return {
+      name: this.name,
+      description: 'CoinGecko price feed',
+      version: '1.0.0',
+      supportedSymbols: [],
+    };
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      await this.getPrice('bitcoin');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+**Aggregation Strategies:**
+1. **MedianStrategy** - Uses median price, robust against outliers
+   - Best for: General use, when outlier resistance is important
+   - Usage: `aggregator.setStrategy(new MedianStrategy())`
+
+2. **WeightedAverageStrategy** - Weighted average based on source weights
+   - Best for: When you want to prioritize certain sources
+   - Usage: `aggregator.setStrategy(new WeightedAverageStrategy())`
+   - Weights: Set when adding sources: `aggregator.addSource(source, 2.0)`
+
+3. **TWAPStrategy** - Time-weighted average price
+   - Best for: When recency matters, reduces impact of stale prices
+   - Usage: `aggregator.setStrategy(new TWAPStrategy(cache, timeWindowMs))`
+   - Requires: PriceCache instance for historical data
+
+**Validation Rules:**
+- **Staleness Check**: Prices must be within `maxStalenessMs` (default: 60 seconds)
+- **Minimum Sources**: Requires at least `minSources` valid prices (default: 2)
+- **Deviation Check**: Filters prices that deviate more than `maxDeviationPercent` from median (default: 10%)
+- **Outlier Detection**: Uses Z-score or IQR method to filter statistical outliers (default: Z-score with threshold 2.0)
+
+**Configuration Example:**
+```typescript
+const aggregator = new OracleAggregator({
+  minSources: 3,              // Require 3 sources
+  maxDeviationPercent: 5,    // Stricter deviation (5%)
+  maxStalenessMs: 30000,     // 30 seconds max age
+  enableOutlierDetection: true,
+  outlierThreshold: 2.5,     // Stricter outlier detection
+});
+```
+
+**Best Practices:**
+- Always use multiple sources (at least 2-3) for redundancy
+- Set appropriate weights for more reliable sources
+- Monitor source health regularly: `await aggregator.getSourceHealth()`
+- Handle aggregation errors gracefully with fallback logic
+- Use caching to reduce API calls and provide fallback during outages
 
 ## 🛠️ Tech Stack
 
