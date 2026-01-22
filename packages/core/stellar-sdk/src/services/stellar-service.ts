@@ -34,6 +34,14 @@ import { derivePath } from 'ed25519-hd-key';
 import { supabaseClient } from '../utils/supabase-client';
 import { NetworkUtils } from '../utils/network-utils';
 import { validateMemo } from '../utils/stellar-utils';
+import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager';
+import type {
+  CreateClaimableBalanceParams,
+  ClaimBalanceParams,
+  QueryClaimableBalancesParams,
+  ClaimableBalanceResult,
+  ClaimableBalance,
+} from '../claimable-balances/types';
 
 /**
  * Service class for Stellar operations
@@ -45,11 +53,16 @@ export class StellarService {
   private networkConfig: NetworkConfig;
   private supabase = supabaseClient;
   private networkUtils: NetworkUtils;
+  private claimableBalanceManager: ClaimableBalanceManager;
 
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
     this.server = new Horizon.Server(networkConfig.horizonUrl);
     this.networkUtils = new NetworkUtils();
+    this.claimableBalanceManager = new ClaimableBalanceManager(
+      this.server,
+      this.networkConfig.passphrase
+    );
   }
 
   /**
@@ -631,6 +644,10 @@ export class StellarService {
   switchNetwork(networkConfig: NetworkConfig): void {
     this.networkConfig = networkConfig;
     this.server = new Horizon.Server(networkConfig.horizonUrl);
+    this.claimableBalanceManager = new ClaimableBalanceManager(
+      this.server,
+      this.networkConfig.passphrase
+    );
   }
 
   private async submitTrxWithRetry(
@@ -669,5 +686,107 @@ export class StellarService {
     } catch (error) {
       return BASE_FEE;
     }
+  }
+
+  /**
+   * Creates a claimable balance
+   * @param wallet - Source wallet
+   * @param params - Create claimable balance parameters
+   * @param password - Wallet password
+   * @returns Promise<ClaimableBalanceResult>
+   */
+  async createClaimableBalance(
+    wallet: Wallet,
+    params: CreateClaimableBalanceParams,
+    password: string
+  ): Promise<ClaimableBalanceResult> {
+    return this.claimableBalanceManager.createClaimableBalance(
+      wallet,
+      params,
+      password
+    );
+  }
+
+  /**
+   * Claims a claimable balance
+   * @param wallet - Claimant wallet
+   * @param params - Claim parameters
+   * @param password - Wallet password
+   * @returns Promise<ClaimableBalanceResult>
+   */
+  async claimBalance(
+    wallet: Wallet,
+    params: ClaimBalanceParams,
+    password: string
+  ): Promise<ClaimableBalanceResult> {
+    return this.claimableBalanceManager.claimBalance(wallet, params, password);
+  }
+
+  /**
+   * Gets claimable balance details by ID
+   * @param balanceId - Balance ID
+   * @returns Promise<ClaimableBalance>
+   */
+  async getClaimableBalance(balanceId: string): Promise<ClaimableBalance> {
+    return this.claimableBalanceManager.getBalanceDetails(balanceId);
+  }
+
+  /**
+   * Queries claimable balances
+   * @param params - Query parameters
+   * @returns Promise<ClaimableBalance[]>
+   */
+  async getClaimableBalances(
+    params: QueryClaimableBalancesParams = {}
+  ): Promise<ClaimableBalance[]> {
+    return this.claimableBalanceManager.getClaimableBalances(params);
+  }
+
+  /**
+   * Gets claimable balances for a specific account (as claimant)
+   * @param publicKey - Account public key
+   * @param limit - Number of results to return
+   * @returns Promise<ClaimableBalance[]>
+   */
+  async getClaimableBalancesForAccount(
+    publicKey: string,
+    limit: number = 10
+  ): Promise<ClaimableBalance[]> {
+    return this.claimableBalanceManager.getClaimableBalancesForAccount(
+      publicKey,
+      limit
+    );
+  }
+
+  /**
+   * Gets claimable balances by asset
+   * @param asset - Asset to filter by
+   * @param limit - Number of results to return
+   * @returns Promise<ClaimableBalance[]>
+   */
+  async getClaimableBalancesByAsset(
+    asset: Asset,
+    limit: number = 10
+  ): Promise<ClaimableBalance[]> {
+    return this.claimableBalanceManager.getClaimableBalancesByAsset(
+      asset,
+      limit
+    );
+  }
+
+  /**
+   * Gets claimable balances by claimant
+   * @param claimantPublicKey - Claimant public key
+   * @param limit - Number of results to return
+   * @returns Promise<ClaimableBalance[]>
+   */
+  async getClaimableBalancesByClaimant(
+    claimantPublicKey: string,
+    limit: number = 10
+  ): Promise<ClaimableBalance[]> {
+    return this.claimableBalanceManager.getClaimableBalances({
+      claimant: claimantPublicKey,
+      limit,
+    });
   }
 }

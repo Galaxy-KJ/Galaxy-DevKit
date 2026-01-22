@@ -46,6 +46,42 @@ export {
   isValidAssetCode,
 } from './utils/stellar-utils';
 
+// Export Soroban functionality
+export * from './soroban';
+
+// Export claimable balances
+export type {
+  ClaimableBalance,
+  Claimant,
+  ClaimPredicate,
+  CreateClaimableBalanceParams,
+  ClaimBalanceParams,
+  QueryClaimableBalancesParams,
+  ClaimableBalanceResult,
+  TimeLockedBalanceParams,
+  VestingScheduleParams,
+  EscrowParams,
+} from './claimable-balances/types';
+
+export {
+  ClaimableBalanceManager,
+  unconditional,
+  beforeAbsoluteTime,
+  beforeRelativeTime,
+  not,
+  and,
+  or,
+  toStellarPredicate,
+  validatePredicate,
+  isPredicateClaimable,
+  createTimeLockedBalance,
+  createVestingSchedule,
+  createEscrow,
+  createTwoPartyEscrow,
+  createConditionalRelease,
+  createRefundableBalance,
+} from './claimable-balances';
+
 // Re-export Stellar SDK for convenience
 export {
   Keypair,

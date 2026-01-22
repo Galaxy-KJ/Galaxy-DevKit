@@ -1,7 +1,7 @@
 {
   "name": "@galaxy/core-stellar-sdk",
   "version": "1.0.0",
-  "description": "Galaxy Stellar SDK - Enhanced Stellar SDK for Galaxy DevKit",
+  "description": "Galaxy Stellar SDK - Enhanced Stellar SDK with Soroban smart contract support for Galaxy DevKit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -16,11 +16,12 @@
   "dependencies": {
     "@stellar/stellar-sdk": "^14.4.3",
     "@supabase/supabase-js": "^2.49.2",
+    "@types/jest": "^30.0.0",
     "bip39": "^3.1.0",
     "ed25519-hd-key": "^1.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.30",
     "jest": "^30.0.5",
     "ts-jest": "^29.0.0",
     "typescript": "^5.8.3"
@@ -30,7 +31,10 @@
     "blockchain",
     "sdk",
     "galaxy",
-    "defi"
+    "defi",
+    "soroban",
+    "smart-contracts",
+    "rust"
   ],
   "author": "Galaxy DevKit Team",
   "license": "MIT",
