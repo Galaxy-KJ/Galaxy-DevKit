@@ -46,6 +46,9 @@ export {
   isValidAssetCode,
 } from './utils/stellar-utils';
 
+// Export Soroban functionality
+export * from './soroban';
+
 // Export claimable balances
 export type {
   ClaimableBalance,
