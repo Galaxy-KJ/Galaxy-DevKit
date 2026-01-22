@@ -1,6 +1,6 @@
 # Galaxy Stellar SDK
 
-Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar operations including claimable balances.
+Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar operations including claimable balances and liquidity pools.
 
 ## Features
 
@@ -9,6 +9,7 @@ Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar op
 - ✅ Payments and transactions
 - ✅ Trustline management
 - ✅ Claimable balances
+- ✅ Liquidity pool operations (AMM)
 - ✅ Network switching (testnet/mainnet)
 - ✅ React hooks support
 
@@ -274,6 +275,170 @@ const operation = createRefundableBalance({
 // Recipient can claim before expiration
 // Sender can reclaim after expiration
 ```
+
+## Liquidity Pool Operations
+
+Liquidity pools enable automated market making (AMM) on Stellar using the constant product formula (x * y = k). Provide liquidity to pools and earn fees from trades.
+
+### Finding Pools
+
+```typescript
+import { Asset } from '@galaxy/core-stellar-sdk';
+
+// Find pools for asset pair
+const xlm = Asset.native();
+const usdc = new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5');
+
+const pools = await service.getPoolsForAssets(xlm, usdc, 5);
+console.log('Found', pools.length, 'pools');
+
+// Get specific pool details
+const pool = await service.getLiquidityPool(poolId);
+console.log('Reserve A:', pool.reserveA);
+console.log('Reserve B:', pool.reserveB);
+console.log('Total Shares:', pool.totalShares);
+```
+
+### Depositing Liquidity
+
+```typescript
+// Estimate deposit first
+const estimate = await service.estimatePoolDeposit(
+  poolId,
+  '100.0000000', // Amount of asset A
+  '500.0000000'  // Amount of asset B
+);
+
+console.log('Expected shares:', estimate.shares);
+console.log('Price impact:', estimate.priceImpact, '%');
+console.log('Pool share:', estimate.poolShare, '%');
+
+// Deposit with slippage protection
+const depositResult = await service.depositLiquidity(wallet, {
+  poolId: poolId,
+  maxAmountA: '100.0000000',
+  maxAmountB: '500.0000000',
+  slippageTolerance: '0.01', // 1% slippage tolerance
+  memo: 'LP deposit'
+}, password);
+
+console.log('Transaction Hash:', depositResult.hash);
+```
+
+### Withdrawing Liquidity
+
+```typescript
+// Get your shares
+const userShares = await service.getLiquidityPoolShares(wallet.publicKey, poolId);
+console.log('Your shares:', userShares);
+
+// Estimate withdrawal
+const withdrawEstimate = await service.estimatePoolWithdraw(
+  poolId,
+  '10.0000000' // Shares to withdraw
+);
+
+console.log('Expected Asset A:', withdrawEstimate.amountA);
+console.log('Expected Asset B:', withdrawEstimate.amountB);
+
+// Withdraw with slippage protection
+const withdrawResult = await service.withdrawLiquidity(wallet, {
+  poolId: poolId,
+  shares: '10.0000000',
+  slippageTolerance: '0.01',
+  memo: 'LP withdrawal'
+}, password);
+```
+
+### Pool Analytics
+
+```typescript
+import {
+  calculateShareValue,
+  calculateImpermanentLoss,
+  formatPoolAssets,
+  calculateSpotPrice
+} from '@galaxy/core-stellar-sdk';
+
+// Get pool analytics
+const analytics = await service.getPoolAnalytics(poolId);
+console.log('TVL:', analytics.tvl);
+console.log('Share Price:', analytics.sharePrice);
+
+// Calculate your position value
+const { valueA, valueB } = calculateShareValue(userShares, pool);
+console.log('Your position - Asset A:', valueA);
+console.log('Your position - Asset B:', valueB);
+
+// Calculate impermanent loss
+const initialPrice = '5.0000000'; // Price when you entered
+const currentPrice = calculateSpotPrice(pool.reserveA, pool.reserveB);
+const il = calculateImpermanentLoss(initialPrice, currentPrice);
+console.log('Impermanent Loss:', il, '%');
+
+// Format pool name
+const poolName = formatPoolAssets(pool);
+console.log('Pool:', poolName); // e.g., "XLM/USDC"
+```
+
+### Slippage Protection
+
+```typescript
+import { calculateMinimumAmounts, calculatePriceBounds } from '@galaxy/core-stellar-sdk';
+
+// Calculate minimum amounts with slippage tolerance
+const { minAmountA, minAmountB } = calculateMinimumAmounts(
+  '100.0000000',
+  '500.0000000',
+  '0.01' // 1% slippage
+);
+
+// Calculate price bounds
+const currentPrice = calculateSpotPrice(pool.reserveA, pool.reserveB);
+const { minPrice, maxPrice } = calculatePriceBounds(currentPrice, '0.02'); // 2% tolerance
+
+// Deposit with price bounds
+await service.depositLiquidity(wallet, {
+  poolId: poolId,
+  maxAmountA: '100.0000000',
+  maxAmountB: '500.0000000',
+  minPrice: minPrice,
+  maxPrice: maxPrice,
+  memo: 'Price protected deposit'
+}, password);
+```
+
+### Price Calculation Examples
+
+```typescript
+// Constant product formula: x * y = k
+const k = new BigNumber(pool.reserveA).multipliedBy(pool.reserveB);
+
+// Spot price: P = reserveB / reserveA
+const spotPrice = new BigNumber(pool.reserveB).dividedBy(pool.reserveA);
+
+// First deposit shares: sqrt(amountA * amountB)
+const shares = Math.sqrt(amountA * amountB);
+
+// Subsequent deposit shares: min(amountA/reserveA, amountB/reserveB) * totalShares
+const ratioA = amountA / pool.reserveA;
+const ratioB = amountB / pool.reserveB;
+const ratio = Math.min(ratioA, ratioB);
+const depositShares = ratio * pool.totalShares;
+
+// Withdrawal amounts: (shares / totalShares) * reserves
+const withdrawAmountA = (shares / pool.totalShares) * pool.reserveA;
+const withdrawAmountB = (shares / pool.totalShares) * pool.reserveB;
+```
+
+### Important Notes
+
+- **Pool IDs**: 64-character hex strings generated by Stellar network
+- **Precision**: All amounts use 7 decimal places
+- **Slippage**: Default 1%, warn if price impact > 5%
+- **Estimation**: Always estimate before executing operations
+- **First Deposit**: Uses geometric mean (sqrt) for share calculation
+- **Subsequent**: Uses proportional ratio to maintain pool balance
 
 ## React Hook Usage
 
