@@ -335,6 +335,41 @@ API Request → Validation → Business Logic → Database → Response
    - DDoS protection
    - Firewall rules
 
+### Biometric Authentication Pattern
+
+Biometric authentication is implemented as a security layer integrated with the Invisible Wallet system. It provides enrollment, authentication, secure key storage, and fallback mechanisms.
+
+High-level components:
+
+- `BiometricAuth` (core manager) — `packages/core/wallet/auth/src/BiometricAuth.ts`
+- `BiometricAuthProvider` (abstract interface) — implemented by providers such as `WebAuthNProvider` and `MockBiometricProvider` in `packages/core/wallet/auth/src/providers/`
+- Secure key storage — provider-specific (e.g., WebAuthn-backed credential storage) invoked via `storeKey`/`retrieveKey` on the provider interface
+- Fallback auth — PIN/password fallback flows managed by `BiometricAuth` when biometrics are unavailable or locked
+
+Event/flow diagram (simplified):
+
+```
+User -> UI -> BiometricAuth (initialize) -> Provider.checkAvailability()
+         BiometricAuth.enroll() -> Provider.registerCredential()
+         BiometricAuth.authenticate() -> Provider.authenticate() -> success/fail
+         BiometricAuth.storeEncryptedKey() -> Provider.storeKey()
+         BiometricAuth.retrieveEncryptedKey() -> Provider.retrieveKey()
+```
+
+Security notes:
+
+- The provider is responsible for platform-specific secure storage and should avoid exporting raw private keys.
+- Encrypted keys stored via `storeKey` should be protected by platform hardware where available (TEE, Secure Enclave) and fallback to encrypted software storage otherwise.
+- UI should present clear fallback options (PIN/password) when biometric hardware is unavailable or the account is locked.
+
+Files to review when designing or auditing biometric flows:
+
+- `packages/core/wallet/auth/src/BiometricAuth.ts`
+- `packages/core/wallet/auth/src/providers/WebAuthNProvider.ts`
+- `packages/core/wallet/auth/src/providers/MockProvider.ts`
+- `packages/core/wallet/auth/src/tests/BiometricAuth.test.ts`
+
+
 ## 🚀 Deployment Architecture
 
 ### Production Environment
