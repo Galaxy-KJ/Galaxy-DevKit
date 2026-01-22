@@ -59,10 +59,78 @@ Abstraction layer over `@stellar/stellar-sdk` providing simplified interfaces fo
 - Payments and transactions
 - Trustlines for custom assets
 - Network switching (testnet/mainnet)
+- **Sponsored Reserves**: Allow sponsors to pay base reserves for other accounts
 
 **Files to understand:**
 - `packages/core/stellar-sdk/src/services/stellar-service.ts`
 - `packages/core/stellar-sdk/src/types/stellar-types.ts`
+
+### 2.1 Sponsored Reserves System
+Allows sponsor accounts to pay base reserves for another account's ledger entries. Essential for user onboarding without requiring new users to hold XLM.
+
+**Supported Entry Types:**
+- Accounts (2 base reserves = 1 XLM)
+- Trustlines (1 base reserve = 0.5 XLM)
+- Offers (1 base reserve = 0.5 XLM)
+- Data entries (1 base reserve = 0.5 XLM)
+- Signers (1 base reserve = 0.5 XLM)
+- Claimable balances (1 base reserve = 0.5 XLM)
+
+**Files to understand:**
+- `packages/core/stellar-sdk/src/sponsored-reserves/services/sponsored-reserves-manager.ts` - Main manager class
+- `packages/core/stellar-sdk/src/sponsored-reserves/types/sponsored-reserves-types.ts` - Type definitions
+- `packages/core/stellar-sdk/src/sponsored-reserves/builders/` - Operation builders
+- `packages/core/stellar-sdk/src/sponsored-reserves/templates/` - Common patterns
+
+**Usage Example:**
+```typescript
+import {
+  SponsoredReservesManager,
+  UserOnboardingTemplate,
+  calculateOnboardingCost
+} from '@galaxy/core-stellar-sdk';
+
+// Create manager
+const manager = new SponsoredReservesManager(networkConfig);
+
+// Calculate cost before sponsoring
+const config = {
+  sponsorPublicKey: 'GSPONSOR...',
+  newUserPublicKey: 'GNEWUSER...',
+  trustlines: [{ assetCode: 'USDC', assetIssuer: 'GUSDC...' }],
+};
+const cost = calculateOnboardingCost(config);
+console.log('Total cost:', cost.totalCost, 'XLM');
+
+// Check sponsor eligibility
+const eligibility = await manager.checkSponsorshipEligibility(
+  'GSPONSOR...',
+  { sponsorPublicKey: 'GSPONSOR...', sponsoredPublicKey: 'GNEWUSER...', entryType: 'account' }
+);
+
+// Onboard user with sponsored account + trustlines
+const template = new UserOnboardingTemplate(networkConfig);
+const result = await template.onboardUser(config, sponsorSecret, newUserSecret);
+console.log('Transaction:', result.hash);
+```
+
+**Transaction Structure (Stellar requirement):**
+```typescript
+// Sponsor signs the whole transaction
+// Sponsored account is source for endSponsoringFutureReserves
+new TransactionBuilder(sponsorAccount, { fee, networkPassphrase })
+  .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: sponsored }))
+  .addOperation(/* sponsored operation with source: sponsored */)
+  .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored }))
+  .build();
+// Sign with both sponsor AND sponsored keypairs
+```
+
+**Security Considerations:**
+- Private keys passed to methods but never stored
+- Both sponsor and sponsored must sign transactions
+- Sponsors can revoke sponsorship (transfers reserve back to sponsored)
+- Use `checkSponsorshipEligibility()` before operations
 
 ### 3. Automation Engine
 Event-driven system for DeFi automation with:
