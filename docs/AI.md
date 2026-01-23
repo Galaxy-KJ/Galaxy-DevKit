@@ -347,6 +347,148 @@ class CoinGeckoSource implements IOracleSource {
 - **Deviation Check**: Filters prices that deviate more than `maxDeviationPercent` from median (default: 10%)
 - **Outlier Detection**: Uses Z-score or IQR method to filter statistical outliers (default: Z-score with threshold 2.0)
 
+### 6. Social Recovery System
+
+Social recovery allows users to recover wallet access through trusted guardians if they lose their primary credentials. This provides a balance between security and recoverability, similar to Argent wallet's approach.
+
+**Key Components:**
+- **SocialRecovery** - Main class managing recovery process
+- **Guardian Management** - Add/remove/verify guardians
+- **Recovery Process** - Initiate, approve, complete, cancel recovery
+- **Time-Lock Mechanism** - Configurable delay before execution (default: 48 hours)
+- **Notification System** - Alerts for guardians and wallet owner
+- **Fraud Detection** - Multi-factor verification and risk scoring
+- **Emergency Contacts** - Additional recovery contacts
+- **Recovery Testing** - Dry-run mode for testing without execution
+
+**Key Files:**
+- `packages/core/wallet/src/recovery/SocialRecovery.ts` - Main recovery class
+- `packages/core/wallet/src/recovery/types.ts` - Type definitions
+- `packages/core/wallet/src/recovery/NotificationService.ts` - Notification handling
+- `packages/core/wallet/src/recovery/__tests__/SocialRecovery.test.ts` - Unit tests
+- `packages/core/wallet/src/recovery/__tests__/SocialRecovery.integration.test.ts` - Integration tests
+
+**Guardian Selection Best Practices:**
+1. **Minimum 3 guardians recommended** - Provides redundancy and security
+2. **Diverse guardian set** - Mix of family, friends, and trusted contacts
+3. **Active guardians** - Choose people who will respond promptly
+4. **Geographic diversity** - Reduces risk of simultaneous unavailability
+5. **Technical capability** - Guardians should understand the recovery process
+6. **Trust relationship** - Only select people you trust with wallet recovery
+
+**Recovery Workflow:**
+1. **Setup Phase:**
+   - Add guardians (minimum 3, recommended 5-7)
+   - Configure threshold (default: 60% of guardians)
+   - Set time-lock delay (default: 48 hours)
+   - Verify all guardians
+
+2. **Recovery Initiation:**
+   - User initiates recovery with new owner key
+   - System verifies request for fraud indicators
+   - Notifications sent to all guardians
+   - Time-lock period starts
+
+3. **Guardian Approval:**
+   - Guardians receive approval requests
+   - Each guardian independently approves
+   - System tracks approvals
+   - Threshold reached triggers time-lock countdown
+
+4. **Time-Lock Period:**
+   - Configurable delay (default: 48 hours)
+   - Wallet owner receives warnings
+   - Owner can cancel during this period
+   - Early warning at 24 hours before execution
+
+5. **Recovery Execution:**
+   - After time-lock expires, recovery executes
+   - Uses Stellar multi-sig to transfer control
+   - New owner key gains wallet access
+   - All parties notified of completion
+
+**Security Considerations:**
+- **Encrypted Guardian Contacts** - Contact information stored encrypted
+- **Multi-Factor Verification** - Cryptographic signatures for approvals
+- **Fraud Detection** - Risk scoring and fraud indicator detection
+- **Recovery Attempt Logging** - All actions logged for audit
+- **Time-Lock Protection** - Prevents immediate execution
+- **Cancellation Rights** - Owner can cancel before execution
+- **Test Mode** - Dry-run testing without network execution
+
+**Usage Example:**
+```typescript
+import { SocialRecovery } from '@galaxy/core-wallet/recovery';
+import { Server, Networks } from '@stellar/stellar-sdk';
+
+const server = new Server('https://horizon-testnet.stellar.org');
+const encryptionKey = 'your-encryption-key-32-chars';
+
+// Initialize recovery system
+const recovery = new SocialRecovery(
+  {
+    guardians: [
+      { publicKey: 'G...', name: 'Guardian 1' },
+      { publicKey: 'G...', name: 'Guardian 2' },
+      { publicKey: 'G...', name: 'Guardian 3' },
+    ],
+    threshold: 2, // Need 2 out of 3
+    timeLockHours: 48,
+    enableTesting: true,
+  },
+  server,
+  Networks.TESTNET,
+  encryptionKey
+);
+
+// Add guardian
+await recovery.addGuardian(
+  guardianPublicKey,
+  'New Guardian',
+  'guardian@example.com'
+);
+
+// Initiate recovery
+const request = await recovery.initiateRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+
+// Guardian approves
+await recovery.guardianApprove(
+  request.id,
+  guardianPublicKey,
+  guardianSecretKey
+);
+
+// Complete recovery (after time-lock)
+const result = await recovery.completeRecovery(
+  request.id,
+  currentOwnerSecretKey
+);
+```
+
+**Recovery Testing:**
+```typescript
+// Run dry-run test
+const testResult = await recovery.testRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+
+console.log('Test successful:', testResult.success);
+console.log('Guardians notified:', testResult.guardiansNotified);
+console.log('Threshold reached:', testResult.thresholdReached);
+```
+
+**Architecture Decisions:**
+- **Minimum 3 guardians** - Provides redundancy
+- **Default threshold: 60%** - Balance between security and accessibility
+- **Time-lock delay: 48 hours** - Gives owner time to cancel
+- **Stellar multi-sig** - Uses native Stellar multi-signature for recovery
+- **Encrypted storage** - Guardian contacts encrypted at rest
+- **Event-driven** - Emits events for integration with notification systems
+
 **Configuration Example:**
 ```typescript
 const aggregator = new OracleAggregator({
