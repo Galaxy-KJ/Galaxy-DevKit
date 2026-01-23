@@ -1,382 +1,392 @@
-# Galaxy Stellar SDK
+# @galaxy/core/stellar-sdk
 
-Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar operations including claimable balances.
-
-## Features
-
-- ✅ Wallet creation and management
-- ✅ Account operations (balance, info, history)
-- ✅ Payments and transactions
-- ✅ Trustline management
-- ✅ Claimable balances
-- ✅ Network switching (testnet/mainnet)
-- ✅ React hooks support
+A comprehensive TypeScript SDK for Stellar blockchain operations, providing high-level abstractions over the Stellar SDK for common operations including account management, payments, assets, and sponsored reserves.
 
 ## Installation
 
 ```bash
-npm install @galaxy/core-stellar-sdk
+npm install @galaxy/core/stellar-sdk
 ```
+
+## Features
+
+- **Account Management**: Create, fund, and manage Stellar accounts
+- **Payments**: Send XLM and custom assets with ease
+- **Asset Operations**: Create trustlines, issue assets, manage balances
+- **Transaction Building**: Simplified transaction construction and submission
+- **Sponsored Reserves**: Enable users to hold assets without XLM reserves
+- **Network Support**: Testnet and Mainnet configuration
 
 ## Quick Start
 
 ```typescript
-import { StellarService, NetworkConfig, Asset } from '@galaxy/core-stellar-sdk';
+import { StellarService, NetworkConfig } from '@galaxy/core/stellar-sdk';
 
-const networkConfig: NetworkConfig = {
+// Configure for testnet
+const config: NetworkConfig = {
   network: 'testnet',
   horizonUrl: 'https://horizon-testnet.stellar.org',
-  passphrase: 'Test SDF Network ; September 2015'
+  passphrase: 'Test SDF Network ; September 2015',
 };
 
-const service = new StellarService(networkConfig);
+// Initialize the service
+const stellar = new StellarService(config);
 
-// Create wallet
-const wallet = await service.createWallet({}, password);
-
-// Send payment
-await service.sendPayment(wallet, {
-  destination: 'G...',
-  amount: '100.0000000',
-  asset: 'XLM'
-}, password);
+// Create a new account
+const keypair = Keypair.random();
+await stellar.createAccount(keypair.publicKey(), '100');
 ```
 
-## Claimable Balances Guide
+## Sponsored Reserves
 
-Claimable balances (CAP-0023) allow you to create payments that can be claimed later by recipients, with optional time-based or conditional predicates.
+The sponsored reserves module enables sponsor accounts to pay base reserves for another account's ledger entries. This is essential for user onboarding without requiring new users to hold XLM.
 
-### Creating Claimable Balances
+### Key Concepts
 
-#### Basic Example
+- **Sponsor**: Account that pays the reserve requirements
+- **Sponsored**: Account that benefits from the sponsorship
+- **Base Reserve**: Currently 0.5 XLM per ledger entry
+- **Supported Entries**: Accounts, trustlines, offers, data entries, claimable balances, signers
 
-```typescript
-import { Asset, unconditional } from '@galaxy/core-stellar-sdk';
+### Basic Usage
 
-// Create unconditional claimable balance
-const result = await service.createClaimableBalance(wallet, {
-  asset: Asset.native(),
-  amount: '100.0000000',
-  claimants: [{
-    destination: 'G...',
-    predicate: unconditional()
-  }]
-}, password);
-
-console.log('Balance ID:', result.balanceId);
-```
-
-#### Time-Locked Balance
+#### Create a Sponsored Account
 
 ```typescript
-import { beforeAbsoluteTime } from '@galaxy/core-stellar-sdk';
+import {
+  SponsoredAccountBuilder,
+  calculateEntryReserve,
+} from '@galaxy/core/stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 
-const unlockDate = new Date('2025-12-31');
+const networkConfig = {
+  network: 'testnet' as const,
+  horizonUrl: 'https://horizon-testnet.stellar.org',
+  passphrase: 'Test SDF Network ; September 2015',
+};
 
-const result = await service.createClaimableBalance(wallet, {
-  asset: Asset.native(),
-  amount: '1000.0000000',
-  claimants: [{
-    destination: 'G...',
-    predicate: beforeAbsoluteTime(unlockDate)
-  }]
-}, password);
-```
+const sponsorKeypair = Keypair.fromSecret('SPONSOR_SECRET');
+const newUserKeypair = Keypair.random();
 
-#### Relative Time Lock
+// Calculate cost
+const cost = calculateEntryReserve('account', 1);
+console.log('Sponsorship cost:', cost, 'XLM');
 
-```typescript
-import { beforeRelativeTime } from '@galaxy/core-stellar-sdk';
-
-// Must claim within 24 hours (86400 seconds)
-const result = await service.createClaimableBalance(wallet, {
-  asset: Asset.native(),
-  amount: '500.0000000',
-  claimants: [{
-    destination: 'G...',
-    predicate: beforeRelativeTime(86400)
-  }]
-}, password);
-```
-
-#### Multi-Claimant Balance
-
-```typescript
-// Multiple parties can claim (first to claim wins)
-const result = await service.createClaimableBalance(wallet, {
-  asset: Asset.native(),
-  amount: '1000.0000000',
-  claimants: [
-    {
-      destination: 'G...', // User 1
-      predicate: unconditional()
-    },
-    {
-      destination: 'G...', // User 2
-      predicate: unconditional()
-    },
-    {
-      destination: wallet.publicKey, // Self (for cleanup)
-      predicate: unconditional()
-    }
-  ]
-}, password);
-```
-
-### Claiming Balances
-
-```typescript
-// Claim a balance
-const claimResult = await service.claimBalance(claimantWallet, {
-  balanceId: '00000000...'
-}, password);
-
-console.log('Claimed:', claimResult.hash);
-```
-
-### Querying Claimable Balances
-
-```typescript
-// Get all claimable balances for an account
-const balances = await service.getClaimableBalancesForAccount(
-  publicKey,
-  10 // limit
+// Create sponsored account
+const builder = new SponsoredAccountBuilder(networkConfig);
+const result = await builder.createSponsoredAccount(
+  sponsorKeypair.secret(),
+  newUserKeypair.secret(),
+  '0' // Starting balance can be 0 when sponsored
 );
 
-// Get balances by asset
-const xlmBalances = await service.getClaimableBalancesByAsset(
-  Asset.native(),
-  10
+console.log('Account created:', result.hash);
+```
+
+#### Create Sponsored Trustlines
+
+```typescript
+import {
+  SponsoredTrustlineBuilder,
+  getDetailedBreakdown,
+} from '@galaxy/core/stellar-sdk';
+
+const assets = [
+  { assetCode: 'USDC', assetIssuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5' },
+  { assetCode: 'EURC', assetIssuer: 'GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2' },
+];
+
+// Calculate cost
+const breakdown = getDetailedBreakdown([{ type: 'trustline', count: assets.length }]);
+console.log('Total cost:', breakdown.totalCost, 'XLM');
+
+// Create sponsored trustlines
+const builder = new SponsoredTrustlineBuilder(networkConfig);
+const result = await builder.createMultipleSponsoredTrustlines(
+  sponsorKeypair.secret(),
+  userKeypair.secret(),
+  assets
 );
 
-// Get specific balance details
-const balance = await service.getClaimableBalance(balanceId);
-
-console.log('Balance:', balance.amount, balance.asset);
-console.log('Claimants:', balance.claimants);
+console.log('Trustlines created:', result.sponsoredEntries.length);
 ```
 
-## Predicate Examples
+#### User Onboarding Template
 
-### Unconditional
-
-```typescript
-import { unconditional } from '@galaxy/core-stellar-sdk';
-
-const predicate = unconditional(); // Can claim anytime
-```
-
-### Time-Based Predicates
+For complete user onboarding (account + trustlines + data entries):
 
 ```typescript
-import { beforeAbsoluteTime, beforeRelativeTime } from '@galaxy/core-stellar-sdk';
+import {
+  UserOnboardingTemplate,
+  calculateOnboardingCost,
+  SponsoredReservesManager,
+} from '@galaxy/core/stellar-sdk';
 
-// Absolute time (before specific date)
-const predicate1 = beforeAbsoluteTime(new Date('2025-12-31'));
+const onboardingConfig = {
+  sponsorPublicKey: sponsorKeypair.publicKey(),
+  newUserPublicKey: newUserKeypair.publicKey(),
+  startingBalance: '0',
+  trustlines: [
+    { assetCode: 'USDC', assetIssuer: 'GBBD47IF...' },
+    { assetCode: 'PLATFORM', assetIssuer: 'GPLATFORM...' },
+  ],
+  dataEntries: [
+    { name: 'onboarded_at', value: new Date().toISOString() },
+    { name: 'platform', value: 'galaxy-devkit' },
+  ],
+  memo: 'Welcome to Galaxy!',
+};
 
-// Relative time (within X seconds)
-const predicate2 = beforeRelativeTime(86400); // 24 hours
-```
+// Calculate cost
+const cost = calculateOnboardingCost(onboardingConfig);
+console.log('Total onboarding cost:', cost.totalCost, 'XLM');
 
-### Complex Predicates
-
-```typescript
-import { and, or, not } from '@galaxy/core-stellar-sdk';
-
-// AND: Both conditions must be true
-const andPredicate = and(
-  beforeAbsoluteTime(new Date('2025-12-31')),
-  unconditional() // This will always be true, so effectively just time-locked
+// Check sponsor eligibility
+const manager = new SponsoredReservesManager(networkConfig);
+const eligibility = await manager.checkSponsorshipEligibility(
+  sponsorKeypair.publicKey(),
+  cost
 );
 
-// OR: Either condition must be true
-const orPredicate = or(
-  beforeAbsoluteTime(new Date('2025-01-01')),
-  beforeAbsoluteTime(new Date('2025-12-31'))
-);
-
-// NOT: Negation
-const notPredicate = not(beforeAbsoluteTime(new Date('2025-01-01')));
-```
-
-## Use Case Implementations
-
-### Vesting Schedule
-
-```typescript
-import { createVestingSchedule, Asset } from '@galaxy/core-stellar-sdk';
-
-const sourceAccount = await server.loadAccount(wallet.publicKey);
-
-const operations = createVestingSchedule(sourceAccount, {
-  asset: Asset.native(),
-  totalAmount: '10000.0000000',
-  claimant: 'G...',
-  vestingPeriods: [
-    { date: new Date('2025-01-01'), percentage: 25 },
-    { date: new Date('2025-04-01'), percentage: 25 },
-    { date: new Date('2025-07-01'), percentage: 25 },
-    { date: new Date('2025-10-01'), percentage: 25 }
-  ]
-});
-
-// Add operations to transaction
-const tx = new TransactionBuilder(sourceAccount, {
-  fee: BASE_FEE,
-  networkPassphrase: networkConfig.passphrase
-});
-
-operations.forEach(op => tx.addOperation(op));
-const transaction = tx.build();
-```
-
-### Escrow
-
-```typescript
-import { createEscrow, Asset } from '@galaxy/core-stellar-sdk';
-
-const operation = createEscrow({
-  asset: Asset.native(),
-  amount: '5000.0000000',
-  parties: ['G...', 'G...'], // Buyer and seller
-  releaseDate: new Date('2025-06-01'),
-  arbitrator: 'G...' // Optional arbitrator
-});
-```
-
-### Two-Party Escrow with Arbitrator
-
-```typescript
-import { createTwoPartyEscrow, Asset } from '@galaxy/core-stellar-sdk';
-
-const operation = createTwoPartyEscrow({
-  asset: Asset.native(),
-  amount: '10000.0000000',
-  buyer: 'G...',
-  seller: 'G...',
-  arbitrator: 'G...',
-  releaseDate: new Date('2025-06-01')
-});
-```
-
-### Refundable Balance
-
-```typescript
-import { createRefundableBalance, Asset } from '@galaxy/core-stellar-sdk';
-
-const operation = createRefundableBalance({
-  asset: Asset.native(),
-  amount: '1000.0000000',
-  recipient: 'G...',
-  sender: wallet.publicKey,
-  expirationDate: new Date('2025-12-31')
-});
-// Recipient can claim before expiration
-// Sender can reclaim after expiration
-```
-
-## React Hook Usage
-
-```typescript
-import { useStellar } from '@galaxy/core-stellar-sdk';
-
-function MyComponent() {
-  const {
-    wallet,
-    createWallet,
-    createClaimableBalance,
-    claimBalance,
-    getClaimableBalances
-  } = useStellar(networkConfig);
-
-  const handleCreateBalance = async () => {
-    if (!wallet) return;
-    
-    const result = await createClaimableBalance({
-      asset: Asset.native(),
-      amount: '100.0000000',
-      claimants: [{
-        destination: 'G...',
-        predicate: unconditional()
-      }]
-    }, password);
-    
-    console.log('Created:', result.balanceId);
-  };
-
-  return (
-    <button onClick={handleCreateBalance}>
-      Create Claimable Balance
-    </button>
-  );
+if (!eligibility.eligible) {
+  console.error('Sponsor needs more XLM:', eligibility.shortfall);
+  return;
 }
+
+// Execute onboarding
+const template = new UserOnboardingTemplate(networkConfig);
+const result = await template.onboardUser(
+  onboardingConfig,
+  sponsorKeypair.secret(),
+  newUserKeypair.secret()
+);
+
+console.log('User onboarded:', result.hash);
+```
+
+#### Claimable Balances for Airdrops
+
+Create sponsored claimable balances for token airdrops:
+
+```typescript
+import { ClaimableBalanceTemplate } from '@galaxy/core/stellar-sdk';
+
+const recipients = [
+  { destination: 'GUSER1...', amount: '100' },
+  { destination: 'GUSER2...', amount: '100' },
+  { destination: 'GUSER3...', amount: '100' },
+];
+
+const asset = { code: 'PLATFORM', issuer: 'GPLATFORM...' };
+const expirationTime = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60; // 30 days
+
+const template = new ClaimableBalanceTemplate(networkConfig);
+const results = await template.createSponsoredAirdrop(
+  sponsorKeypair.secret(),
+  sourceKeypair.secret(),
+  asset,
+  recipients,
+  expirationTime
+);
+
+console.log('Airdrop created:', results.length, 'batches');
+```
+
+#### Vesting Schedules
+
+Create time-locked token vesting:
+
+```typescript
+import { ClaimableBalanceTemplate } from '@galaxy/core/stellar-sdk';
+
+// Create 4-tranche vesting over 1 year
+const vestingSchedule = ClaimableBalanceTemplate.createLinearVestingSchedule(
+  '10000', // Total tokens
+  4, // Number of tranches
+  Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60, // Start in 90 days
+  90 * 24 * 60 * 60 // 90 days between tranches
+);
+
+const template = new ClaimableBalanceTemplate(networkConfig);
+const result = await template.createSponsoredVesting(
+  sponsorKeypair.secret(),
+  sourceKeypair.secret(),
+  asset,
+  recipientPublicKey,
+  vestingSchedule
+);
+
+console.log('Vesting created:', result.sponsoredEntries.length, 'tranches');
+```
+
+### Query Sponsored Entries
+
+```typescript
+import { SponsoredReservesManager } from '@galaxy/core/stellar-sdk';
+
+const manager = new SponsoredReservesManager(networkConfig);
+
+// Get entries sponsored FOR an account
+const entriesFor = await manager.getSponsoredEntries(userPublicKey);
+
+// Get entries sponsored BY an account
+const entriesBy = await manager.getEntriesSponsoredBy(sponsorPublicKey);
+
+// Filter by type
+const trustlines = await manager.getSponsoredEntries(userPublicKey, {
+  entryType: 'trustline',
+});
+```
+
+### Revoking Sponsorship
+
+```typescript
+const manager = new SponsoredReservesManager(networkConfig);
+
+// Revoke account sponsorship
+await manager.revokeAccountSponsorship(
+  sponsorKeypair.secret(),
+  accountPublicKey
+);
+
+// Revoke trustline sponsorship
+await manager.revokeTrustlineSponsorship(
+  sponsorKeypair.secret(),
+  accountPublicKey,
+  { code: 'USDC', issuer: 'GBBD47IF...' }
+);
+```
+
+### Cost Calculation
+
+```typescript
+import {
+  calculateEntryReserve,
+  getDetailedBreakdown,
+  calculateTotalCost,
+} from '@galaxy/core/stellar-sdk';
+
+// Single entry cost
+const accountCost = calculateEntryReserve('account', 1); // 1 XLM (2 base reserves)
+const trustlineCost = calculateEntryReserve('trustline', 1); // 0.5 XLM
+
+// Detailed breakdown
+const breakdown = getDetailedBreakdown([
+  { type: 'account', count: 1 },
+  { type: 'trustline', count: 3 },
+  { type: 'data', count: 2 },
+]);
+
+console.log('Breakdown:');
+for (const item of breakdown.entries) {
+  console.log(`  ${item.description}: ${item.cost} XLM`);
+}
+console.log('Total:', breakdown.totalCost, 'XLM');
+console.log('Transaction fee:', breakdown.transactionFee, 'XLM');
+```
+
+### Multi-Signature Support
+
+For scenarios where keys are held by different parties:
+
+```typescript
+import { SponsoredAccountBuilder } from '@galaxy/core/stellar-sdk';
+
+const builder = new SponsoredAccountBuilder(networkConfig);
+
+// Build unsigned transaction
+const { xdr, requiredSigners } = await builder.buildUnsignedTransaction(
+  sponsorPublicKey,
+  newUserPublicKey,
+  '0'
+);
+
+console.log('Transaction XDR:', xdr);
+console.log('Required signers:', requiredSigners);
+
+// Each party signs the XDR separately
+// Then submit using signAndSubmitSponsorshipTransaction
 ```
 
 ## API Reference
 
-### StellarService Methods
+### Classes
 
-#### Claimable Balance Methods
+| Class | Description |
+|-------|-------------|
+| `StellarService` | Core service for Stellar operations |
+| `SponsoredReservesManager` | Main manager for sponsored reserves operations |
+| `SponsoredAccountBuilder` | Builder for sponsored account creation |
+| `SponsoredTrustlineBuilder` | Builder for sponsored trustlines |
+| `SponsoredClaimableBalanceBuilder` | Builder for sponsored claimable balances |
+| `SponsoredSignerBuilder` | Builder for sponsored signers |
+| `SponsoredDataEntryBuilder` | Builder for sponsored data entries |
+| `UserOnboardingTemplate` | Template for complete user onboarding |
+| `ClaimableBalanceTemplate` | Template for airdrops and vesting |
+| `MultiOperationTemplate` | Template for batch operations |
 
-- `createClaimableBalance(wallet, params, password)` - Create a claimable balance
-- `claimBalance(wallet, params, password)` - Claim a balance
-- `getClaimableBalance(balanceId)` - Get balance details
-- `getClaimableBalances(params)` - Query balances with filters
-- `getClaimableBalancesForAccount(publicKey, limit)` - Get balances for account
-- `getClaimableBalancesByAsset(asset, limit)` - Get balances by asset
+### Utility Functions
 
-#### Standard Methods
+| Function | Description |
+|----------|-------------|
+| `calculateEntryReserve(type, count)` | Calculate reserve for entry type |
+| `getDetailedBreakdown(entries)` | Get detailed cost breakdown |
+| `calculateTotalCost(config)` | Calculate total sponsorship cost |
+| `calculateOnboardingCost(config)` | Calculate user onboarding cost |
+| `validatePublicKey(key)` | Validate Stellar public key |
+| `validateSecretKey(key)` | Validate Stellar secret key |
+| `validateSponsorBalance(sponsor, required)` | Check sponsor has sufficient balance |
 
-- `createWallet(config, password)` - Create new wallet
-- `createWalletFromMnemonic(mnemonic, password, config)` - Create from mnemonic
-- `sendPayment(wallet, params, password)` - Send payment
-- `getAccountInfo(publicKey)` - Get account information
-- `getBalance(publicKey, asset)` - Get balance for asset
-- `addTrustline(wallet, assetCode, assetIssuer, limit, password)` - Add trustline
+### Types
 
-### Predicate Builders
+```typescript
+interface NetworkConfig {
+  network: 'testnet' | 'mainnet';
+  horizonUrl: string;
+  passphrase: string;
+}
 
-- `unconditional()` - Unconditional predicate
-- `beforeAbsoluteTime(timestamp)` - Before absolute timestamp
-- `beforeRelativeTime(seconds)` - Before relative time
-- `and(predicate1, predicate2)` - AND operator
-- `or(predicate1, predicate2)` - OR operator
-- `not(predicate)` - NOT operator
+type SponsoredEntryType =
+  | 'account'
+  | 'trustline'
+  | 'offer'
+  | 'data'
+  | 'claimableBalance'
+  | 'signer';
 
-### Helper Functions
+interface SponsorshipResult {
+  hash: string;
+  ledger: number;
+  status: 'success' | 'failed';
+  feePaid: string;
+  sponsoredEntries: SponsoredEntry[];
+}
 
-- `createTimeLockedBalance(params)` - Time-locked balance operation
-- `createVestingSchedule(sourceAccount, params)` - Vesting schedule operations
-- `createEscrow(params)` - Escrow operation
-- `createTwoPartyEscrow(params)` - Two-party escrow
-- `createRefundableBalance(params)` - Refundable balance
-
-## Important Notes
-
-### Trustlines
-
-For non-native assets, claimants must establish a trustline before claiming, otherwise the claim will fail with `op_no_trust` error.
-
-### Minimum Balance
-
-Each claimant increases the source account's minimum balance by one base reserve (0.5 XLM).
-
-### Unclaimed Balances
-
-Unclaimed balances persist on the ledger indefinitely. Best practice: include your own account as a claimant for cleanup flexibility.
-
-### Balance ID
-
-The balance ID is generated as SHA-256 hash of the operation ID. It's returned in the `createClaimableBalance` result.
+interface UserOnboardingConfig {
+  sponsorPublicKey: string;
+  newUserPublicKey: string;
+  startingBalance: string;
+  trustlines?: Array<{ assetCode: string; assetIssuer: string }>;
+  dataEntries?: Array<{ name: string; value: string }>;
+  memo?: string;
+}
+```
 
 ## Examples
 
-See `docs/examples/stellar-sdk/` for complete examples:
-- `11-claimable-balance.ts` - Basic create and claim
-- `12-time-locked-payment.ts` - Time-locked payments
-- `13-escrow.ts` - Escrow implementation
-- `14-vesting.ts` - Token vesting schedules
+See the [examples directory](../../docs/examples/stellar-sdk/) for complete working examples:
+
+- `15-sponsor-account.ts` - Create sponsored accounts
+- `16-sponsor-trustline.ts` - Create sponsored trustlines
+- `17-onboarding-flow.ts` - Complete user onboarding flow
+
+## Testing
+
+```bash
+cd packages/core/stellar-sdk
+npm test
+```
 
 ## License
 
-MIT
+MIT License - see the [LICENSE](../../../LICENSE) file for details.
