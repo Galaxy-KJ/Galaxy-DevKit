@@ -13,7 +13,8 @@ Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar op
 - ✅ Liquidity pool operations (AMM)
 - ✅ Network switching (testnet/mainnet)
 - ✅ React hooks support
-=======
+
+
 A comprehensive TypeScript SDK for Stellar blockchain operations, providing high-level abstractions over the Stellar SDK for common operations including account management, payments, assets, and sponsored reserves.
 
 
