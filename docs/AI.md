@@ -591,6 +591,7 @@ The Multi-Signature system enables secure transaction coordination for high-valu
 * `packages/core/wallet/src/multisig/MultiSigWallet.ts`
 * `packages/core/wallet/src/multisig/TransactionProposal.ts`
 * `packages/core/wallet/src/multisig/types.ts`
+* `packages/core/wallet/src/multisig/NotificationService.ts`
 
 ## Multi-Sig Workflow
 

@@ -1325,7 +1325,7 @@ The Multi-Signature system decouples transaction creation from execution. It uti
 
 ## System Components
 
-```
+```mermaid
 graph TB
     subgraph "Off-Chain Coordination"
         MSW[MultiSigWallet]
@@ -1364,7 +1364,7 @@ graph TB
 
 The consensus mechanism ensures that a transaction is only submitted to the network when the sum of weights from collected signatures meets or exceeds the required threshold.
 
-```
+```mermaid
 sequenceDiagram
     participant Creator
     participant Wallet as MultiSigWallet
