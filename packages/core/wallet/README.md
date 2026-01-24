@@ -182,4 +182,75 @@ See the following example files for detailed usage:
 
 ---
 
+# Multi-Signature Support
+
+The wallet package includes a robust Multi-Signature coordination system. It allows multiple parties to propose, review, and sign transactions before executing them on the Stellar network.
+
+## Key Features
+
+* Proposal System: Off-chain coordination for on-chain execution.
+* Flexible Thresholds: Support for Low, Medium, and High security levels.
+* Weight Management: Assign different voting weights to signers.
+* Time-outs: Automatic expiration of stale proposals.
+* Notifications: Event-driven alerts for signers.
+
+## Quick Setup
+
+```javascript
+import { MultiSigWallet } from '@galaxy/core-wallet/multisig';
+import { Horizon, Networks } from '@stellar/stellar-sdk';
+
+const server = new Horizon.Server('https://horizon-testnet.stellar.org');
+
+// Initialize Wallet
+const wallet = new MultiSigWallet(server, {
+  signers: [
+    { publicKey: 'GA...', weight: 1, name: 'Alice' },
+    { publicKey: 'GB...', weight: 1, name: 'Bob' },
+    { publicKey: 'GC...', weight: 2, name: 'Admin' }
+  ],
+  threshold: {
+    masterWeight: 0, // Master key disabled for extra security
+    low: 1,
+    medium: 2,
+    high: 3
+  },
+  proposalExpirationSeconds: 3600, // 1 hour
+  networkPassphrase: Networks.TESTNET
+});
+
+// Setup on-chain (One time operation)
+await wallet.setupOnChain(sourceSecretKey);
+```
+
+## Transaction Lifecycle
+
+### 1. Create Proposal:
+
+```javascript
+const proposal = await wallet.proposeTransaction(
+  creatorPub,
+  xdrString,
+  "Monthly Vendor Payment"
+);
+```
+
+### 2. Sign Proposal:
+
+```javascript
+// Signer reviews XDR and signs locally
+const signature = keypair.sign(txHash).toString('base64');
+
+// Submit signature to wallet
+await wallet.signProposal(proposal.id, signerPub, signature);
+```
+
+### 3. Execute:
+
+```javascript
+// Anyone can trigger execution once threshold is met
+const result = await wallet.executeProposal(proposal.id);
+console.log('Tx Hash:', result);
+```
+
 Maintained by Galaxy DevKit Team
