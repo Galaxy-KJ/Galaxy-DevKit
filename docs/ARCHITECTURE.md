@@ -1317,6 +1317,89 @@ interface SocialRecoveryConfig {
 
 ---
 
+# Multi-Signature Architecture
+
+## Overview
+
+The Multi-Signature system decouples transaction creation from execution. It utilizes Stellar's native multi-sig capabilities for security enforcement while providing an off-chain layer for proposal management and signature collection.
+
+## System Components
+
+```mermaid
+graph TB
+    subgraph "Off-Chain Coordination"
+        MSW[MultiSigWallet]
+        TP[TransactionProposal]
+        SC[SignatureCollector]
+        NS[NotificationService]
+    end
+
+    subgraph "State Management"
+        Store[(Proposal Store)]
+        Config[Signer Config]
+    end
+
+    subgraph "Stellar Network"
+        Horizon[Horizon API]
+        Native[Native Verification]
+    end
+
+    User[Creator] -->|Propose| MSW
+    Signer[Signer] -->|Sign| MSW
+    
+    MSW -->|Create| TP
+    TP -->|Persist| Store
+    MSW -->|Validate| SC
+    MSW -->|Alert| NS
+    
+    SC -->|Verify| Native
+    MSW -->|Execute| Horizon
+    
+    style MSW fill:#e1f5ff
+    style TP fill:#fff3e0
+    style Horizon fill:#f3e5f5
+```
+
+## Consensus Flow
+
+The consensus mechanism ensures that a transaction is only submitted to the network when the sum of weights from collected signatures meets or exceeds the required threshold.
+
+```mermaid
+sequenceDiagram
+    participant Creator
+    participant Wallet as MultiSigWallet
+    participant SignerA
+    participant SignerB
+    participant Stellar
+
+    Note over Stellar: Threshold: 2 (Medium)
+
+    Creator->>Wallet: proposeTransaction(XDR)
+    Wallet->>Wallet: Create Proposal (Pending)
+    Wallet-->>SignerA: Notify: New Proposal
+    Wallet-->>SignerB: Notify: New Proposal
+
+    SignerA->>Wallet: signProposal(SigA)
+    Note right of Wallet: SignerA Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1 < 2 (Pending)
+
+    SignerB->>Wallet: signProposal(SigB)
+    Note right of Wallet: SignerB Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1+1 = 2 (Ready)
+    
+    Wallet->>Stellar: executeProposal()
+    Stellar->>Stellar: Verify Signatures & Threshold
+    Stellar-->>Wallet: Success (TxHash)
+    Wallet->>Creator: Notify: Executed
+```
+
+## Security Considerations
+
+1. **Atomic Weight Calculation**: Weights are calculated dynamically based on the current signer configuration vs. the requirements captured at proposal time.
+2. **Signature Validation**: Every signature submitted is cryptographically verified against the transaction hash and the signer's public key before being stored.
+3. **Threshold Enforcement**: The final gatekeeper is the Stellar Network itself. Even if the off-chain logic fails, the Stellar network will reject the transaction if signatures are missing.
+4. **Replay Protection**: Transaction proposals are bound to specific sequence numbers via the Stellar SDK, preventing replay attacks.
+
 ## 🔄 Data Flow
 
 ### Wallet Creation Flow

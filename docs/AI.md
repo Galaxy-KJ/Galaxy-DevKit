@@ -575,6 +575,48 @@ const aggregator = new OracleAggregator({
 - Handle aggregation errors gracefully with fallback logic
 - Use caching to reduce API calls and provide fallback during outages
 
+# 7. Multi-Signature Wallet System
+
+The Multi-Signature system enables secure transaction coordination for high-value accounts. It uses a hybrid approach: On-chain enforcement (Stellar multisig) + Off-chain coordination (Proposal system).
+
+## Key Components
+
+* **MultiSigWallet** - Main controller for proposals and execution
+* **TransactionProposal** - Wrapper for pending transactions
+* **SignatureCollector** - Validates and aggregates signatures
+* **NotificationService** - Alerts signers of new proposals
+
+## Files to Understand
+
+* `packages/core/wallet/src/multisig/MultiSigWallet.ts`
+* `packages/core/wallet/src/multisig/TransactionProposal.ts`
+* `packages/core/wallet/src/multisig/types.ts`
+* `packages/core/wallet/src/multisig/NotificationService.ts`
+
+## Multi-Sig Workflow
+
+1. **Setup**: Configure signers and thresholds on-chain.
+2. **Proposal**: Creator proposes a transaction XDR.
+3. **Collection**: Signers validate and sign the proposal off-chain.
+4. **Execution**: Once the weight threshold is met, the transaction is submitted to Stellar.
+
+## Usage Example
+
+```javascript
+import { MultiSigWallet } from '@galaxy/core-wallet/multisig';
+
+const wallet = new MultiSigWallet(server, config);
+
+// Propose
+const proposal = await wallet.proposeTransaction(creatorPub, xdr, 'Payment');
+
+// Sign
+await wallet.signProposal(proposal.id, signerPub, signature);
+
+// Execute
+await wallet.executeProposal(proposal.id);
+```
+
 ## 🛠️ Tech Stack
 
 ### Backend
