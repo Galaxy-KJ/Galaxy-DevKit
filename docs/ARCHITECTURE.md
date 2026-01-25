@@ -1560,6 +1560,131 @@ graph TD
     style ReturnFalse fill:#ffebee
 ```
 
+### Liquidity Pool Operations Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant StellarService
+    participant LPM as LiquidityPoolManager
+    participant Calc as Calculations
+    participant Horizon
+    participant Network
+
+    Note over User,Network: Deposit Liquidity Flow
+    User->>StellarService: depositLiquidity(wallet, params, password)
+    StellarService->>LPM: depositLiquidity(wallet, params, password)
+    LPM->>LPM: validateDepositParams(params)
+    LPM->>Horizon: getPoolDetails(poolId)
+    Horizon-->>LPM: Pool {reserveA, reserveB, totalShares}
+    LPM->>Calc: calculateDepositShares(amountA, amountB, pool)
+    Calc->>Calc: Calculate optimal ratio
+    Calc-->>LPM: {shares, actualAmountA, actualAmountB}
+    LPM->>LPM: Build liquidityPoolDeposit operation
+    LPM->>Network: Submit transaction
+    Network-->>LPM: Transaction result
+    LPM-->>StellarService: LiquidityPoolResult {poolId, hash}
+    StellarService-->>User: Deposit successful
+
+    Note over User,Network: Withdraw Liquidity Flow
+    User->>StellarService: withdrawLiquidity(wallet, params, password)
+    StellarService->>LPM: withdrawLiquidity(wallet, params, password)
+    LPM->>LPM: validateWithdrawParams(params)
+    LPM->>Horizon: getPoolDetails(poolId)
+    Horizon-->>LPM: Pool details
+    LPM->>Calc: calculateWithdrawAmounts(shares, pool)
+    Calc-->>LPM: {amountA, amountB}
+    LPM->>Horizon: getUserShares(publicKey, poolId)
+    Horizon-->>LPM: User's share balance
+    LPM->>LPM: Validate sufficient shares
+    LPM->>LPM: Build liquidityPoolWithdraw operation
+    LPM->>Network: Submit transaction
+    Network-->>LPM: Transaction result
+    LPM-->>StellarService: LiquidityPoolResult
+    StellarService-->>User: Withdrawal successful
+```
+
+### Liquidity Pool AMM Formula
+
+```mermaid
+graph TD
+    Start[Pool State] --> Formula[Constant Product Formula<br/>x × y = k]
+
+    Formula --> DepositQ{Deposit or Withdraw?}
+
+    DepositQ -->|Deposit| CheckFirst{First Deposit?}
+    CheckFirst -->|Yes| GeometricMean[Shares = √amountA × amountB]
+    CheckFirst -->|No| CalcRatio[Calculate Ratios<br/>ratioA = amountA / reserveA<br/>ratioB = amountB / reserveB]
+
+    CalcRatio --> MinRatio[minRatio = min ratioA, ratioB]
+    MinRatio --> PropShares[shares = minRatio × totalShares]
+    PropShares --> ActualAmounts[actualAmountA = minRatio × reserveA<br/>actualAmountB = minRatio × reserveB]
+
+    DepositQ -->|Withdraw| ShareRatio[shareRatio = shares / totalShares]
+    ShareRatio --> WithdrawAmounts[amountA = shareRatio × reserveA<br/>amountB = shareRatio × reserveB]
+
+    GeometricMean --> UpdatePool[Update Pool State]
+    ActualAmounts --> UpdatePool
+    WithdrawAmounts --> UpdatePool
+
+    UpdatePool --> NewK[New k = newReserveA × newReserveB]
+    NewK --> SpotPrice[Spot Price = reserveB / reserveA]
+    SpotPrice --> PriceImpact[Price Impact = abs spotPrice - oldPrice / oldPrice]
+
+    style Start fill:#e3f2fd
+    style Formula fill:#fff9c4
+    style UpdatePool fill:#e8f5e9
+    style GeometricMean fill:#f3e5f5
+    style PropShares fill:#f3e5f5
+```
+
+### Liquidity Pool Architecture
+
+```mermaid
+graph TB
+    subgraph "Service Layer"
+        SS[StellarService]
+    end
+
+    subgraph "Manager Layer"
+        LPM[LiquidityPoolManager<br/>• depositLiquidity<br/>• withdrawLiquidity<br/>• getPoolDetails<br/>• getUserShares<br/>• getPoolAnalytics]
+    end
+
+    subgraph "Business Logic"
+        Calc[Calculations<br/>• calculateDepositShares<br/>• calculateWithdrawAmounts<br/>• calculatePriceImpact<br/>• estimateDeposit<br/>• estimateWithdraw]
+
+        Valid[Validation<br/>• validatePoolId<br/>• validateAmount<br/>• validateSlippage<br/>• validateDepositParams<br/>• validateWithdrawParams]
+
+        Helper[Helpers<br/>• calculateShareValue<br/>• calculateImpermanentLoss<br/>• formatPoolAssets<br/>• wouldImpactPrice<br/>• calculateOptimalDeposit]
+    end
+
+    subgraph "Types"
+        Types[Types<br/>• LiquidityPool<br/>• LiquidityPoolDeposit<br/>• LiquidityPoolWithdraw<br/>• PoolAnalytics<br/>• DepositEstimate]
+    end
+
+    subgraph "External APIs"
+        Horizon[Horizon API<br/>• liquidityPools<br/>• loadAccount<br/>• submitTransaction]
+        Network[Stellar Network]
+    end
+
+    SS --> LPM
+    LPM --> Calc
+    LPM --> Valid
+    LPM --> Helper
+    LPM --> Types
+    LPM --> Horizon
+    Horizon --> Network
+
+    style SS fill:#e3f2fd
+    style LPM fill:#e8f5e9
+    style Calc fill:#fff9c4
+    style Valid fill:#ffe0b2
+    style Helper fill:#f3e5f5
+    style Types fill:#e0f2f1
+    style Horizon fill:#fce4ec
+    style Network fill:#f1f8e9
+```
+
 ### Automation Execution Flow
 
 ```mermaid

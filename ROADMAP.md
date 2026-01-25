@@ -46,8 +46,7 @@ gantt
 - [ ] **#10** Add biometric authentication support
 
 ### Stellar SDK Extensions (5 issues)
-
-- [ ] **#11** Add liquidity pool operations
+- [x] **#11** Add liquidity pool operations
 - [x] **#12** Add claimable balances support
 - [ ] **#13** Add sponsored reserves functionality
 - [ ] **#14** Implement path payment (swap) improvements
@@ -215,7 +214,7 @@ gantt
 ## 🎯 Current Status
 
 **Phase**: Phase 1 - Foundation & Core
-**Progress**: 1/20 issues completed
+**Progress**: 3/20 issues completed
 **Next Milestone**: Setup DeFi protocols package structure (#1)
 
 ---
@@ -230,5 +229,5 @@ gantt
 
 ---
 
-**Last Updated**: 2024-12-01
+**Last Updated**: 2026-01-22
 **Maintained By**: Galaxy DevKit Team
