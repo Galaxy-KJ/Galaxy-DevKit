@@ -11,6 +11,9 @@ export { KeyManagementService } from './src/services/key-managment.service';
 export * from './src/types/wallet.types';
 export * from './src/utils/encryption.utils';
 
+// Backup module exports
+export * from './src/backup';
+
 // Re-export commonly used utilities
 export { NetworkUtils } from '../stellar-sdk/src/utils/network-utils';
 

@@ -8,12 +8,12 @@
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build --scope '@galaxy/core-defi-protocols' --scope '@galaxy/cli' || true",
+    "build": "lerna run build --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint --scope '@galaxy/core-defi-protocols' || true",
+    "lint": "lerna run lint --scope @galaxy/core-defi-protocols || (exit 0)",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check --scope '@galaxy/core-defi-protocols' || true",
+    "type-check": "lerna run type-check --scope @galaxy/core-defi-protocols || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",

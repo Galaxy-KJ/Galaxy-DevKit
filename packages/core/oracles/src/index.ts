@@ -28,3 +28,5 @@ export * from './validation/price-validator';
 // Utils
 export * from './utils/outlier-detection';
 export * from './utils/retry-utils';
+
+export * from './sources/mocks/MockOracleSources';

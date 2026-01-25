@@ -52,4 +52,205 @@ const key = await biometric.retrieveEncryptedKey('wallet-main-key');
 
 ---
 
+## Social Recovery System
+
+The wallet package includes a comprehensive social recovery system that allows users to recover wallet access through trusted guardians if they lose their primary credentials.
+
+### Key Features
+
+- **Guardian Management**: Add, remove, and verify recovery guardians
+- **Multi-Signature Recovery**: Uses Stellar's native multi-sig for secure recovery
+- **Time-Lock Mechanism**: Configurable delay (default: 48 hours) before execution
+- **Fraud Detection**: Risk scoring and fraud indicator detection
+- **Notification System**: Alerts for guardians and wallet owner
+- **Emergency Contacts**: Additional recovery contacts
+- **Recovery Testing**: Dry-run mode for testing without network execution
+
+### Quick Setup
+
+```typescript
+import { SocialRecovery } from '@galaxy/core-wallet/recovery';
+import { Server, Networks } from '@stellar/stellar-sdk';
+
+const server = new Server('https://horizon-testnet.stellar.org');
+const encryptionKey = 'your-secure-encryption-key-32-chars-long!!';
+
+const recovery = new SocialRecovery(
+  {
+    guardians: [
+      { publicKey: 'G...', name: 'Guardian 1' },
+      { publicKey: 'G...', name: 'Guardian 2' },
+      { publicKey: 'G...', name: 'Guardian 3' },
+    ],
+    threshold: 2, // Need 2 out of 3 guardians
+    timeLockHours: 48,
+    enableTesting: true,
+  },
+  server,
+  Networks.TESTNET,
+  encryptionKey
+);
+```
+
+### Guardian Management
+
+```typescript
+// Add a guardian
+await recovery.addGuardian(
+  guardianPublicKey,
+  'Guardian Name',
+  'guardian@example.com' // Encrypted
+);
+
+// Verify a guardian
+await recovery.verifyGuardian(guardianPublicKey);
+
+// Remove a guardian
+await recovery.removeGuardian(guardianPublicKey);
+```
+
+### Recovery Process
+
+```typescript
+// 1. Initiate recovery
+const request = await recovery.initiateRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+
+// 2. Guardians approve
+await recovery.guardianApprove(
+  request.id,
+  guardianPublicKey,
+  guardianSecretKey
+);
+
+// 3. Complete recovery (after time-lock expires)
+const result = await recovery.completeRecovery(
+  request.id,
+  currentOwnerSecretKey
+);
+```
+
+### Recovery Testing
+
+```typescript
+// Run dry-run test
+const testResult = await recovery.testRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+```
+
+### Security Recommendations
+
+1. **Guardian Selection**:
+   - Minimum 3 guardians recommended
+   - Choose diverse set: family, friends, trusted contacts
+   - Select active people who will respond promptly
+   - Ensure guardians understand the recovery process
+
+2. **Threshold Configuration**:
+   - Default: 60% of guardians (e.g., 2 out of 3, 3 out of 5)
+   - Balance between security and accessibility
+   - Consider your specific use case
+
+3. **Time-Lock Settings**:
+   - Default: 48 hours
+   - Gives owner time to cancel if recovery is unauthorized
+   - Adjust based on your security requirements
+
+4. **Guardian Verification**:
+   - Always verify guardians after adding
+   - Regularly check guardian status
+   - Remove inactive guardians
+
+### Examples
+
+See the following example files for detailed usage:
+
+- `docs/examples/wallet/14-setup-social-recovery.ts` - Setup guardians and configuration
+- `docs/examples/wallet/15-initiate-recovery.ts` - Initiate and manage recovery
+- `docs/examples/wallet/16-guardian-approve.ts` - Guardian approval workflow
+
+### Key Files
+
+- `packages/core/wallet/src/recovery/SocialRecovery.ts` - Main recovery class
+- `packages/core/wallet/src/recovery/types.ts` - Type definitions
+- `packages/core/wallet/src/recovery/NotificationService.ts` - Notification handling
+- `packages/core/wallet/src/recovery/__tests__/` - Comprehensive test suite
+
+---
+
+# Multi-Signature Support
+
+The wallet package includes a robust Multi-Signature coordination system. It allows multiple parties to propose, review, and sign transactions before executing them on the Stellar network.
+
+## Key Features
+
+* Proposal System: Off-chain coordination for on-chain execution.
+* Flexible Thresholds: Support for Low, Medium, and High security levels.
+* Weight Management: Assign different voting weights to signers.
+* Time-outs: Automatic expiration of stale proposals.
+* Notifications: Event-driven alerts for signers.
+
+## Quick Setup
+
+```javascript
+import { MultiSigWallet } from '@galaxy/core-wallet/multisig';
+import { Horizon, Networks } from '@stellar/stellar-sdk';
+
+const server = new Horizon.Server('https://horizon-testnet.stellar.org');
+
+// Initialize Wallet
+const wallet = new MultiSigWallet(server, {
+  signers: [
+    { publicKey: 'GA...', weight: 1, name: 'Alice' },
+    { publicKey: 'GB...', weight: 1, name: 'Bob' },
+    { publicKey: 'GC...', weight: 2, name: 'Admin' }
+  ],
+  threshold: {
+    masterWeight: 0, // Master key disabled for extra security
+    low: 1,
+    medium: 2,
+    high: 3
+  },
+  proposalExpirationSeconds: 3600, // 1 hour
+  networkPassphrase: Networks.TESTNET
+});
+
+// Setup on-chain (One time operation)
+await wallet.setupOnChain(sourceSecretKey);
+```
+
+## Transaction Lifecycle
+
+### 1. Create Proposal:
+
+```javascript
+const proposal = await wallet.proposeTransaction(
+  creatorPub,
+  xdrString,
+  "Monthly Vendor Payment"
+);
+```
+
+### 2. Sign Proposal:
+
+```javascript
+// Signer reviews XDR and signs locally
+const signature = keypair.sign(txHash).toString('base64');
+
+// Submit signature to wallet
+await wallet.signProposal(proposal.id, signerPub, signature);
+```
+
+### 3. Execute:
+
+```javascript
+// Anyone can trigger execution once threshold is met
+const result = await wallet.executeProposal(proposal.id);
+console.log('Tx Hash:', result);
+```
+
 Maintained by Galaxy DevKit Team

@@ -1040,6 +1040,366 @@ sequenceDiagram
 
 ---
 
+## 🔐 Social Recovery Architecture
+
+### Overview
+
+The social recovery system provides a secure mechanism for wallet recovery through trusted guardians, balancing security and recoverability. It uses Stellar's native multi-signature capabilities combined with a time-lock mechanism to prevent unauthorized recovery.
+
+### Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "SocialRecovery System"
+        SR[SocialRecovery<br/>Main Controller]
+        GM[GuardianManager<br/>Guardian CRUD]
+        RP[RecoveryProcessor<br/>Recovery Flow]
+        TL[TimeLockManager<br/>Delay & Warnings]
+        FD[FraudDetector<br/>Risk Scoring]
+        NS[NotificationService<br/>Alerts]
+    end
+
+    subgraph "Guardian Management"
+        Add[Add Guardian]
+        Verify[Verify Guardian]
+        Remove[Remove Guardian]
+        Status[Status Tracking]
+    end
+
+    subgraph "Recovery Flow"
+        Init[Initiate Recovery]
+        Approve[Guardian Approve]
+        Threshold[Check Threshold]
+        Execute[Execute Recovery]
+        Cancel[Cancel Recovery]
+    end
+
+    subgraph "Stellar Network"
+        MultiSig[Multi-Signature<br/>Account]
+        Horizon[Horizon API]
+    end
+
+    subgraph "Storage"
+        Requests[(Recovery Requests)]
+        Approvals[(Guardian Approvals)]
+        Logs[(Recovery Logs)]
+        Contacts[(Emergency Contacts)]
+    end
+
+    User[Wallet Owner] --> Init
+    Init --> FD
+    FD -->|Valid| RP
+    RP --> Requests
+    RP --> NS
+    
+    NS --> Guardian1[Guardian 1]
+    NS --> Guardian2[Guardian 2]
+    NS --> Guardian3[Guardian 3]
+    
+    Guardian1 --> Approve
+    Guardian2 --> Approve
+    Guardian3 --> Approve
+    
+    Approve --> Approvals
+    Approve --> Threshold
+    Threshold -->|Reached| TL
+    TL -->|Time Expired| Execute
+    Execute --> MultiSig
+    MultiSig --> Horizon
+    
+    User -->|Cancel| Cancel
+    Cancel --> Requests
+    
+    GM --> Add
+    GM --> Verify
+    GM --> Remove
+    GM --> Status
+    
+    SR --> GM
+    SR --> RP
+    SR --> TL
+    SR --> FD
+    SR --> NS
+    
+    RP --> Logs
+    NS --> Contacts
+
+    style SR fill:#e1f5ff
+    style RP fill:#fff3e0
+    style TL fill:#f3e5f5
+    style FD fill:#ffebee
+```
+
+### Recovery Flow with Time-Locks
+
+```mermaid
+sequenceDiagram
+    participant Owner as Wallet Owner
+    participant SR as SocialRecovery
+    participant G1 as Guardian 1
+    participant G2 as Guardian 2
+    participant G3 as Guardian 3
+    participant NS as NotificationService
+    participant Stellar as Stellar Network
+
+    Owner->>SR: initiateRecovery(walletKey, newOwnerKey)
+    SR->>SR: verifyRecoveryRequest()
+    SR->>SR: createRecoveryRequest()
+    SR->>NS: notifyGuardians()
+    NS->>G1: Approval Request
+    NS->>G2: Approval Request
+    NS->>G3: Approval Request
+    NS->>Owner: Recovery Initiated
+    
+    G1->>SR: guardianApprove(requestId, guardianKey)
+    SR->>SR: checkThreshold()
+    SR->>NS: notifyOwner(Threshold Reached)
+    
+    G2->>SR: guardianApprove(requestId, guardianKey)
+    SR->>SR: checkThreshold()
+    SR->>SR: thresholdReached = true
+    SR->>SR: startTimeLock()
+    SR->>NS: notifyOwner(Time-Lock Started)
+    
+    Note over SR,Stellar: Time-Lock Period (48 hours)
+    
+    SR->>NS: sendTimeLockWarning(24h remaining)
+    NS->>Owner: Warning Notification
+    
+    Note over SR,Stellar: Time-Lock Expires
+    
+    Owner->>SR: completeRecovery(requestId, secretKey)
+    SR->>Stellar: executeRecoveryOnStellar()
+    Stellar->>Stellar: Multi-Sig Transaction
+    Stellar-->>SR: Transaction Hash
+    SR->>NS: notifyAll(Recovery Executed)
+    NS->>Owner: Recovery Completed
+    NS->>G1: Recovery Completed
+    NS->>G2: Recovery Completed
+    NS->>G3: Recovery Completed
+```
+
+### Security Mechanisms
+
+```mermaid
+graph LR
+    subgraph "Fraud Detection"
+        Risk[Risk Scoring]
+        Indicators[Fraud Indicators]
+        Logging[Attempt Logging]
+    end
+    
+    subgraph "Verification"
+        MultiFactor[Multi-Factor Verification]
+        Signature[Cryptographic Signatures]
+        Validation[Request Validation]
+    end
+    
+    subgraph "Time-Lock Protection"
+        Delay[Configurable Delay]
+        Warning[Early Warnings]
+        Cancellation[Owner Cancellation]
+    end
+    
+    subgraph "Guardian Security"
+        Encryption[Encrypted Contacts]
+        Verification[Guardian Verification]
+        Status[Status Tracking]
+    end
+    
+    Request[Recovery Request] --> Risk
+    Risk --> Indicators
+    Indicators --> Validation
+    Validation --> MultiFactor
+    MultiFactor --> Signature
+    Signature --> Delay
+    Delay --> Warning
+    Warning --> Cancellation
+    
+    Guardian[Guardian] --> Encryption
+    Encryption --> Verification
+    Verification --> Status
+    
+    Request --> Logging
+    Logging --> Audit[Audit Trail]
+
+    style Risk fill:#ffebee
+    style Delay fill:#f3e5f5
+    style Encryption fill:#e8f5e9
+```
+
+### Component Details
+
+**SocialRecovery Class:**
+- Manages entire recovery lifecycle
+- Coordinates guardian approvals
+- Handles time-lock mechanism
+- Performs fraud detection
+- Emits events for integration
+
+**Guardian Management:**
+- Add/remove guardians with validation
+- Guardian verification workflow
+- Encrypted contact storage
+- Status tracking (active, pending, suspended, removed)
+
+**Recovery Process:**
+- Initiate recovery with fraud checks
+- Guardian approval workflow
+- Threshold-based execution
+- Time-lock countdown
+- Recovery execution on Stellar network
+- Cancellation support
+
+**Time-Lock Mechanism:**
+- Configurable delay (default: 48 hours)
+- Early warning notifications (24 hours before)
+- Owner cancellation rights
+- Automatic execution after expiry
+
+**Notification System:**
+- Email/SMS/Push support
+- Encrypted contact information
+- Event-driven architecture
+- Status updates for all parties
+
+**Fraud Detection:**
+- Risk scoring (0-100)
+- Fraud indicator detection
+- Multiple recovery attempt tracking
+- Suspicious pattern recognition
+
+### Configuration
+
+```typescript
+interface SocialRecoveryConfig {
+  guardians: Guardian[];           // Minimum 3, recommended 5-7
+  threshold: number;              // Default: 60% of guardians
+  timeLockHours: number;          // Default: 48 hours
+  notificationMethod?: 'email' | 'sms' | 'push';
+  enableTesting?: boolean;        // Dry-run mode
+  minGuardians?: number;          // Default: 3
+  maxGuardians?: number;          // Default: 10
+}
+```
+
+### Best Practices
+
+1. **Guardian Selection:**
+   - Minimum 3 guardians (recommended: 5-7)
+   - Diverse set: family, friends, trusted contacts
+   - Active people who respond promptly
+   - Geographic diversity
+   - Technical capability
+
+2. **Threshold Configuration:**
+   - Default: 60% of guardians
+   - Balance security vs. accessibility
+   - Consider use case requirements
+
+3. **Time-Lock Settings:**
+   - Default: 48 hours
+   - Gives owner cancellation window
+   - Adjust based on security needs
+
+4. **Security:**
+   - Always verify guardians
+   - Regular status checks
+   - Monitor recovery attempts
+   - Use encrypted contact storage
+
+### Integration Points
+
+- **Stellar Network**: Multi-signature account operations
+- **Notification Services**: Email, SMS, Push notifications
+- **Storage**: Recovery requests, approvals, logs
+- **Event System**: EventEmitter for integration hooks
+
+---
+
+# Multi-Signature Architecture
+
+## Overview
+
+The Multi-Signature system decouples transaction creation from execution. It utilizes Stellar's native multi-sig capabilities for security enforcement while providing an off-chain layer for proposal management and signature collection.
+
+## System Components
+
+```mermaid
+graph TB
+    subgraph "Off-Chain Coordination"
+        MSW[MultiSigWallet]
+        TP[TransactionProposal]
+        SC[SignatureCollector]
+        NS[NotificationService]
+    end
+
+    subgraph "State Management"
+        Store[(Proposal Store)]
+        Config[Signer Config]
+    end
+
+    subgraph "Stellar Network"
+        Horizon[Horizon API]
+        Native[Native Verification]
+    end
+
+    User[Creator] -->|Propose| MSW
+    Signer[Signer] -->|Sign| MSW
+    
+    MSW -->|Create| TP
+    TP -->|Persist| Store
+    MSW -->|Validate| SC
+    MSW -->|Alert| NS
+    
+    SC -->|Verify| Native
+    MSW -->|Execute| Horizon
+    
+    style MSW fill:#e1f5ff
+    style TP fill:#fff3e0
+    style Horizon fill:#f3e5f5
+```
+
+## Consensus Flow
+
+The consensus mechanism ensures that a transaction is only submitted to the network when the sum of weights from collected signatures meets or exceeds the required threshold.
+
+```mermaid
+sequenceDiagram
+    participant Creator
+    participant Wallet as MultiSigWallet
+    participant SignerA
+    participant SignerB
+    participant Stellar
+
+    Note over Stellar: Threshold: 2 (Medium)
+
+    Creator->>Wallet: proposeTransaction(XDR)
+    Wallet->>Wallet: Create Proposal (Pending)
+    Wallet-->>SignerA: Notify: New Proposal
+    Wallet-->>SignerB: Notify: New Proposal
+
+    SignerA->>Wallet: signProposal(SigA)
+    Note right of Wallet: SignerA Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1 < 2 (Pending)
+
+    SignerB->>Wallet: signProposal(SigB)
+    Note right of Wallet: SignerB Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1+1 = 2 (Ready)
+    
+    Wallet->>Stellar: executeProposal()
+    Stellar->>Stellar: Verify Signatures & Threshold
+    Stellar-->>Wallet: Success (TxHash)
+    Wallet->>Creator: Notify: Executed
+```
+
+## Security Considerations
+
+1. **Atomic Weight Calculation**: Weights are calculated dynamically based on the current signer configuration vs. the requirements captured at proposal time.
+2. **Signature Validation**: Every signature submitted is cryptographically verified against the transaction hash and the signer's public key before being stored.
+3. **Threshold Enforcement**: The final gatekeeper is the Stellar Network itself. Even if the off-chain logic fails, the Stellar network will reject the transaction if signatures are missing.
+4. **Replay Protection**: Transaction proposals are bound to specific sequence numbers via the Stellar SDK, preventing replay attacks.
+
 ## 🔄 Data Flow
 
 ### Wallet Creation Flow
