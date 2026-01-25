@@ -22,7 +22,24 @@
 - ✅ **Extensible** - Easy to add custom oracle sources
 - ✅ **Testing** - 95%+ test coverage
 
-## 📦 Installation
+## � Supported Oracle Sources
+
+The package provides implementations for popular price data providers:
+
+### Built-in Sources
+
+- **CoinGecko** - Comprehensive cryptocurrency price data
+- **CoinMarketCap** - Professional market data and analytics
+- **Custom API Sources** - Implement your own sources via `IOracleSource`
+
+### Mock Sources (for testing)
+
+- **MockOracleSource** - Configurable mock with custom prices
+- **FailingMockSource** - Always fails for testing error handling
+- **SlowMockSource** - Simulates slow responses
+- **UnhealthyMockSource** - Always unhealthy for circuit breaker testing
+
+## �📦 Installation
 
 ```bash
 npm install @galaxy/core-oracles
@@ -47,9 +64,11 @@ class CoinGeckoSource implements IOracleSource {
 
   async getPrice(symbol: string): Promise<PriceData> {
     // Fetch from CoinGecko API
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`
+    );
     const data = await response.json();
-    
+
     return {
       symbol,
       price: data[symbol].usd,
@@ -159,9 +178,9 @@ Prices are cached to reduce API calls:
 const aggregator = new OracleAggregator(
   {}, // aggregation config
   {
-    ttlMs: 60000,        // 60 seconds TTL
-    maxSize: 1000,       // Max cache entries
-    enableFallback: true // Use cache on failures
+    ttlMs: 60000, // 60 seconds TTL
+    maxSize: 1000, // Max cache entries
+    enableFallback: true, // Use cache on failures
   }
 );
 
@@ -279,10 +298,10 @@ interface AggregatedPrice {
   symbol: string;
   price: number;
   timestamp: Date;
-  confidence: number;          // 0-1, based on source count
-  sourcesUsed: string[];        // Sources included in aggregation
-  outliersFiltered: string[];   // Sources filtered as outliers
-  sourceCount: number;          // Number of sources used
+  confidence: number; // 0-1, based on source count
+  sourcesUsed: string[]; // Sources included in aggregation
+  outliersFiltered: string[]; // Sources filtered as outliers
+  sourceCount: number; // Number of sources used
   metadata?: Record<string, unknown>;
 }
 ```
@@ -291,11 +310,11 @@ interface AggregatedPrice {
 
 ```typescript
 interface AggregationConfig {
-  minSources: number;              // Minimum sources required (default: 2)
-  maxDeviationPercent: number;      // Max deviation % (default: 10)
-  maxStalenessMs: number;          // Max age in ms (default: 60000)
-  enableOutlierDetection: boolean;  // Enable outlier filtering (default: true)
-  outlierThreshold: number;        // Z-score threshold (default: 2.0)
+  minSources: number; // Minimum sources required (default: 2)
+  maxDeviationPercent: number; // Max deviation % (default: 10)
+  maxStalenessMs: number; // Max age in ms (default: 60000)
+  enableOutlierDetection: boolean; // Enable outlier filtering (default: true)
+  outlierThreshold: number; // Z-score threshold (default: 2.0)
 }
 ```
 
@@ -313,7 +332,7 @@ class MyCustomSource implements IOracleSource {
     // Fetch price from your API
     const response = await fetch(`https://api.example.com/price/${symbol}`);
     const data = await response.json();
-    
+
     return {
       symbol,
       price: data.price,
@@ -393,7 +412,7 @@ aggregator.addSource(source3, 1.0);
 Use weights to prioritize more reliable sources:
 
 ```typescript
-aggregator.addSource(reliableSource, 2.0);  // Higher weight
+aggregator.addSource(reliableSource, 2.0); // Higher weight
 aggregator.addSource(lessReliableSource, 1.0); // Lower weight
 ```
 
@@ -403,11 +422,11 @@ Adjust validation parameters based on your use case:
 
 ```typescript
 const aggregator = new OracleAggregator({
-  minSources: 3,              // Require 3 sources
-  maxDeviationPercent: 5,    // Stricter deviation (5%)
-  maxStalenessMs: 30000,     // 30 seconds max age
+  minSources: 3, // Require 3 sources
+  maxDeviationPercent: 5, // Stricter deviation (5%)
+  maxStalenessMs: 30000, // 30 seconds max age
   enableOutlierDetection: true,
-  outlierThreshold: 2.5,     // Stricter outlier detection
+  outlierThreshold: 2.5, // Stricter outlier detection
 });
 ```
 
