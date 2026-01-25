@@ -25,6 +25,16 @@ import type {
   ClaimableBalanceResult,
   ClaimableBalance,
 } from '../claimable-balances/types';
+import type {
+  LiquidityPool,
+  LiquidityPoolDeposit,
+  LiquidityPoolWithdraw,
+  LiquidityPoolResult,
+  PoolAnalytics,
+  PoolShare,
+  DepositEstimate,
+  WithdrawEstimate,
+} from '../liquidity-pools/types';
 
 /**
  * Custom hook for Stellar operations
@@ -39,6 +49,11 @@ export const useStellar = (networkConfig: NetworkConfig) => {
   let transactionHistory: TransactionInfo[] = [];
   let loading = false;
   let error: string | null = null;
+
+  // Liquidity Pool State
+  let liquidityPools: LiquidityPool[] = [];
+  let userPoolShares: PoolShare[] = [];
+  let poolAnalytics: PoolAnalytics | null = null;
 
   /**
    * Creates a new wallet
@@ -353,6 +368,220 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     }
   };
 
+  // ============================================
+  // Liquidity Pool Methods
+  // ============================================
+
+  /**
+   * Deposits liquidity to a pool
+   * @param params - Deposit parameters
+   * @param password - Wallet password
+   */
+  const depositLiquidity = async (
+    params: LiquidityPoolDeposit,
+    password: string
+  ): Promise<LiquidityPoolResult> => {
+    if (!wallet) {
+      throw new Error('No wallet connected');
+    }
+
+    try {
+      loading = true;
+      error = null;
+      const result = await stellarService.depositLiquidity(
+        wallet,
+        params,
+        password
+      );
+
+      // Refresh account info after deposit
+      await refreshAccount();
+
+      return result;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to deposit liquidity';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Withdraws liquidity from a pool
+   * @param params - Withdrawal parameters
+   * @param password - Wallet password
+   */
+  const withdrawLiquidity = async (
+    params: LiquidityPoolWithdraw,
+    password: string
+  ): Promise<LiquidityPoolResult> => {
+    if (!wallet) {
+      throw new Error('No wallet connected');
+    }
+
+    try {
+      loading = true;
+      error = null;
+      const result = await stellarService.withdrawLiquidity(
+        wallet,
+        params,
+        password
+      );
+
+      // Refresh account info after withdrawal
+      await refreshAccount();
+
+      return result;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to withdraw liquidity';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Loads liquidity pools
+   * @param limit - Number of pools to load
+   */
+  const loadLiquidityPools = async (limit: number = 20): Promise<void> => {
+    try {
+      loading = true;
+      error = null;
+      const pools = await stellarService.queryLiquidityPools({ limit });
+      liquidityPools = pools;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to load liquidity pools';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Gets a specific liquidity pool
+   * @param poolId - Pool ID
+   */
+  const getLiquidityPool = async (poolId: string): Promise<LiquidityPool> => {
+    try {
+      loading = true;
+      error = null;
+      const pool = await stellarService.getLiquidityPool(poolId);
+      return pool;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to get liquidity pool';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Loads user's pool shares
+   */
+  const loadUserPoolShares = async (): Promise<void> => {
+    if (!wallet) {
+      throw new Error('No wallet connected');
+    }
+
+    try {
+      loading = true;
+      error = null;
+      const shares = await stellarService.getAllUserPoolShares(wallet.publicKey);
+      userPoolShares = shares;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to load user pool shares';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Gets pool analytics
+   * @param poolId - Pool ID
+   */
+  const getPoolAnalytics = async (poolId: string): Promise<PoolAnalytics> => {
+    try {
+      loading = true;
+      error = null;
+      const analytics = await stellarService.getPoolAnalytics(poolId);
+      poolAnalytics = analytics;
+      return analytics;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to get pool analytics';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Estimates a deposit operation
+   * @param poolId - Pool ID
+   * @param amountA - Amount of asset A
+   * @param amountB - Amount of asset B
+   */
+  const estimateDeposit = async (
+    poolId: string,
+    amountA: string,
+    amountB: string
+  ): Promise<DepositEstimate> => {
+    try {
+      loading = true;
+      error = null;
+      const estimate = await stellarService.estimatePoolDeposit(
+        poolId,
+        amountA,
+        amountB
+      );
+      return estimate;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to estimate deposit';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
+  /**
+   * Estimates a withdrawal operation
+   * @param poolId - Pool ID
+   * @param shares - Shares to withdraw
+   */
+  const estimateWithdraw = async (
+    poolId: string,
+    shares: string
+  ): Promise<WithdrawEstimate> => {
+    try {
+      loading = true;
+      error = null;
+      const estimate = await stellarService.estimatePoolWithdraw(poolId, shares);
+      return estimate;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to estimate withdrawal';
+      error = errorMessage;
+      throw new Error(errorMessage);
+    } finally {
+      loading = false;
+    }
+  };
+
   return {
     // State
     wallet,
@@ -361,6 +590,11 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     transactionHistory,
     loading,
     error,
+
+    // Liquidity Pool State
+    liquidityPools,
+    userPoolShares,
+    poolAnalytics,
 
     // Actions
     createWallet,
@@ -376,6 +610,16 @@ export const useStellar = (networkConfig: NetworkConfig) => {
     claimBalance,
     getClaimableBalances,
     getClaimableBalance,
+
+    // Liquidity Pool Actions
+    depositLiquidity,
+    withdrawLiquidity,
+    loadLiquidityPools,
+    getLiquidityPool,
+    loadUserPoolShares,
+    getPoolAnalytics,
+    estimateDeposit,
+    estimateWithdraw,
 
     // Service
     stellarService,

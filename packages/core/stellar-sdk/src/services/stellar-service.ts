@@ -42,6 +42,18 @@ import type {
   ClaimableBalanceResult,
   ClaimableBalance,
 } from '../claimable-balances/types';
+import { LiquidityPoolManager } from '../liquidity-pools/liquidity-pool-manager';
+import type {
+  LiquidityPool,
+  LiquidityPoolDeposit,
+  LiquidityPoolWithdraw,
+  QueryPoolsParams,
+  LiquidityPoolResult,
+  PoolAnalytics,
+  DepositEstimate,
+  WithdrawEstimate,
+  PoolShare,
+} from '../liquidity-pools/types';
 
 /**
  * Service class for Stellar operations
@@ -54,12 +66,17 @@ export class StellarService {
   private supabase = supabaseClient;
   private networkUtils: NetworkUtils;
   private claimableBalanceManager: ClaimableBalanceManager;
+  private liquidityPoolManager: LiquidityPoolManager;
 
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
     this.server = new Horizon.Server(networkConfig.horizonUrl);
     this.networkUtils = new NetworkUtils();
     this.claimableBalanceManager = new ClaimableBalanceManager(
+      this.server,
+      this.networkConfig.passphrase
+    );
+    this.liquidityPoolManager = new LiquidityPoolManager(
       this.server,
       this.networkConfig.passphrase
     );
@@ -648,6 +665,10 @@ export class StellarService {
       this.server,
       this.networkConfig.passphrase
     );
+    this.liquidityPoolManager = new LiquidityPoolManager(
+      this.server,
+      this.networkConfig.passphrase
+    );
   }
 
   private async submitTrxWithRetry(
@@ -788,5 +809,130 @@ export class StellarService {
       claimant: claimantPublicKey,
       limit,
     });
+  }
+
+  // ============================================
+  // Liquidity Pool Operations
+  // ============================================
+
+  /**
+   * Deposits liquidity to a pool
+   * @param wallet - Source wallet
+   * @param params - Deposit parameters
+   * @param password - Wallet password
+   * @returns Promise<LiquidityPoolResult>
+   */
+  async depositLiquidity(
+    wallet: Wallet,
+    params: LiquidityPoolDeposit,
+    password: string
+  ): Promise<LiquidityPoolResult> {
+    return this.liquidityPoolManager.depositLiquidity(wallet, params, password);
+  }
+
+  /**
+   * Withdraws liquidity from a pool
+   * @param wallet - Source wallet
+   * @param params - Withdrawal parameters
+   * @param password - Wallet password
+   * @returns Promise<LiquidityPoolResult>
+   */
+  async withdrawLiquidity(
+    wallet: Wallet,
+    params: LiquidityPoolWithdraw,
+    password: string
+  ): Promise<LiquidityPoolResult> {
+    return this.liquidityPoolManager.withdrawLiquidity(wallet, params, password);
+  }
+
+  /**
+   * Gets liquidity pool details by ID
+   * @param poolId - Pool ID
+   * @returns Promise<LiquidityPool>
+   */
+  async getLiquidityPool(poolId: string): Promise<LiquidityPool> {
+    return this.liquidityPoolManager.getPoolDetails(poolId);
+  }
+
+  /**
+   * Queries liquidity pools
+   * @param params - Query parameters
+   * @returns Promise<LiquidityPool[]>
+   */
+  async queryLiquidityPools(
+    params: QueryPoolsParams = {}
+  ): Promise<LiquidityPool[]> {
+    return this.liquidityPoolManager.queryPools(params);
+  }
+
+  /**
+   * Gets user's share balance for a specific pool
+   * @param publicKey - User's public key
+   * @param poolId - Pool ID
+   * @returns Promise<string>
+   */
+  async getLiquidityPoolShares(publicKey: string, poolId: string): Promise<string> {
+    return this.liquidityPoolManager.getUserShares(publicKey, poolId);
+  }
+
+  /**
+   * Gets all pool shares for a user
+   * @param publicKey - User's public key
+   * @returns Promise<PoolShare[]>
+   */
+  async getAllUserPoolShares(publicKey: string): Promise<PoolShare[]> {
+    return this.liquidityPoolManager.getUserPoolShares(publicKey);
+  }
+
+  /**
+   * Gets pool analytics (TVL, volume, fees, APY)
+   * @param poolId - Pool ID
+   * @returns Promise<PoolAnalytics>
+   */
+  async getPoolAnalytics(poolId: string): Promise<PoolAnalytics> {
+    return this.liquidityPoolManager.getPoolAnalytics(poolId);
+  }
+
+  /**
+   * Estimates deposit operation
+   * @param poolId - Pool ID
+   * @param amountA - Amount of asset A
+   * @param amountB - Amount of asset B
+   * @returns Promise<DepositEstimate>
+   */
+  async estimatePoolDeposit(
+    poolId: string,
+    amountA: string,
+    amountB: string
+  ): Promise<DepositEstimate> {
+    return this.liquidityPoolManager.estimatePoolDeposit(poolId, amountA, amountB);
+  }
+
+  /**
+   * Estimates withdrawal operation
+   * @param poolId - Pool ID
+   * @param shares - Shares to withdraw
+   * @returns Promise<WithdrawEstimate>
+   */
+  async estimatePoolWithdraw(
+    poolId: string,
+    shares: string
+  ): Promise<WithdrawEstimate> {
+    return this.liquidityPoolManager.estimatePoolWithdraw(poolId, shares);
+  }
+
+  /**
+   * Gets liquidity pools for specific assets
+   * @param assetA - First asset
+   * @param assetB - Second asset
+   * @param limit - Number of results to return
+   * @returns Promise<LiquidityPool[]>
+   */
+  async getPoolsForAssets(
+    assetA: Asset,
+    assetB: Asset,
+    limit: number = 10
+  ): Promise<LiquidityPool[]> {
+    return this.liquidityPoolManager.getPoolsForAssets(assetA, assetB, limit);
   }
 }

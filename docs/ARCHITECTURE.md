@@ -884,6 +884,127 @@ classDiagram
 ---
 
 ### 4. Automation Engine
+### 2.1 Sponsored Reserves System
+
+**Purpose**: Allow sponsor accounts to pay base reserves for another account's ledger entries, enabling user onboarding without requiring new users to hold XLM.
+
+```mermaid
+graph TB
+    subgraph "SponsoredReservesManager"
+        direction TB
+
+        subgraph "Core Operations"
+            Begin[beginSponsoringFutureReserves]
+            End[endSponsoringFutureReserves]
+            Revoke[revokeSponsorship]
+        end
+
+        subgraph "Builders"
+            AccBuilder[SponsoredAccountBuilder]
+            TLBuilder[SponsoredTrustlineBuilder]
+            CBBuilder[SponsoredClaimableBalanceBuilder]
+            SignBuilder[SponsoredSignerBuilder]
+            DataBuilder[SponsoredDataEntryBuilder]
+        end
+
+        subgraph "Templates"
+            Onboard[UserOnboardingTemplate]
+            Airdrop[ClaimableBalanceTemplate]
+            Multi[MultiOperationTemplate]
+        end
+
+        subgraph "Utilities"
+            Validate[Validation Utils]
+            Cost[Cost Calculator]
+        end
+    end
+
+    Begin --> TxBuilder[Transaction Builder]
+    End --> TxBuilder
+    AccBuilder --> TxBuilder
+    TLBuilder --> TxBuilder
+    CBBuilder --> TxBuilder
+
+    TxBuilder --> Sign[Sign with Both Keys]
+    Sign --> Submit[Submit to Horizon]
+    Submit --> Result[SponsorshipResult]
+
+    Onboard --> AccBuilder
+    Onboard --> TLBuilder
+    Airdrop --> CBBuilder
+
+    Validate --> Begin
+    Validate --> End
+    Cost --> Onboard
+
+    style Begin fill:#e3f2fd
+    style End fill:#e3f2fd
+    style Onboard fill:#fff3e0
+    style TxBuilder fill:#f3e5f5
+```
+
+**Sponsorship Transaction Flow**:
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Manager as SponsoredReservesManager
+    participant Template as UserOnboardingTemplate
+    participant Horizon as Stellar Horizon
+    participant Sponsor as Sponsor Account
+    participant NewUser as New User Account
+
+    App->>Template: onboardUser(config, sponsorSecret, userSecret)
+    Template->>Manager: buildOnboardingOperations(config)
+    Manager->>Manager: validatePublicKeys()
+    Manager->>Manager: calculateCost()
+
+    Manager-->>Template: operations[]
+
+    Template->>Horizon: loadAccount(sponsorPublicKey)
+    Horizon-->>Template: sponsorAccount
+
+    Template->>Template: Build Transaction
+    Note over Template: 1. beginSponsoringFutureReserves
+    Note over Template: 2. createAccount (source: sponsor)
+    Note over Template: 3. changeTrust (source: newUser)
+    Note over Template: 4. endSponsoringFutureReserves (source: newUser)
+
+    Template->>Sponsor: sign(transaction)
+    Template->>NewUser: sign(transaction)
+
+    Template->>Horizon: submitTransaction(signedTx)
+
+    alt Success
+        Horizon-->>Template: {hash, ledger, successful: true}
+        Template-->>App: SponsorshipResult
+        Note over Sponsor: Reserves deducted
+        Note over NewUser: Account created with sponsored reserves
+    else Failure
+        Horizon-->>Template: Error
+        Template-->>App: Error details
+    end
+```
+
+**Base Reserve Costs**:
+
+| Entry Type | Base Reserves | XLM Cost |
+|------------|---------------|----------|
+| Account | 2 | 1.0 XLM |
+| Trustline | 1 | 0.5 XLM |
+| Offer | 1 | 0.5 XLM |
+| Data Entry | 1 | 0.5 XLM |
+| Signer | 1 | 0.5 XLM |
+| Claimable Balance | 1 | 0.5 XLM |
+
+**Key Files**:
+- `packages/core/stellar-sdk/src/sponsored-reserves/services/sponsored-reserves-manager.ts`
+- `packages/core/stellar-sdk/src/sponsored-reserves/builders/`
+- `packages/core/stellar-sdk/src/sponsored-reserves/templates/`
+
+---
+
+### 3. Automation Engine
 
 **Purpose**: Enable DeFi automation with triggers, conditions, and actions.
 
@@ -1531,6 +1652,366 @@ sequenceDiagram
 
 ---
 
+## 🔐 Social Recovery Architecture
+
+### Overview
+
+The social recovery system provides a secure mechanism for wallet recovery through trusted guardians, balancing security and recoverability. It uses Stellar's native multi-signature capabilities combined with a time-lock mechanism to prevent unauthorized recovery.
+
+### Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "SocialRecovery System"
+        SR[SocialRecovery<br/>Main Controller]
+        GM[GuardianManager<br/>Guardian CRUD]
+        RP[RecoveryProcessor<br/>Recovery Flow]
+        TL[TimeLockManager<br/>Delay & Warnings]
+        FD[FraudDetector<br/>Risk Scoring]
+        NS[NotificationService<br/>Alerts]
+    end
+
+    subgraph "Guardian Management"
+        Add[Add Guardian]
+        Verify[Verify Guardian]
+        Remove[Remove Guardian]
+        Status[Status Tracking]
+    end
+
+    subgraph "Recovery Flow"
+        Init[Initiate Recovery]
+        Approve[Guardian Approve]
+        Threshold[Check Threshold]
+        Execute[Execute Recovery]
+        Cancel[Cancel Recovery]
+    end
+
+    subgraph "Stellar Network"
+        MultiSig[Multi-Signature<br/>Account]
+        Horizon[Horizon API]
+    end
+
+    subgraph "Storage"
+        Requests[(Recovery Requests)]
+        Approvals[(Guardian Approvals)]
+        Logs[(Recovery Logs)]
+        Contacts[(Emergency Contacts)]
+    end
+
+    User[Wallet Owner] --> Init
+    Init --> FD
+    FD -->|Valid| RP
+    RP --> Requests
+    RP --> NS
+    
+    NS --> Guardian1[Guardian 1]
+    NS --> Guardian2[Guardian 2]
+    NS --> Guardian3[Guardian 3]
+    
+    Guardian1 --> Approve
+    Guardian2 --> Approve
+    Guardian3 --> Approve
+    
+    Approve --> Approvals
+    Approve --> Threshold
+    Threshold -->|Reached| TL
+    TL -->|Time Expired| Execute
+    Execute --> MultiSig
+    MultiSig --> Horizon
+    
+    User -->|Cancel| Cancel
+    Cancel --> Requests
+    
+    GM --> Add
+    GM --> Verify
+    GM --> Remove
+    GM --> Status
+    
+    SR --> GM
+    SR --> RP
+    SR --> TL
+    SR --> FD
+    SR --> NS
+    
+    RP --> Logs
+    NS --> Contacts
+
+    style SR fill:#e1f5ff
+    style RP fill:#fff3e0
+    style TL fill:#f3e5f5
+    style FD fill:#ffebee
+```
+
+### Recovery Flow with Time-Locks
+
+```mermaid
+sequenceDiagram
+    participant Owner as Wallet Owner
+    participant SR as SocialRecovery
+    participant G1 as Guardian 1
+    participant G2 as Guardian 2
+    participant G3 as Guardian 3
+    participant NS as NotificationService
+    participant Stellar as Stellar Network
+
+    Owner->>SR: initiateRecovery(walletKey, newOwnerKey)
+    SR->>SR: verifyRecoveryRequest()
+    SR->>SR: createRecoveryRequest()
+    SR->>NS: notifyGuardians()
+    NS->>G1: Approval Request
+    NS->>G2: Approval Request
+    NS->>G3: Approval Request
+    NS->>Owner: Recovery Initiated
+    
+    G1->>SR: guardianApprove(requestId, guardianKey)
+    SR->>SR: checkThreshold()
+    SR->>NS: notifyOwner(Threshold Reached)
+    
+    G2->>SR: guardianApprove(requestId, guardianKey)
+    SR->>SR: checkThreshold()
+    SR->>SR: thresholdReached = true
+    SR->>SR: startTimeLock()
+    SR->>NS: notifyOwner(Time-Lock Started)
+    
+    Note over SR,Stellar: Time-Lock Period (48 hours)
+    
+    SR->>NS: sendTimeLockWarning(24h remaining)
+    NS->>Owner: Warning Notification
+    
+    Note over SR,Stellar: Time-Lock Expires
+    
+    Owner->>SR: completeRecovery(requestId, secretKey)
+    SR->>Stellar: executeRecoveryOnStellar()
+    Stellar->>Stellar: Multi-Sig Transaction
+    Stellar-->>SR: Transaction Hash
+    SR->>NS: notifyAll(Recovery Executed)
+    NS->>Owner: Recovery Completed
+    NS->>G1: Recovery Completed
+    NS->>G2: Recovery Completed
+    NS->>G3: Recovery Completed
+```
+
+### Security Mechanisms
+
+```mermaid
+graph LR
+    subgraph "Fraud Detection"
+        Risk[Risk Scoring]
+        Indicators[Fraud Indicators]
+        Logging[Attempt Logging]
+    end
+    
+    subgraph "Verification"
+        MultiFactor[Multi-Factor Verification]
+        Signature[Cryptographic Signatures]
+        Validation[Request Validation]
+    end
+    
+    subgraph "Time-Lock Protection"
+        Delay[Configurable Delay]
+        Warning[Early Warnings]
+        Cancellation[Owner Cancellation]
+    end
+    
+    subgraph "Guardian Security"
+        Encryption[Encrypted Contacts]
+        Verification[Guardian Verification]
+        Status[Status Tracking]
+    end
+    
+    Request[Recovery Request] --> Risk
+    Risk --> Indicators
+    Indicators --> Validation
+    Validation --> MultiFactor
+    MultiFactor --> Signature
+    Signature --> Delay
+    Delay --> Warning
+    Warning --> Cancellation
+    
+    Guardian[Guardian] --> Encryption
+    Encryption --> Verification
+    Verification --> Status
+    
+    Request --> Logging
+    Logging --> Audit[Audit Trail]
+
+    style Risk fill:#ffebee
+    style Delay fill:#f3e5f5
+    style Encryption fill:#e8f5e9
+```
+
+### Component Details
+
+**SocialRecovery Class:**
+- Manages entire recovery lifecycle
+- Coordinates guardian approvals
+- Handles time-lock mechanism
+- Performs fraud detection
+- Emits events for integration
+
+**Guardian Management:**
+- Add/remove guardians with validation
+- Guardian verification workflow
+- Encrypted contact storage
+- Status tracking (active, pending, suspended, removed)
+
+**Recovery Process:**
+- Initiate recovery with fraud checks
+- Guardian approval workflow
+- Threshold-based execution
+- Time-lock countdown
+- Recovery execution on Stellar network
+- Cancellation support
+
+**Time-Lock Mechanism:**
+- Configurable delay (default: 48 hours)
+- Early warning notifications (24 hours before)
+- Owner cancellation rights
+- Automatic execution after expiry
+
+**Notification System:**
+- Email/SMS/Push support
+- Encrypted contact information
+- Event-driven architecture
+- Status updates for all parties
+
+**Fraud Detection:**
+- Risk scoring (0-100)
+- Fraud indicator detection
+- Multiple recovery attempt tracking
+- Suspicious pattern recognition
+
+### Configuration
+
+```typescript
+interface SocialRecoveryConfig {
+  guardians: Guardian[];           // Minimum 3, recommended 5-7
+  threshold: number;              // Default: 60% of guardians
+  timeLockHours: number;          // Default: 48 hours
+  notificationMethod?: 'email' | 'sms' | 'push';
+  enableTesting?: boolean;        // Dry-run mode
+  minGuardians?: number;          // Default: 3
+  maxGuardians?: number;          // Default: 10
+}
+```
+
+### Best Practices
+
+1. **Guardian Selection:**
+   - Minimum 3 guardians (recommended: 5-7)
+   - Diverse set: family, friends, trusted contacts
+   - Active people who respond promptly
+   - Geographic diversity
+   - Technical capability
+
+2. **Threshold Configuration:**
+   - Default: 60% of guardians
+   - Balance security vs. accessibility
+   - Consider use case requirements
+
+3. **Time-Lock Settings:**
+   - Default: 48 hours
+   - Gives owner cancellation window
+   - Adjust based on security needs
+
+4. **Security:**
+   - Always verify guardians
+   - Regular status checks
+   - Monitor recovery attempts
+   - Use encrypted contact storage
+
+### Integration Points
+
+- **Stellar Network**: Multi-signature account operations
+- **Notification Services**: Email, SMS, Push notifications
+- **Storage**: Recovery requests, approvals, logs
+- **Event System**: EventEmitter for integration hooks
+
+---
+
+# Multi-Signature Architecture
+
+## Overview
+
+The Multi-Signature system decouples transaction creation from execution. It utilizes Stellar's native multi-sig capabilities for security enforcement while providing an off-chain layer for proposal management and signature collection.
+
+## System Components
+
+```mermaid
+graph TB
+    subgraph "Off-Chain Coordination"
+        MSW[MultiSigWallet]
+        TP[TransactionProposal]
+        SC[SignatureCollector]
+        NS[NotificationService]
+    end
+
+    subgraph "State Management"
+        Store[(Proposal Store)]
+        Config[Signer Config]
+    end
+
+    subgraph "Stellar Network"
+        Horizon[Horizon API]
+        Native[Native Verification]
+    end
+
+    User[Creator] -->|Propose| MSW
+    Signer[Signer] -->|Sign| MSW
+    
+    MSW -->|Create| TP
+    TP -->|Persist| Store
+    MSW -->|Validate| SC
+    MSW -->|Alert| NS
+    
+    SC -->|Verify| Native
+    MSW -->|Execute| Horizon
+    
+    style MSW fill:#e1f5ff
+    style TP fill:#fff3e0
+    style Horizon fill:#f3e5f5
+```
+
+## Consensus Flow
+
+The consensus mechanism ensures that a transaction is only submitted to the network when the sum of weights from collected signatures meets or exceeds the required threshold.
+
+```mermaid
+sequenceDiagram
+    participant Creator
+    participant Wallet as MultiSigWallet
+    participant SignerA
+    participant SignerB
+    participant Stellar
+
+    Note over Stellar: Threshold: 2 (Medium)
+
+    Creator->>Wallet: proposeTransaction(XDR)
+    Wallet->>Wallet: Create Proposal (Pending)
+    Wallet-->>SignerA: Notify: New Proposal
+    Wallet-->>SignerB: Notify: New Proposal
+
+    SignerA->>Wallet: signProposal(SigA)
+    Note right of Wallet: SignerA Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1 < 2 (Pending)
+
+    SignerB->>Wallet: signProposal(SigB)
+    Note right of Wallet: SignerB Weight: 1
+    Wallet->>Wallet: CurrentWeight: 1+1 = 2 (Ready)
+    
+    Wallet->>Stellar: executeProposal()
+    Stellar->>Stellar: Verify Signatures & Threshold
+    Stellar-->>Wallet: Success (TxHash)
+    Wallet->>Creator: Notify: Executed
+```
+
+## Security Considerations
+
+1. **Atomic Weight Calculation**: Weights are calculated dynamically based on the current signer configuration vs. the requirements captured at proposal time.
+2. **Signature Validation**: Every signature submitted is cryptographically verified against the transaction hash and the signer's public key before being stored.
+3. **Threshold Enforcement**: The final gatekeeper is the Stellar Network itself. Even if the off-chain logic fails, the Stellar network will reject the transaction if signatures are missing.
+4. **Replay Protection**: Transaction proposals are bound to specific sequence numbers via the Stellar SDK, preventing replay attacks.
+
 ## 🔄 Data Flow
 
 ### Wallet Creation Flow
@@ -1689,6 +2170,131 @@ graph TD
     style Start fill:#e3f2fd
     style ReturnTrue fill:#e8f5e9
     style ReturnFalse fill:#ffebee
+```
+
+### Liquidity Pool Operations Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant StellarService
+    participant LPM as LiquidityPoolManager
+    participant Calc as Calculations
+    participant Horizon
+    participant Network
+
+    Note over User,Network: Deposit Liquidity Flow
+    User->>StellarService: depositLiquidity(wallet, params, password)
+    StellarService->>LPM: depositLiquidity(wallet, params, password)
+    LPM->>LPM: validateDepositParams(params)
+    LPM->>Horizon: getPoolDetails(poolId)
+    Horizon-->>LPM: Pool {reserveA, reserveB, totalShares}
+    LPM->>Calc: calculateDepositShares(amountA, amountB, pool)
+    Calc->>Calc: Calculate optimal ratio
+    Calc-->>LPM: {shares, actualAmountA, actualAmountB}
+    LPM->>LPM: Build liquidityPoolDeposit operation
+    LPM->>Network: Submit transaction
+    Network-->>LPM: Transaction result
+    LPM-->>StellarService: LiquidityPoolResult {poolId, hash}
+    StellarService-->>User: Deposit successful
+
+    Note over User,Network: Withdraw Liquidity Flow
+    User->>StellarService: withdrawLiquidity(wallet, params, password)
+    StellarService->>LPM: withdrawLiquidity(wallet, params, password)
+    LPM->>LPM: validateWithdrawParams(params)
+    LPM->>Horizon: getPoolDetails(poolId)
+    Horizon-->>LPM: Pool details
+    LPM->>Calc: calculateWithdrawAmounts(shares, pool)
+    Calc-->>LPM: {amountA, amountB}
+    LPM->>Horizon: getUserShares(publicKey, poolId)
+    Horizon-->>LPM: User's share balance
+    LPM->>LPM: Validate sufficient shares
+    LPM->>LPM: Build liquidityPoolWithdraw operation
+    LPM->>Network: Submit transaction
+    Network-->>LPM: Transaction result
+    LPM-->>StellarService: LiquidityPoolResult
+    StellarService-->>User: Withdrawal successful
+```
+
+### Liquidity Pool AMM Formula
+
+```mermaid
+graph TD
+    Start[Pool State] --> Formula[Constant Product Formula<br/>x × y = k]
+
+    Formula --> DepositQ{Deposit or Withdraw?}
+
+    DepositQ -->|Deposit| CheckFirst{First Deposit?}
+    CheckFirst -->|Yes| GeometricMean[Shares = √amountA × amountB]
+    CheckFirst -->|No| CalcRatio[Calculate Ratios<br/>ratioA = amountA / reserveA<br/>ratioB = amountB / reserveB]
+
+    CalcRatio --> MinRatio[minRatio = min ratioA, ratioB]
+    MinRatio --> PropShares[shares = minRatio × totalShares]
+    PropShares --> ActualAmounts[actualAmountA = minRatio × reserveA<br/>actualAmountB = minRatio × reserveB]
+
+    DepositQ -->|Withdraw| ShareRatio[shareRatio = shares / totalShares]
+    ShareRatio --> WithdrawAmounts[amountA = shareRatio × reserveA<br/>amountB = shareRatio × reserveB]
+
+    GeometricMean --> UpdatePool[Update Pool State]
+    ActualAmounts --> UpdatePool
+    WithdrawAmounts --> UpdatePool
+
+    UpdatePool --> NewK[New k = newReserveA × newReserveB]
+    NewK --> SpotPrice[Spot Price = reserveB / reserveA]
+    SpotPrice --> PriceImpact[Price Impact = abs spotPrice - oldPrice / oldPrice]
+
+    style Start fill:#e3f2fd
+    style Formula fill:#fff9c4
+    style UpdatePool fill:#e8f5e9
+    style GeometricMean fill:#f3e5f5
+    style PropShares fill:#f3e5f5
+```
+
+### Liquidity Pool Architecture
+
+```mermaid
+graph TB
+    subgraph "Service Layer"
+        SS[StellarService]
+    end
+
+    subgraph "Manager Layer"
+        LPM[LiquidityPoolManager<br/>• depositLiquidity<br/>• withdrawLiquidity<br/>• getPoolDetails<br/>• getUserShares<br/>• getPoolAnalytics]
+    end
+
+    subgraph "Business Logic"
+        Calc[Calculations<br/>• calculateDepositShares<br/>• calculateWithdrawAmounts<br/>• calculatePriceImpact<br/>• estimateDeposit<br/>• estimateWithdraw]
+
+        Valid[Validation<br/>• validatePoolId<br/>• validateAmount<br/>• validateSlippage<br/>• validateDepositParams<br/>• validateWithdrawParams]
+
+        Helper[Helpers<br/>• calculateShareValue<br/>• calculateImpermanentLoss<br/>• formatPoolAssets<br/>• wouldImpactPrice<br/>• calculateOptimalDeposit]
+    end
+
+    subgraph "Types"
+        Types[Types<br/>• LiquidityPool<br/>• LiquidityPoolDeposit<br/>• LiquidityPoolWithdraw<br/>• PoolAnalytics<br/>• DepositEstimate]
+    end
+
+    subgraph "External APIs"
+        Horizon[Horizon API<br/>• liquidityPools<br/>• loadAccount<br/>• submitTransaction]
+        Network[Stellar Network]
+    end
+
+    SS --> LPM
+    LPM --> Calc
+    LPM --> Valid
+    LPM --> Helper
+    LPM --> Types
+    LPM --> Horizon
+    Horizon --> Network
+
+    style SS fill:#e3f2fd
+    style LPM fill:#e8f5e9
+    style Calc fill:#fff9c4
+    style Valid fill:#ffe0b2
+    style Helper fill:#f3e5f5
+    style Types fill:#e0f2f1
+    style Horizon fill:#fce4ec
+    style Network fill:#f1f8e9
 ```
 
 ### Automation Execution Flow

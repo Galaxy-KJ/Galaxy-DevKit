@@ -7,7 +7,7 @@
  */
 
 import { ClaimPredicate } from './types';
-import { ClaimPredicate as StellarClaimPredicate } from '@stellar/stellar-sdk';
+import { Claimant, xdr } from '@stellar/stellar-sdk';
 
 /**
  * Creates an unconditional predicate (can claim anytime)
@@ -75,42 +75,40 @@ export function or(
 /**
  * Converts our ClaimPredicate type to Stellar SDK ClaimPredicate
  * @param predicate - Our predicate type
- * @returns Stellar SDK ClaimPredicate
+ * @returns Stellar SDK xdr.ClaimPredicate
  */
 export function toStellarPredicate(
   predicate: ClaimPredicate
-): StellarClaimPredicate {
+): xdr.ClaimPredicate {
   if ('unconditional' in predicate) {
-    return StellarClaimPredicate.predicateUnconditional();
+    return Claimant.predicateUnconditional();
   }
 
   if ('not' in predicate) {
-    return StellarClaimPredicate.predicateNot(toStellarPredicate(predicate.not));
+    return Claimant.predicateNot(toStellarPredicate(predicate.not));
   }
 
   if ('and' in predicate) {
-    return StellarClaimPredicate.predicateAnd([
+    return Claimant.predicateAnd(
       toStellarPredicate(predicate.and[0]),
       toStellarPredicate(predicate.and[1]),
-    ]);
+    );
   }
 
   if ('or' in predicate) {
-    return StellarClaimPredicate.predicateOr([
+    return Claimant.predicateOr(
       toStellarPredicate(predicate.or[0]),
       toStellarPredicate(predicate.or[1]),
-    ]);
+    );
   }
 
   if ('abs_before' in predicate) {
-    const timestamp = Math.floor(new Date(predicate.abs_before).getTime() / 1000);
-    return StellarClaimPredicate.predicateBeforeAbsoluteTime(timestamp.toString());
+    const timestamp = Math.floor(new Date(predicate.abs_before).getTime() / 1000).toString();
+    return Claimant.predicateBeforeAbsoluteTime(timestamp);
   }
 
   if ('rel_before' in predicate) {
-    return StellarClaimPredicate.predicateBeforeRelativeTime(
-      predicate.rel_before
-    );
+    return Claimant.predicateBeforeRelativeTime(predicate.rel_before);
   }
 
   throw new Error('Invalid predicate type');
