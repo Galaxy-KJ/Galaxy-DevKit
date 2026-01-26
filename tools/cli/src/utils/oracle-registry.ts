@@ -35,6 +35,12 @@ export interface OracleAggregatorOptions {
   cwd?: string;
 }
 
+export interface OracleSourceEntry {
+  source: IOracleSource;
+  weight: number;
+  type: 'default' | 'custom';
+}
+
 const ORACLE_CONFIG_DIR = '.galaxy';
 const ORACLE_CONFIG_FILE = 'oracles.json';
 
@@ -63,11 +69,11 @@ function buildPriceMap(multiplier: number): Map<string, number> {
   return result;
 }
 
-function createDefaultMockSources(): Array<{ source: IOracleSource; weight: number }> {
+function createDefaultMockSources(): OracleSourceEntry[] {
   return [
-    { source: new MockOracleSource('coingecko', buildPriceMap(0)), weight: 1.0 },
-    { source: new MockOracleSource('coinmarketcap', buildPriceMap(0.003)), weight: 1.0 },
-    { source: new MockOracleSource('binance', buildPriceMap(-0.002)), weight: 1.0 },
+    { source: new MockOracleSource('coingecko', buildPriceMap(0)), weight: 1.0, type: 'default' },
+    { source: new MockOracleSource('coinmarketcap', buildPriceMap(0.003)), weight: 1.0, type: 'default' },
+    { source: new MockOracleSource('binance', buildPriceMap(-0.002)), weight: 1.0, type: 'default' },
   ];
 }
 
@@ -194,27 +200,9 @@ export async function createOracleAggregator(
   options: OracleAggregatorOptions = {}
 ): Promise<OracleAggregator> {
   const aggregator = new OracleAggregator();
-  const includeSet = options.includeSources
-    ? new Set(options.includeSources.map(normalizeSourceName))
-    : null;
-
-  const shouldInclude = (name: string): boolean =>
-    !includeSet || includeSet.has(normalizeSourceName(name));
-
-  for (const { source, weight } of createDefaultMockSources()) {
-    if (shouldInclude(source.name)) {
-      aggregator.addSource(source, weight);
-    }
-  }
-
-  const customSources = options.customSources ?? (await loadOracleConfig(options.cwd)).sources;
-  for (const custom of customSources) {
-    if (!shouldInclude(custom.name)) {
-      continue;
-    }
-
-    const source = new HttpOracleSource(custom);
-    aggregator.addSource(source, custom.weight ?? 1.0);
+  const sources = await createOracleSources(options);
+  for (const entry of sources) {
+    aggregator.addSource(entry.source, entry.weight);
   }
 
   return aggregator;
@@ -225,4 +213,38 @@ export async function loadCustomSources(
 ): Promise<CustomOracleSourceConfig[]> {
   const config = await loadOracleConfig(cwd);
   return config.sources;
+}
+
+export async function createOracleSources(
+  options: OracleAggregatorOptions = {}
+): Promise<OracleSourceEntry[]> {
+  const includeSet = options.includeSources
+    ? new Set(options.includeSources.map(normalizeSourceName))
+    : null;
+
+  const shouldInclude = (name: string): boolean =>
+    !includeSet || includeSet.has(normalizeSourceName(name));
+
+  const entries: OracleSourceEntry[] = [];
+
+  for (const entry of createDefaultMockSources()) {
+    if (shouldInclude(entry.source.name)) {
+      entries.push(entry);
+    }
+  }
+
+  const customSources = options.customSources ?? (await loadOracleConfig(options.cwd)).sources;
+  for (const custom of customSources) {
+    if (!shouldInclude(custom.name)) {
+      continue;
+    }
+
+    entries.push({
+      source: new HttpOracleSource(custom),
+      weight: custom.weight ?? 1.0,
+      type: 'custom',
+    });
+  }
+
+  return entries;
 }
