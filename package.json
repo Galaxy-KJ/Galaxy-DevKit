@@ -8,7 +8,7 @@
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
+    "build": "lerna run build --scope @galaxy/core-oracles --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
     "lint": "lerna run lint --scope @galaxy/core-defi-protocols || (exit 0)",
