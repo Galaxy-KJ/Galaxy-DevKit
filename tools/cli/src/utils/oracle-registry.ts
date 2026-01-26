@@ -218,7 +218,7 @@ export async function loadCustomSources(
 export async function createOracleSources(
   options: OracleAggregatorOptions = {}
 ): Promise<OracleSourceEntry[]> {
-  const includeSet = options.includeSources
+  const includeSet = options.includeSources && options.includeSources.length > 0
     ? new Set(options.includeSources.map(normalizeSourceName))
     : null;
 
