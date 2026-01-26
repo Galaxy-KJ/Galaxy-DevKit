@@ -21,9 +21,11 @@ program
 
 // Import create command
 import { createCommand } from './commands/create.js';
+import { oracleCommand } from './commands/oracle/index.js';
 
 // Register create command
 program.addCommand(createCommand);
+program.addCommand(oracleCommand);
 
 // Init command
 program
