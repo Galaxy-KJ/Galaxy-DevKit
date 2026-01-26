@@ -62,6 +62,7 @@ export const priceCommand = new Command('price')
   .argument('<symbol>', 'Asset symbol (e.g. XLM/USD)')
   .option('-s, --strategy <strategy>', 'Aggregation strategy (median, twap, weighted_average)', 'median')
   .option('--sources <sources>', 'Comma-separated list of sources to use')
+  .option('--network <network>', 'Oracle network (testnet/mainnet)', 'testnet')
   .option('--json', 'Output machine-readable JSON')
   .option('-w, --watch [interval]', 'Watch for real-time updates (default 5s)')
   .action(async (symbol: string, options: any) => {
@@ -70,7 +71,11 @@ export const priceCommand = new Command('price')
 
     try {
       const { strategy, label } = selectStrategy(options.strategy);
-      const aggregator = await createOracleAggregator({ includeSources: sourcesFilter });
+      const totalSources = sourcesFilter.length > 0 ? sourcesFilter.length : undefined;
+      const aggregator = await createOracleAggregator({
+        includeSources: sourcesFilter,
+        network: options.network,
+      });
       aggregator.setStrategy(strategy);
 
       const runOnce = async (): Promise<void> => {
@@ -82,6 +87,7 @@ export const priceCommand = new Command('price')
             json: Boolean(options.json),
             strategy: label,
             sourcesFilter,
+            totalSources,
           });
         } catch (error) {
           spinner?.fail('Failed to fetch price');
@@ -109,7 +115,14 @@ export const priceCommand = new Command('price')
 
       await runOnce();
     } catch (error) {
-      console.error(chalk.red('Error:'), (error as Error).message);
+      const message = (error as Error).message;
+      if (message.includes('rate limited')) {
+        console.error(chalk.red('Error:'), 'Rate limited by oracle source. Try again later.');
+      } else if (message.includes('Insufficient sources')) {
+        console.error(chalk.red('Error:'), 'No valid sources returned a price for this symbol.');
+      } else {
+        console.error(chalk.red('Error:'), message);
+      }
       process.exit(1);
     }
   });

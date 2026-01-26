@@ -32,17 +32,17 @@ afterEach(() => {
 
 describe('oracle command group', () => {
   it('prints price JSON', async () => {
-    await priceCommand.parseAsync(['node', 'price', 'XLM', '--json']);
+    await priceCommand.parseAsync(['node', 'price', 'XLM/USD', '--json']);
     const output = (console.log as jest.Mock).mock.calls[0][0];
     const parsed = JSON.parse(output);
-    expect(parsed.symbol).toBe('XLM');
+    expect(parsed.symbol).toBe('XLM/USD');
   });
 
   it('prints history JSON with a short period', async () => {
     await historyCommand.parseAsync([
       'node',
       'history',
-      'XLM',
+      'XLM/USD',
       '--period',
       '1ms',
       '--interval',
@@ -83,7 +83,7 @@ describe('oracle command group', () => {
   });
 
   it('prints validation JSON', async () => {
-    await validateCommand.parseAsync(['node', 'validate', 'XLM', '--json']);
+    await validateCommand.parseAsync(['node', 'validate', 'XLM/USD', '--json']);
     const output = (console.log as jest.Mock).mock.calls[0][0];
     const parsed = JSON.parse(output);
     expect(parsed.results.length).toBeGreaterThan(0);

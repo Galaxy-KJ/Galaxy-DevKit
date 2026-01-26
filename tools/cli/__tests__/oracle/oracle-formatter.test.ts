@@ -48,7 +48,7 @@ describe('oracle formatter', () => {
         { price: 0.1, timestamp: new Date('2026-01-26T00:00:00.000Z') },
         { price: 0.12, timestamp: new Date('2026-01-26T00:00:05.000Z') },
       ],
-      { json: true, periodMs: 10000, intervalMs: 5000, twap: 0.11 }
+      { json: true, periodMs: 10000, intervalMs: 5000, twap: 0.11, symbol: 'XLM/USD' }
     );
 
     const output = (console.log as jest.Mock).mock.calls[0][0];
@@ -110,7 +110,7 @@ describe('oracle formatter', () => {
           issues: [],
         },
       ],
-      { json: true, deviationPercent: 0, threshold: 5, maxAgeMs: 60000 }
+      { json: true, deviationPercent: 0, threshold: 5, maxAgeMs: 60000, symbol: 'XLM/USD' }
     );
 
     const output = (console.log as jest.Mock).mock.calls[0][0];

@@ -33,6 +33,7 @@ export interface OracleAggregatorOptions {
   includeSources?: string[];
   customSources?: CustomOracleSourceConfig[];
   cwd?: string;
+  network?: string;
 }
 
 export interface OracleSourceEntry {
@@ -77,8 +78,13 @@ function createDefaultMockSources(): OracleSourceEntry[] {
   ];
 }
 
-function getFetch(): (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<any> }> {
-  const fetchFn = (globalThis as unknown as { fetch?: (url: string) => Promise<any> }).fetch;
+function getFetch(): (
+  url: string,
+  init?: { signal?: AbortSignal }
+) => Promise<{ ok: boolean; status: number; json(): Promise<any> }> {
+  const fetchFn = (globalThis as unknown as {
+    fetch?: (url: string, init?: { signal?: AbortSignal }) => Promise<any>;
+  }).fetch;
   if (!fetchFn) {
     throw new Error('Fetch API is not available in this runtime');
   }
@@ -91,25 +97,44 @@ class HttpOracleSource implements IOracleSource {
   private description?: string;
   private version?: string;
   private supportedSymbols: string[];
+  private network: string;
+  private timeoutMs: number;
 
-  constructor(config: CustomOracleSourceConfig) {
+  constructor(config: CustomOracleSourceConfig, network: string, timeoutMs: number = 8000) {
     this.name = normalizeSourceName(config.name);
     this.url = config.url;
     this.description = config.description;
     this.version = config.version;
     this.supportedSymbols = config.supportedSymbols ?? [];
+    this.network = network;
+    this.timeoutMs = timeoutMs;
   }
 
   private buildUrl(symbol: string): string {
-    return this.url.replace('{symbol}', encodeURIComponent(symbol));
+    return this.url
+      .replace('{symbol}', encodeURIComponent(symbol))
+      .replace('{network}', encodeURIComponent(this.network));
   }
 
   async getPrice(symbol: string): Promise<PriceData> {
     const fetchFn = getFetch();
     const url = this.buildUrl(symbol);
-    const response = await fetchFn(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let response: { ok: boolean; status: number; json(): Promise<any> };
+    try {
+      response = await fetchFn(url, { signal: controller.signal });
+    } catch (error) {
+      clearTimeout(timeout);
+      throw new Error(`Oracle source ${this.name} request failed`);
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error(`Oracle source ${this.name} rate limited`);
+      }
       throw new Error(`Oracle source ${this.name} responded with status ${response.status}`);
     }
 
@@ -234,13 +259,14 @@ export async function createOracleSources(
   }
 
   const customSources = options.customSources ?? (await loadOracleConfig(options.cwd)).sources;
+  const network = options.network ?? 'testnet';
   for (const custom of customSources) {
     if (!shouldInclude(custom.name)) {
       continue;
     }
 
     entries.push({
-      source: new HttpOracleSource(custom),
+      source: new HttpOracleSource(custom, network),
       weight: custom.weight ?? 1.0,
       type: 'custom',
     });

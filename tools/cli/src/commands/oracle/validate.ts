@@ -48,6 +48,7 @@ export const validateCommand = new Command('validate')
   .option('-t, --threshold <percent>', 'Deviation threshold percent', '5')
   .option('--max-age <duration>', 'Maximum price age (e.g. 60s)', '60s')
   .option('--sources <sources>', 'Comma-separated list of sources to use')
+  .option('--network <network>', 'Oracle network (testnet/mainnet)', 'testnet')
   .option('--json', 'Output machine-readable JSON')
   .action(async (symbol: string, options: any) => {
     const sourcesFilter = parseSources(options.sources);
@@ -63,7 +64,10 @@ export const validateCommand = new Command('validate')
         throw new Error('Max age must be greater than 0');
       }
 
-      const sources = await createOracleSources({ includeSources: sourcesFilter });
+      const sources = await createOracleSources({
+        includeSources: sourcesFilter,
+        network: options.network,
+      });
       const results: ValidationResult[] = [];
       const validPrices: PriceData[] = [];
 
@@ -94,10 +98,11 @@ export const validateCommand = new Command('validate')
               issues,
             });
           } catch (error) {
+            const message = (error as Error).message;
             results.push({
               source: entry.source.name,
               valid: false,
-              issues: ['fetch_failed'],
+              issues: [message.includes('rate limited') ? 'rate_limited' : 'fetch_failed'],
             });
           }
         })
@@ -118,6 +123,7 @@ export const validateCommand = new Command('validate')
         deviationPercent,
         threshold,
         maxAgeMs,
+        symbol,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), (error as Error).message);

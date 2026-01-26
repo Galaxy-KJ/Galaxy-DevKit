@@ -19,6 +19,7 @@ export interface PriceOutputOptions {
   json?: boolean;
   strategy?: string;
   sourcesFilter?: string[];
+  totalSources?: number;
 }
 
 export interface HistoryOutputOptions {
@@ -26,6 +27,7 @@ export interface HistoryOutputOptions {
   periodMs: number;
   intervalMs: number;
   twap: number;
+  symbol: string;
 }
 
 export interface SourcesOutputOptions {
@@ -37,6 +39,7 @@ export interface ValidationOutputOptions {
   deviationPercent: number;
   threshold: number;
   maxAgeMs: number;
+  symbol: string;
 }
 
 export interface StrategyInfo {
@@ -65,6 +68,14 @@ function formatNumber(value: number, decimals: number = 6): string {
   return value.toFixed(decimals);
 }
 
+function resolveDecimals(symbol: string): number {
+  const upper = symbol.toUpperCase();
+  if (upper.includes('USD')) {
+    return 2;
+  }
+  return 8;
+}
+
 function formatTimestamp(date?: Date | string): string {
   if (!date) {
     return 'n/a';
@@ -89,6 +100,31 @@ function outputJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
+function formatAgeMs(timestamp?: Date | string): string {
+  if (!timestamp) {
+    return 'n/a';
+  }
+  const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+  const diffMs = Date.now() - date.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) {
+    return 'n/a';
+  }
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function outputPrice(
   aggregated: AggregatedPrice,
   options: PriceOutputOptions = {}
@@ -96,8 +132,10 @@ export function outputPrice(
   const payload = {
     ...aggregated,
     timestamp: formatTimestamp(aggregated.timestamp),
+    updated: formatAgeMs(aggregated.timestamp),
     strategy: options.strategy,
     sourcesFilter: options.sourcesFilter ?? [],
+    totalSources: options.totalSources ?? aggregated.sourceCount,
   };
 
   if (options.json) {
@@ -105,13 +143,18 @@ export function outputPrice(
     return;
   }
 
+  const decimals = resolveDecimals(aggregated.symbol);
   const rows: Array<Array<string | number>> = [
     ['Symbol', aggregated.symbol],
-    ['Price', formatNumber(aggregated.price)],
+    ['Price', formatNumber(aggregated.price, decimals)],
     ['Confidence', `${formatNumber(aggregated.confidence * 100, 2)}%`],
-    ['Sources Used', aggregated.sourcesUsed.join(', ') || 'n/a'],
-    ['Source Count', aggregated.sourceCount],
+    [
+      'Sources Used',
+      `${aggregated.sourcesUsed.length}/${options.totalSources ?? aggregated.sourceCount}`,
+    ],
+    ['Sources', aggregated.sourcesUsed.join(', ') || 'n/a'],
     ['Outliers', aggregated.outliersFiltered.join(', ') || 'none'],
+    ['Updated', formatAgeMs(aggregated.timestamp)],
     ['Timestamp', formatTimestamp(aggregated.timestamp)],
   ];
 
@@ -134,6 +177,7 @@ export function outputHistory(
     periodMs: options.periodMs,
     intervalMs: options.intervalMs,
     twap: options.twap,
+    symbol: options.symbol,
     samples: samples.map((sample) => ({
       price: sample.price,
       timestamp: formatTimestamp(sample.timestamp),
@@ -145,9 +189,10 @@ export function outputHistory(
     return;
   }
 
+  const decimals = resolveDecimals(options.symbol);
   const rows = samples.map((sample, index) => [
     index + 1,
-    formatNumber(sample.price),
+    formatNumber(sample.price, decimals),
     formatTimestamp(sample.timestamp),
   ]);
 
@@ -156,7 +201,7 @@ export function outputHistory(
     renderTable(
       ['Metric', 'Value'],
       [
-        ['TWAP', formatNumber(options.twap)],
+        ['TWAP', formatNumber(options.twap, decimals)],
         ['Period (ms)', options.periodMs],
         ['Interval (ms)', options.intervalMs],
         ['Samples', samples.length],
@@ -221,6 +266,7 @@ export function outputValidation(
     deviationPercent: options.deviationPercent,
     threshold: options.threshold,
     maxAgeMs: options.maxAgeMs,
+    symbol: options.symbol,
     results,
   };
 
@@ -229,9 +275,10 @@ export function outputValidation(
     return;
   }
 
+  const decimals = resolveDecimals(options.symbol);
   const rows = results.map((result) => [
     result.source,
-    result.price !== undefined ? formatNumber(result.price) : 'n/a',
+    result.price !== undefined ? formatNumber(result.price, decimals) : 'n/a',
     result.timestamp ?? 'n/a',
     result.valid ? chalk.green('valid') : chalk.red('invalid'),
     result.issues.join(', ') || 'none',

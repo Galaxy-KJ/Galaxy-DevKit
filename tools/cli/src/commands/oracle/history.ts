@@ -62,6 +62,7 @@ export const historyCommand = new Command('history')
   .requiredOption('-p, --period <period>', 'Polling duration (e.g. 1m, 1h)')
   .option('-i, --interval <interval>', 'Polling interval (e.g. 5s)', '5s')
   .option('--sources <sources>', 'Comma-separated list of sources to use')
+  .option('--network <network>', 'Oracle network (testnet/mainnet)', 'testnet')
   .option('--json', 'Output machine-readable JSON')
   .action(async (symbol: string, options: any) => {
     const sourcesFilter = parseSources(options.sources);
@@ -74,7 +75,10 @@ export const historyCommand = new Command('history')
         throw new Error('Period and interval must be greater than 0');
       }
 
-      const aggregator = await createOracleAggregator({ includeSources: sourcesFilter });
+      const aggregator = await createOracleAggregator({
+        includeSources: sourcesFilter,
+        network: options.network,
+      });
       const samples: Array<{ price: number; timestamp: Date }> = [];
       const startTime = Date.now();
       const endTime = startTime + periodMs;
@@ -91,8 +95,10 @@ export const historyCommand = new Command('history')
           samples.push({ price: aggregated.price, timestamp: aggregated.timestamp });
           spinner?.stop();
         } catch (error) {
-          spinner?.fail('Failed to fetch price');
-          throw error;
+          spinner?.stop();
+          if (!options.json) {
+            console.warn(chalk.yellow('Warning: failed to fetch price sample'));
+          }
         }
 
         const now = Date.now();
@@ -102,12 +108,17 @@ export const historyCommand = new Command('history')
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
 
+      if (samples.length === 0) {
+        throw new Error('No price samples collected');
+      }
+
       const twap = calculateTWAP(samples, startTime, endTime);
       outputHistory(samples, {
         json: Boolean(options.json),
         periodMs,
         intervalMs,
         twap,
+        symbol,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), (error as Error).message);

@@ -46,13 +46,17 @@ const listCommand = new Command('list')
   .description('List available oracle sources')
   .option('--json', 'Output machine-readable JSON')
   .option('--sources <sources>', 'Comma-separated list of sources to include')
+  .option('--network <network>', 'Oracle network (testnet/mainnet)', 'testnet')
   .action(async (options: any) => {
     try {
       const includeSources = options.sources
         ? options.sources.split(',').map((value: string) => value.trim()).filter(Boolean)
         : undefined;
 
-      const entries = await createOracleSources({ includeSources });
+      const entries = await createOracleSources({
+        includeSources,
+        network: options.network,
+      });
       const sourcesWithInfo = await Promise.all(
         entries.map(async (entry) => {
           const isHealthy = await entry.source.isHealthy().catch(() => false);
