@@ -441,3 +441,25 @@ const result = await liquidityPoolService.depositLiquidity(
 ---
 
 **Remember**: Good documentation is as important as good code. Future developers (and AIs) will thank you!
+
+## Testing Requirements
+
+### Integration Tests
+All PRs must include integration tests for new features.
+
+### Mock Contracts
+Use provided mock contracts in `tests/integration/mocks/`:
+- Mock Lending Protocol
+- Mock DEX
+- Mock Oracle
+
+Run tests:
+```bash
+cd tests/integration/mocks
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Test Coverage
+- Aim for >80% coverage on new code
+- Test both success and error cases
+- Clean up test data after runs
