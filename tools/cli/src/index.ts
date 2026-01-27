@@ -25,6 +25,12 @@ import { createCommand } from './commands/create.js';
 // Register create command
 program.addCommand(createCommand);
 
+// Import wallet command
+import { walletCommand } from './commands/wallet/index.js';
+
+// Register wallet command
+program.addCommand(walletCommand);
+
 // Init command
 program
   .command('init')
@@ -32,7 +38,7 @@ program
   .option('-n, --name <name>', 'Project name')
   .action(async (options: any) => {
     const spinner = ora('Initializing Galaxy DevKit...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
       spinner.succeed(chalk.green('✅ Galaxy DevKit initialized!'));
@@ -53,7 +59,7 @@ program
   .option('-w, --watch', 'Watch for changes')
   .action(async (options: any) => {
     const spinner = ora('Building project...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate work
       spinner.succeed(chalk.green('✅ Build completed successfully!'));
@@ -90,7 +96,7 @@ program
   .option('-e, --env <environment>', 'Environment', 'production')
   .action(async (options: any) => {
     const spinner = ora('Deploying to production...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 4000)); // Simulate work
       spinner.succeed(chalk.green('✅ Deployment completed!'));
