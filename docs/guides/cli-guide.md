@@ -225,6 +225,41 @@ export const WalletManager: React.FC = () => {
 };
 ```
 
+### `galaxy oracle`
+
+Query and validate oracle price data during development.
+
+```bash
+galaxy oracle price XLM/USD
+```
+
+**Common Commands:**
+- `galaxy oracle price <symbol>` - Query current aggregated price
+- `galaxy oracle history <symbol> --period 1m` - Poll prices and compute TWAP
+- `galaxy oracle sources list` - List available oracle sources
+- `galaxy oracle sources add <name> <url>` - Add custom oracle source (use `{symbol}`)
+- `galaxy oracle validate <symbol> --threshold 5` - Validate prices against deviation threshold
+- `galaxy oracle strategies list` - List aggregation strategies
+
+**Examples:**
+```bash
+galaxy oracle price XLM/USD --strategy median
+galaxy oracle price XLM/USD --sources coingecko,coinmarketcap
+galaxy oracle price XLM/USD --watch 5s
+galaxy oracle price XLM/USD --network testnet
+
+galaxy oracle history XLM/USD --period 1m --interval 5s
+galaxy oracle history XLM/USD --network mainnet
+
+galaxy oracle sources list
+galaxy oracle sources add myapi https://example.com/price?symbol={symbol}&network={network}
+
+galaxy oracle validate XLM/USD --threshold 5 --max-age 60s
+galaxy oracle validate XLM/USD --network testnet
+
+galaxy oracle strategies list
+```
+
 ### `galaxy test`
 
 Runs tests for the project.

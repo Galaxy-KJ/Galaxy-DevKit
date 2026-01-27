@@ -56,7 +56,7 @@ gantt
 
 - [ ] **#16** Implement wallet management commands
 - [ ] **#17** Add protocol interaction commands
-- [ ] **#18** Create oracle data query commands
+- [X] **#18** Create oracle data query commands
 - [ ] **#19** Add interactive mode with prompts
 - [ ] **#20** Implement watch mode for real-time monitoring
 
