@@ -69,7 +69,7 @@ export class SocialRecovery extends EventEmitter {
   private approvals: Map<string, GuardianApproval[]> = new Map();
   private logs: Map<string, RecoveryAttemptLog[]> = new Map();
   private emergencyContacts: Map<string, EmergencyContact> = new Map();
-  private server: Server;
+  private server: Horizon.Server;
   private networkPassphrase: string;
   private encryptionKey: string; // For encrypting guardian contacts
 
@@ -200,7 +200,7 @@ export class SocialRecovery extends EventEmitter {
     const activeGuardians = this.config.guardians.filter(
       g => g.status === GuardianStatus.ACTIVE
     ).length;
-    
+
     if (activeGuardians <= this.config.minGuardians!) {
       throw new Error(
         `Cannot remove guardian: minimum ${this.config.minGuardians} guardians required`
@@ -284,8 +284,8 @@ export class SocialRecovery extends EventEmitter {
 
     // Check for active recovery requests (pending or approved)
     const activeRequest = Array.from(this.recoveryRequests.values()).find(
-      req => 
-        req.walletPublicKey === walletPublicKey && 
+      req =>
+        req.walletPublicKey === walletPublicKey &&
         (req.status === RecoveryStatus.PENDING || req.status === RecoveryStatus.APPROVED)
     );
 
