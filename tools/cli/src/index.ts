@@ -12,6 +12,16 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 
+// Import commands
+import { createCommand } from './commands/create.js';
+import { oracleCommand } from './commands/oracle/index.js';
+import { walletCommand } from './commands/wallet/index.js';
+import {
+  createInteractiveCommand,
+  launchInteractiveMode,
+  shouldLaunchInteractive,
+} from './commands/interactive/index.js';
+
 const program = new Command();
 
 program
@@ -19,11 +29,13 @@ program
   .description('Galaxy DevKit CLI - Build Stellar applications with ease')
   .version('1.0.0');
 
-// Import create command
-import { createCommand } from './commands/create.js';
-
-// Register create command
+// Register imported commands
 program.addCommand(createCommand);
+program.addCommand(oracleCommand);
+program.addCommand(walletCommand);
+
+// Register interactive command
+program.addCommand(createInteractiveCommand(program));
 
 // Init command
 program
@@ -32,7 +44,7 @@ program
   .option('-n, --name <name>', 'Project name')
   .action(async (options: any) => {
     const spinner = ora('Initializing Galaxy DevKit...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
       spinner.succeed(chalk.green('✅ Galaxy DevKit initialized!'));
@@ -53,7 +65,7 @@ program
   .option('-w, --watch', 'Watch for changes')
   .action(async (options: any) => {
     const spinner = ora('Building project...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate work
       spinner.succeed(chalk.green('✅ Build completed successfully!'));
@@ -90,7 +102,7 @@ program
   .option('-e, --env <environment>', 'Environment', 'production')
   .action(async (options: any) => {
     const spinner = ora('Deploying to production...').start();
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 4000)); // Simulate work
       spinner.succeed(chalk.green('✅ Deployment completed!'));
@@ -104,7 +116,7 @@ program
     }
   });
 
-// Help command
+// Help command (updated to include interactive mode)
 program
   .command('help')
   .description('Show help information')
@@ -112,18 +124,33 @@ program
     console.log(chalk.blue('🌟 Galaxy DevKit CLI'));
     console.log(chalk.gray('Build Stellar applications with ease\n'));
     console.log(chalk.yellow('Available commands:'));
-    console.log(chalk.gray('  galaxy create <name>    Create new project'));
+    console.log(chalk.gray('  galaxy                 Launch interactive mode'));
+    console.log(chalk.gray('  galaxy interactive     Launch interactive mode (explicit)'));
+    console.log(chalk.gray('  galaxy create <name>   Create new project'));
     console.log(chalk.gray('  galaxy init            Initialize in current dir'));
     console.log(chalk.gray('  galaxy build           Build project'));
     console.log(chalk.gray('  galaxy dev             Start dev server'));
     console.log(chalk.gray('  galaxy deploy          Deploy to production'));
+    console.log(chalk.gray('  galaxy wallet <cmd>    Wallet management'));
+    console.log(chalk.gray('  galaxy oracle <cmd>    Oracle price data'));
     console.log(chalk.gray('  galaxy help            Show this help'));
+    console.log(chalk.gray('\nRun galaxy <command> --help for detailed command help.'));
   });
 
-// Parse command line arguments
-program.parse();
+// Main execution
+async function main(): Promise<void> {
+  // Check if we should launch interactive mode
+  if (shouldLaunchInteractive(process.argv)) {
+    await launchInteractiveMode(program);
+    return;
+  }
 
-// Show help if no command provided
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
+  // Parse command line arguments normally
+  await program.parseAsync();
 }
+
+// Run the CLI
+main().catch((error) => {
+  console.error(chalk.red('Error:'), error.message);
+  process.exit(1);
+});

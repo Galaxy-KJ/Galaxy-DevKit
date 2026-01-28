@@ -11,6 +11,8 @@ out/
 .next/
 .vercel/
 
+IMPLEMENTATION_PLAN.md
+
 # Environment variables
 .env
 .env.local

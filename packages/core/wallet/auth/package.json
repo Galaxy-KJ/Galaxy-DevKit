@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "build": "tsc",
+    "clean": "rm -rf dist"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +23,10 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "events": "^3.3.0"
+    "events": "^3.3.0",
+    "@ledgerhq/hw-transport": "^6.31.4",
+    "@ledgerhq/hw-transport-webusb": "^6.29.4",
+    "@ledgerhq/hw-transport-node-hid": "^6.29.4",
+    "@ledgerhq/hw-app-str": "^7.0.7"
   }
 }
