@@ -159,6 +159,64 @@ interface TransactionResult {
 }
 ```
 
+#### Operation Types (Discriminated Unions)
+
+```typescript
+import {
+  OperationType,
+  SupplyOperation,
+  SwapOperation,
+  isSupplyOperation,
+  isSwapOperation
+} from '@galaxy/core-defi-protocols';
+
+// All operation types: SupplyOperation, WithdrawOperation, BorrowOperation,
+// RepayOperation, SwapOperation, AddLiquidityOperation, RemoveLiquidityOperation
+
+const supplyOp: SupplyOperation = {
+  type: OperationType.SUPPLY,
+  timestamp: new Date(),
+  walletAddress: 'GBRPY...OX2H',
+  asset: { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum4' },
+  amount: '1000.0000000'
+};
+
+// Use type guards to narrow types
+if (isSupplyOperation(op)) {
+  console.log(`Supplying ${op.amount} of ${op.asset.code}`);
+}
+```
+
+#### Error Classes
+
+```typescript
+import {
+  ProtocolError,
+  InsufficientBalanceError,
+  SlippageExceededError,
+  isProtocolError,
+  wrapError
+} from '@galaxy/core-defi-protocols';
+
+// Available error classes:
+// - ProtocolError (base) - ProtocolInitError - InsufficientBalanceError
+// - InvalidOperationError - ContractError - SlippageExceededError - HealthFactorError
+
+try {
+  await protocol.supply(wallet, privateKey, asset, amount);
+} catch (error) {
+  if (isProtocolError(error)) {
+    console.error(`[${error.code}] ${error.message}`);
+    if (error instanceof InsufficientBalanceError) {
+      console.log(`Need ${error.required}, have ${error.available}`);
+    }
+  } else {
+    const wrapped = wrapError(error, 'blend');
+    console.error(wrapped.toJSON());
+  }
+}
+```
+
 ### Main Methods
 
 #### initialize()
@@ -344,8 +402,8 @@ See the `docs/examples/defi-protocols/` directory for complete examples:
 
 - `01-basic-setup.ts` - Basic protocol setup and initialization
 - `02-lending-operations.ts` - Supply, borrow, repay, withdraw
-- `03-position-management.ts` - Position monitoring and health checks
-- `04-dex-operations.ts` - Swaps and liquidity provision
+- `03-custom-protocol.ts` - Implementing a custom protocol
+- `04-operations.ts` - Using different operation types and error handling
 
 ## 🤝 Contributing
 
