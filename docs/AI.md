@@ -464,6 +464,16 @@ When adding a new protocol (e.g., Blend, Soroswap):
 - Transaction building includes slippage protection
 - Health factor checks before risky operations
 
+**Operation Types (Discriminated Unions):**
+
+Protocol operations use discriminated unions for type-safe handling. Available types: `SupplyOperation`, `WithdrawOperation`, `BorrowOperation`, `RepayOperation`, `SwapOperation`, `AddLiquidityOperation`, `RemoveLiquidityOperation`.
+
+**Error Classes:** `ProtocolError`, `ProtocolInitError`, `InsufficientBalanceError`, `InvalidOperationError`, `ContractError`, `SlippageExceededError`, `HealthFactorError`
+
+**Type Guards:** `isSupplyOperation()`, `isSwapOperation()`, `isLendingOperation()`, `isDexOperation()`, `isAsset()`, `isStellarAddress()`, `isValidAmount()`
+
+**Files:** `src/types/operations.ts`, `src/errors/errors.ts`, `src/utils/type-guards.ts`, `docs/examples/defi-protocols/03-custom-protocol.ts`, `docs/examples/defi-protocols/04-operations.ts`
+
 ### 5. Oracle System
 Price and data oracles for Stellar with aggregation capabilities:
 - **IOracleSource Interface** - Standard interface for oracle sources
