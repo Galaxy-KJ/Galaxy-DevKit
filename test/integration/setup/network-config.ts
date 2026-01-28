@@ -5,8 +5,9 @@
  * Use this to connect to the Stellar Development Foundation's testnet.
  */
 
-import { Networks } from 'stellar-sdk';
+
 import Server from 'stellar-sdk';
+import { Networks, Horizon } from 'stellar-sdk';
 import type { TestNetworkConfig } from './types';
 
 /**
@@ -41,7 +42,8 @@ export const STELLAR_TESTNET_CONFIG: TestNetworkConfig = {
  */
 export class NetworkConfiguration {
   private config: TestNetworkConfig;
-  private server: InstanceType<typeof Server>;
+
+  private server: Horizon.Server;
 
   constructor(config: TestNetworkConfig = STELLAR_TESTNET_CONFIG) {
     this.config = config;
@@ -104,7 +106,7 @@ export class NetworkConfiguration {
    */
   async validateConnection(): Promise<boolean> {
     try {
-      await this.server.getNetworkDetails();
+      await this.server.root();
       return true;
     } catch (error) {
       console.error('❌ Network connection failed:', error);

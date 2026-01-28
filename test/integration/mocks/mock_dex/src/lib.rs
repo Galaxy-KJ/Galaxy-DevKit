@@ -29,7 +29,7 @@ impl MockDEX {
             )));
         }
 
-        // For testing: 1 XLM = 5 USDC (fixed rate, divided by 10 for calculations)
+        // For testing: 1 XLM = 0.5  USDC (fixed rate, divided by 10 for calculations)
         let amount_out = (amount_in * 5) / 10;
 
         if amount_out < min_amount_out {
@@ -84,7 +84,7 @@ impl MockDEX {
 
     /// Get exchange rate (TokenA -> TokenB)
     pub fn exchange_rate(_env: Env) -> i128 {
-        // Return 1 XLM = 5 USDC
+        // Return 1 XLM = 0.5 USDC
         5_000
     }
 

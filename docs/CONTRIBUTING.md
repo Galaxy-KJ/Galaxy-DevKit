@@ -448,14 +448,14 @@ const result = await liquidityPoolService.depositLiquidity(
 All PRs must include integration tests for new features.
 
 ### Mock Contracts
-Use provided mock contracts in `tests/integration/mocks/`:
+Use provided mock contracts in `test/integration/mocks/`:
 - Mock Lending Protocol
 - Mock DEX
 - Mock Oracle
 
 Run tests:
 ```bash
-cd tests/integration/mocks
+cd test/integration/mocks
 cargo build --target wasm32-unknown-unknown --release
 ```
 
