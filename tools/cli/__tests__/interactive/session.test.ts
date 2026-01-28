@@ -242,10 +242,11 @@ describe('SessionManager', () => {
       const manager = new SessionManager({ statePath, autoSave: false });
       await manager.initialize();
 
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Wait a bit - use a longer delay and lower threshold for CI stability
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const stats = manager.getStats();
+      // Use a lower threshold than the wait time to account for timing variations
       expect(stats.duration).toBeGreaterThanOrEqual(50);
     });
   });

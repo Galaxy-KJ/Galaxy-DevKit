@@ -195,7 +195,7 @@ export const createProjectWorkflow: Workflow = {
     console.log(chalk.gray(`  Name: ${projectName}`));
     console.log(chalk.gray(`  Template: ${template}`));
     console.log(chalk.gray(`  Network: ${network}`));
-    console.log(chalk.gray(`  Features: ${features.join(', ') || 'none'}`));
+    console.log(chalk.gray(`  Features: ${(features || []).join(', ') || 'none'}`));
     console.log(chalk.gray(`  Install: ${installDeps ? 'yes' : 'no'}`));
 
     // Update session with selected network

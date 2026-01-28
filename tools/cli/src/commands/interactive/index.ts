@@ -215,17 +215,10 @@ export function shouldLaunchInteractive(argv: string[]): boolean {
   // Get args after node and script path
   const args = argv.slice(2);
 
-  // No arguments means launch interactive
-  if (args.length === 0) {
-    return true;
-  }
-
-  // Explicit interactive command
-  if (args[0] === 'interactive') {
-    return true;
-  }
-
-  return false;
+  // Only auto-launch interactive mode when there are truly no arguments
+  // When 'interactive' is specified explicitly, let Commander handle it
+  // so that options like --no-history, --no-session, and --help are parsed
+  return args.length === 0;
 }
 
 /**

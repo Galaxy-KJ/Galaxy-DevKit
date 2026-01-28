@@ -270,7 +270,9 @@ export class SessionManager {
    * Emit a session event
    */
   private emit(event: string, data?: any): void {
-    this.eventListeners.get(event)?.forEach((handler) => handler(data));
+    this.eventListeners.get(event)?.forEach((handler) => {
+      handler(data);
+    });
   }
 
   /**

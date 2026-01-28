@@ -16,7 +16,7 @@ galaxy interactive
 
 ### Example Session
 
-```
+```console
 $ galaxy
 
 🌌 Galaxy DevKit Interactive Mode
@@ -39,7 +39,7 @@ Goodbye! 👋
 
 Press `Tab` to autocomplete commands, subcommands, and options:
 
-```
+```console
 galaxy> wal<Tab>
 galaxy> wallet
 
@@ -54,15 +54,15 @@ galaxy> wallet create --<Tab>
 
 Navigate through your command history using arrow keys:
 
-| Key | Action |
-|-----|--------|
-| `↑` (Up Arrow) | Previous command |
-| `↓` (Down Arrow) | Next command |
-| `Ctrl+R` | Search history |
+| Key                | Action           |
+| ------------------ | ---------------- |
+| `↑` (Up Arrow)     | Previous command |
+| `↓` (Down Arrow)   | Next command     |
+| `Ctrl+R`           | Search history   |
 
 View and manage history with the `history` command:
 
-```
+```console
 galaxy> history
    1  wallet create
    2  oracle price XLM/USD
@@ -82,7 +82,7 @@ The REPL maintains session state including:
 - **Active Wallet**: Currently selected wallet for operations
 - **Variables**: Custom key-value pairs for scripting
 
-```
+```console
 galaxy> session
 Network: testnet
 Wallet: dev-wallet
@@ -95,7 +95,7 @@ Variables:
 
 #### Managing Session
 
-```
+```console
 # Switch network
 galaxy> network mainnet
 ✓ Switched to mainnet
@@ -123,20 +123,20 @@ Session reset to defaults.
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Tab` | Autocomplete |
-| `↑` / `↓` | Navigate history |
-| `Ctrl+R` | Search history |
-| `Ctrl+C` | Cancel current input |
-| `Ctrl+D` | Exit REPL |
-| `Ctrl+L` | Clear screen |
+| Shortcut     | Action               |
+| ------------ | -------------------- |
+| `Tab`        | Autocomplete         |
+| `↑` / `↓`    | Navigate history     |
+| `Ctrl+R`     | Search history       |
+| `Ctrl+C`     | Cancel current input |
+| `Ctrl+D`     | Exit REPL            |
+| `Ctrl+L`     | Clear screen         |
 
 ### Guided Workflows
 
 For complex multi-step operations, use guided workflows:
 
-```
+```console
 galaxy> workflow
 Available Workflows:
   create-project - Set up a new Galaxy DevKit project
@@ -161,35 +161,35 @@ Create or import a wallet for your project
 
 ### General
 
-| Command | Description |
-|---------|-------------|
-| `help [command]` | Show help information |
-| `exit`, `quit` | Exit interactive mode |
-| `clear` | Clear the screen |
-| `history [-n N]` | Show command history |
-| `session [--reset]` | Show/reset session state |
+| Command            | Description              |
+| ------------------ | ------------------------ |
+| `help [command]`   | Show help information    |
+| `exit`, `quit`     | Exit interactive mode    |
+| `clear`            | Clear the screen         |
+| `history [-n N]`   | Show command history     |
+| `session [--reset]`| Show/reset session state |
 
 ### Session Management
 
-| Command | Description |
-|---------|-------------|
-| `network [name]` | Show/switch network |
-| `env` | Show session variables |
-| `set <key> <value>` | Set session variable |
-| `unset <key>` | Remove session variable |
+| Command              | Description              |
+| -------------------- | ------------------------ |
+| `network [name]`     | Show/switch network      |
+| `env`                | Show session variables   |
+| `set <key> <value>`  | Set session variable     |
+| `unset <key>`        | Remove session variable  |
 
 ### Workflows
 
-| Command | Description |
-|---------|-------------|
-| `workflow` | List available workflows |
-| `workflow <name>` | Run a guided workflow |
+| Command            | Description              |
+| ------------------ | ------------------------ |
+| `workflow`         | List available workflows |
+| `workflow <name>`  | Run a guided workflow    |
 
 ## Galaxy Commands
 
 All standard Galaxy CLI commands work in interactive mode:
 
-```
+```console
 galaxy> create my-project --template defi
 galaxy> wallet create --name dev-wallet
 galaxy> oracle price XLM/USD --json

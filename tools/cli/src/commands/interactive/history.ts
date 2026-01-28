@@ -65,7 +65,12 @@ export class HistoryManager {
 
         this.entries = lines.map((line) => {
           try {
-            return JSON.parse(line) as HistoryEntry;
+            const parsed = JSON.parse(line);
+            // Reconstruct Date object from ISO string
+            return {
+              ...parsed,
+              timestamp: new Date(parsed.timestamp),
+            } as HistoryEntry;
           } catch {
             // Legacy format: just the command string
             return {
