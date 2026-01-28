@@ -81,14 +81,14 @@ export async function launchInteractiveMode(
   const repl = createRepl({
     history: {
       maxEntries: 100,
-      historyPath: '',
+      // historyPath uses default (~/.galaxy/history) when not specified
       persist: options.history !== false,
       deduplicate: true,
     },
     session: {
       autoSave: options.session !== false,
       timeout: 0,
-      statePath: '',
+      // statePath uses default (~/.galaxy/session.json) when not specified
     },
   });
 

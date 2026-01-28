@@ -113,9 +113,15 @@ export class SessionManager {
 
   /**
    * Get the current session state
+   * Returns a deep copy to prevent external mutation
    */
   getState(): SessionState {
-    return { ...this.state };
+    return {
+      ...this.state,
+      startedAt: new Date(this.state.startedAt),
+      lastCommandAt: this.state.lastCommandAt ? new Date(this.state.lastCommandAt) : null,
+      variables: { ...this.state.variables },
+    };
   }
 
   /**
