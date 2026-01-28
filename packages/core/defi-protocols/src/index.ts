@@ -9,6 +9,7 @@
 // Types
 export * from './types/defi-types';
 export * from './types/protocol-interface';
+export * from './types/operations';
 
 // Base Protocol
 export { BaseProtocol } from './protocols/base-protocol';
@@ -22,3 +23,7 @@ export * from './constants/protocols';
 
 // Utils
 export * from './utils/validation';
+export * from './utils/type-guards';
+
+// Errors
+export * from './errors';
