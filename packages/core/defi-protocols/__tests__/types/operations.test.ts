@@ -276,4 +276,264 @@ describe('Type Guards', () => {
             expect(isOperationType('invalid')).toBe(false);
         });
     });
+
+    describe('isNativeAsset', () => {
+        it('should return true for native asset', () => {
+            expect(isNativeAsset({ code: 'XLM', type: 'native' })).toBe(true);
+        });
+
+        it('should return false for credit asset', () => {
+            expect(isNativeAsset({
+                code: 'USDC',
+                issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                type: 'credit_alphanum4'
+            })).toBe(false);
+        });
+    });
+
+    describe('isCreditAsset', () => {
+        it('should return true for credit_alphanum4 asset', () => {
+            expect(isCreditAsset({
+                code: 'USDC',
+                issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                type: 'credit_alphanum4'
+            })).toBe(true);
+        });
+
+        it('should return true for credit_alphanum12 asset', () => {
+            expect(isCreditAsset({
+                code: 'LONGASSETCODE',
+                issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                type: 'credit_alphanum12'
+            })).toBe(true);
+        });
+
+        it('should return false for native asset', () => {
+            expect(isCreditAsset({ code: 'XLM', type: 'native' })).toBe(false);
+        });
+    });
+
+    describe('isBaseOperation', () => {
+        it('should return true for valid base operation', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                timestamp: new Date(),
+                walletAddress: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOUJ3SACD63Z2N3G'
+            };
+            expect(isBaseOperation(op)).toBe(true);
+        });
+
+        it('should return false for null', () => {
+            expect(isBaseOperation(null)).toBe(false);
+        });
+
+        it('should return false for non-object', () => {
+            expect(isBaseOperation('string')).toBe(false);
+        });
+
+        it('should return false for invalid type', () => {
+            const op = {
+                type: 'invalid',
+                timestamp: new Date(),
+                walletAddress: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOUJ3SACD63Z2N3G'
+            };
+            expect(isBaseOperation(op)).toBe(false);
+        });
+
+        it('should return false for missing timestamp', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                walletAddress: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOUJ3SACD63Z2N3G'
+            };
+            expect(isBaseOperation(op)).toBe(false);
+        });
+
+        it('should return false for non-Date timestamp', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                timestamp: 'not-a-date',
+                walletAddress: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOUJ3SACD63Z2N3G'
+            };
+            expect(isBaseOperation(op)).toBe(false);
+        });
+
+        it('should return false for missing walletAddress', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                timestamp: new Date()
+            };
+            expect(isBaseOperation(op)).toBe(false);
+        });
+    });
+
+    describe('isProtocolOperation', () => {
+        const baseProps = {
+            timestamp: new Date(),
+            walletAddress: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOUJ3SACD63Z2N3G'
+        };
+
+        const validAsset = {
+            code: 'USDC',
+            issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+            type: 'credit_alphanum4'
+        };
+
+        const nativeAsset = { code: 'XLM', type: 'native' };
+
+        it('should return true for valid SupplyOperation', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                ...baseProps,
+                asset: validAsset,
+                amount: '100.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid WithdrawOperation', () => {
+            const op = {
+                type: OperationType.WITHDRAW,
+                ...baseProps,
+                asset: validAsset,
+                amount: '100.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid BorrowOperation', () => {
+            const op = {
+                type: OperationType.BORROW,
+                ...baseProps,
+                asset: validAsset,
+                amount: '100.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid RepayOperation', () => {
+            const op = {
+                type: OperationType.REPAY,
+                ...baseProps,
+                asset: validAsset,
+                amount: '100.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid SwapOperation', () => {
+            const op = {
+                type: OperationType.SWAP,
+                ...baseProps,
+                tokenIn: nativeAsset,
+                tokenOut: validAsset,
+                amountIn: '100.0000000',
+                minAmountOut: '99.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid AddLiquidityOperation', () => {
+            const op = {
+                type: OperationType.ADD_LIQUIDITY,
+                ...baseProps,
+                tokenA: nativeAsset,
+                tokenB: validAsset,
+                amountA: '100.0000000',
+                amountB: '500.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return true for valid RemoveLiquidityOperation', () => {
+            const op = {
+                type: OperationType.REMOVE_LIQUIDITY,
+                ...baseProps,
+                poolAddress: 'CPOOL123456789',
+                lpTokenAmount: '50.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(true);
+        });
+
+        it('should return false for invalid base operation', () => {
+            expect(isProtocolOperation(null)).toBe(false);
+            expect(isProtocolOperation('string')).toBe(false);
+        });
+
+        it('should return false for SupplyOperation with invalid asset', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                ...baseProps,
+                asset: { code: 'USDC', type: 'invalid' },
+                amount: '100.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(false);
+        });
+
+        it('should return false for SupplyOperation with invalid amount', () => {
+            const op = {
+                type: OperationType.SUPPLY,
+                ...baseProps,
+                asset: validAsset,
+                amount: '-100'
+            };
+            expect(isProtocolOperation(op)).toBe(false);
+        });
+
+        it('should return false for SwapOperation with invalid tokenIn', () => {
+            const op = {
+                type: OperationType.SWAP,
+                ...baseProps,
+                tokenIn: { code: 'XLM', type: 'invalid' },
+                tokenOut: validAsset,
+                amountIn: '100.0000000',
+                minAmountOut: '99.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(false);
+        });
+
+        it('should return false for RemoveLiquidityOperation with non-string poolAddress', () => {
+            const op = {
+                type: OperationType.REMOVE_LIQUIDITY,
+                ...baseProps,
+                poolAddress: 123,
+                lpTokenAmount: '50.0000000'
+            };
+            expect(isProtocolOperation(op)).toBe(false);
+        });
+
+        it('should return false for RemoveLiquidityOperation with invalid lpTokenAmount', () => {
+            const op = {
+                type: OperationType.REMOVE_LIQUIDITY,
+                ...baseProps,
+                poolAddress: 'CPOOL123456789',
+                lpTokenAmount: 'invalid'
+            };
+            expect(isProtocolOperation(op)).toBe(false);
+        });
+    });
+
+    describe('isValidAmount edge cases', () => {
+        it('should return false for non-string type', () => {
+            expect(isValidAmount(100)).toBe(false);
+            expect(isValidAmount(null)).toBe(false);
+            expect(isValidAmount(undefined)).toBe(false);
+        });
+    });
+
+    describe('isAsset edge cases', () => {
+        it('should return false for object without code', () => {
+            expect(isAsset({ type: 'native' })).toBe(false);
+        });
+
+        it('should return false for non-string code', () => {
+            expect(isAsset({ code: 123, type: 'native' })).toBe(false);
+        });
+    });
 });
+
+import {
+    isNativeAsset,
+    isCreditAsset,
+    isBaseOperation,
+} from '../../src/utils/type-guards';
+
