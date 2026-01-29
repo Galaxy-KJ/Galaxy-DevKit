@@ -23,14 +23,17 @@ galaxy oracle price <symbol> [options]
 **Arguments:**
 - `<symbol>` - Asset pair (e.g., `XLM/USD`, `BTC/USD`)
 
+
 **Options:**
+
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `-s, --strategy <name>` | Aggregation strategy: `median`, `mean`, `twap`, `weighted` | `median` |
 | `--sources <list>` | Comma-separated source names to use | all |
 | `--network <name>` | Oracle network: `testnet` or `mainnet` | `testnet` |
 | `--json` | Output machine-readable JSON | table |
 | `-w, --watch [interval]` | Watch for real-time updates | off (5s default) |
+
 
 **Examples:**
 ```bash
@@ -48,7 +51,7 @@ galaxy oracle price BTC/USD --sources coingecko,binance --json
 ```
 
 **Output Example:**
-```
+```text
 ┌──────────────┬──────────────────┐
 │ Field        │ Value            │
 ├──────────────┼──────────────────┤
@@ -77,14 +80,17 @@ galaxy oracle history <symbol> --period <duration> [options]
 **Arguments:**
 - `<symbol>` - Asset pair (e.g., `XLM/USD`)
 
+
 **Options:**
+
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `-p, --period <duration>` | Polling duration (e.g., `1m`, `1h`) | **required** |
 | `-i, --interval <duration>` | Polling interval | `5s` |
 | `--sources <list>` | Comma-separated source names | all |
 | `--network <name>` | Oracle network | `testnet` |
 | `--json` | Output machine-readable JSON | table |
+
 
 **Examples:**
 ```bash
@@ -107,15 +113,18 @@ List available sources or add custom oracle endpoints.
 galaxy oracle sources list [options]
 ```
 
+
 **Options:**
+
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `--sources <list>` | Filter specific sources | all |
 | `--network <name>` | Oracle network | `testnet` |
 | `--json` | Output machine-readable JSON | table |
 
+
 **Output Example:**
-```
+```text
 ┌──────────────┬─────────┬────────┬─────────┬──────────┐
 │ Name         │ Type    │ Weight │ Health  │ Failures │
 ├──────────────┼─────────┼────────┼─────────┼──────────┤
@@ -135,11 +144,14 @@ galaxy oracle sources add <name> <url> [options]
 - `<name>` - Source identifier (lowercase, alphanumeric)
 - `<url>` - API endpoint URL (must include `{symbol}` placeholder)
 
+
 **Options:**
+
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `-w, --weight <value>` | Source weight for aggregation | `1.0` |
 | `-d, --description <text>` | Optional description | - |
+
 
 **Example:**
 ```bash
@@ -159,14 +171,17 @@ galaxy oracle validate <symbol> [options]
 **Arguments:**
 - `<symbol>` - Asset pair to validate
 
+
 **Options:**
+
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `-t, --threshold <percent>` | Maximum deviation threshold | `5` |
 | `--max-age <duration>` | Maximum acceptable price age | `60s` |
 | `--sources <list>` | Sources to validate | all |
 | `--network <name>` | Oracle network | `testnet` |
 | `--json` | Output machine-readable JSON | table |
+
 
 **Examples:**
 ```bash
@@ -178,7 +193,7 @@ galaxy oracle validate XLM/USD --threshold 2 --max-age 30s
 ```
 
 **Output Example:**
-```
+```text
 ┌──────────────┬───────┬───────────────────────┬─────────┬────────┐
 │ Source       │ Price │ Timestamp             │ Status  │ Issues │
 ├──────────────┼───────┼───────────────────────┼─────────┼────────┤
@@ -197,13 +212,16 @@ Display all available price aggregation strategies.
 galaxy oracle strategies [--json]
 ```
 
+
 **Output:**
+
 | Strategy | Description |
-|----------|-------------|
+| --- | --- |
 | `median` | Median of source prices (default) |
 | `mean` | Simple arithmetic average of source prices |
 | `twap` | Time-weighted average based on price recency |
 | `weighted` | Weighted average using configured source weights |
+
 
 ---
 
@@ -216,7 +234,7 @@ Results are cached for **30 seconds** to avoid rate limiting. Subsequent request
 Network errors trigger automatic retries with exponential backoff:
 - Up to 3 attempts
 - Base delay: 500ms (doubles each retry)
-- Rate limiting and invalid responses do not retry
+- Rate-limiting and invalid responses do not retry
 
 ### Error Handling
 The CLI handles common errors gracefully:

@@ -28,7 +28,7 @@ describe('MeanStrategy', () => {
             { symbol: 'XLM/USD', price: 0.10, timestamp: new Date(), source: 'a' },
             { symbol: 'XLM/USD', price: 0.20, timestamp: new Date(), source: 'b' },
         ];
-        expect(strategy.aggregate(prices)).toBe(0.15);
+        expect(strategy.aggregate(prices)).toBeCloseTo(0.15, 10);
     });
 
     it('calculates arithmetic mean of multiple prices', () => {
@@ -37,7 +37,7 @@ describe('MeanStrategy', () => {
             { symbol: 'XLM/USD', price: 0.20, timestamp: new Date(), source: 'b' },
             { symbol: 'XLM/USD', price: 0.30, timestamp: new Date(), source: 'c' },
         ];
-        expect(strategy.aggregate(prices)).toBe(0.20);
+        expect(strategy.aggregate(prices)).toBeCloseTo(0.20, 10);
     });
 
     it('throws error for empty price array', () => {
@@ -51,7 +51,7 @@ describe('MeanStrategy', () => {
         ];
         const weights = new Map([['a', 10], ['b', 1]]);
         // Mean should not be affected by weights
-        expect(strategy.aggregate(prices, weights)).toBe(0.15);
+        expect(strategy.aggregate(prices, weights)).toBeCloseTo(0.15, 10);
     });
 
     it('handles very small price differences', () => {

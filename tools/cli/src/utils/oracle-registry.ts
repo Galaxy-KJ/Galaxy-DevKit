@@ -148,7 +148,7 @@ class HttpOracleSource implements IOracleSource {
   }
 
   async getPrice(symbol: string): Promise<PriceData> {
-    const cacheKey = `${this.name}:${symbol}`;
+    const cacheKey = `${this.name}:${this.network}:${symbol}`;
     const cached = priceResultCache.get<PriceData>(cacheKey);
     if (cached) {
       return cached;
