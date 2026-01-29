@@ -16,6 +16,7 @@ export { OracleAggregator } from './aggregator/OracleAggregator';
 // Strategies
 export type { AggregationStrategy } from './aggregator/strategies/AggregationStrategy';
 export { MedianStrategy } from './aggregator/strategies/MedianStrategy';
+export { MeanStrategy } from './aggregator/strategies/MeanStrategy';
 export { WeightedAverageStrategy } from './aggregator/strategies/WeightedAverageStrategy';
 export { TWAPStrategy } from './aggregator/strategies/TWAPStrategy';
 
