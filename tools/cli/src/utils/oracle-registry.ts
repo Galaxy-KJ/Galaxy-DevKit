@@ -8,6 +8,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
+import NodeCache from 'node-cache';
 import {
   OracleAggregator,
   MockOracleSource,
@@ -91,6 +92,36 @@ function getFetch(): (
   return fetchFn;
 }
 
+// CLI result cache with 30 second TTL
+const priceResultCache = new NodeCache({ stdTTL: 30, checkperiod: 10 });
+
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 500;
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES
+): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      const message = lastError.message || '';
+      // Don't retry on rate limiting or invalid responses
+      if (message.includes('rate limited') || message.includes('invalid price')) {
+        throw lastError;
+      }
+      if (attempt < maxRetries - 1) {
+        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError ?? new Error('Max retries exceeded');
+}
+
 class HttpOracleSource implements IOracleSource {
   public readonly name: string;
   private url: string;
@@ -117,44 +148,55 @@ class HttpOracleSource implements IOracleSource {
   }
 
   async getPrice(symbol: string): Promise<PriceData> {
-    const fetchFn = getFetch();
-    const url = this.buildUrl(symbol);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    let response: { ok: boolean; status: number; json(): Promise<any> };
-    try {
-      response = await fetchFn(url, { signal: controller.signal });
-    } catch (error) {
-      clearTimeout(timeout);
-      throw new Error(`Oracle source ${this.name} request failed`);
+    const cacheKey = `${this.name}:${symbol}`;
+    const cached = priceResultCache.get<PriceData>(cacheKey);
+    if (cached) {
+      return cached;
     }
-    clearTimeout(timeout);
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error(`Oracle source ${this.name} rate limited`);
+    const result = await withRetry(async () => {
+      const fetchFn = getFetch();
+      const url = this.buildUrl(symbol);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      let response: { ok: boolean; status: number; json(): Promise<any> };
+      try {
+        response = await fetchFn(url, { signal: controller.signal });
+      } catch (error) {
+        clearTimeout(timeout);
+        throw new Error(`Oracle source ${this.name} request failed`);
       }
-      throw new Error(`Oracle source ${this.name} responded with status ${response.status}`);
-    }
+      clearTimeout(timeout);
 
-    const data = await response.json();
-    const price = Number(data?.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      throw new Error(`Oracle source ${this.name} returned invalid price`);
-    }
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(`Oracle source ${this.name} rate limited`);
+        }
+        throw new Error(`Oracle source ${this.name} responded with status ${response.status}`);
+      }
 
-    const resolvedSymbol = typeof data?.symbol === 'string' ? data.symbol : symbol;
+      const data = await response.json();
+      const price = Number(data?.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new Error(`Oracle source ${this.name} returned invalid price`);
+      }
 
-    return {
-      symbol: resolvedSymbol,
-      price,
-      timestamp: new Date(),
-      source: this.name,
-      metadata: {
-        url,
-      },
-    };
+      const resolvedSymbol = typeof data?.symbol === 'string' ? data.symbol : symbol;
+
+      return {
+        symbol: resolvedSymbol,
+        price,
+        timestamp: new Date(),
+        source: this.name,
+        metadata: {
+          url,
+        },
+      };
+    });
+
+    priceResultCache.set(cacheKey, result);
+    return result;
   }
 
   async getPrices(symbols: string[]): Promise<PriceData[]> {
