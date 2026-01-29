@@ -5,7 +5,6 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "packages/*/*",
     "tools/*"
   ],
   "scripts": {
@@ -24,15 +23,13 @@
     "serve:docs": "npx http-server docs -p 8080"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.3",
-    "@eslint/js": "^9.39.2",
+    "@eslint/eslintrc": "^3.0.0",
+    "@eslint/js": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.54.0",
-    "@typescript-eslint/parser": "^8.54.0",
     "concurrently": "^8.0.0",
     "eslint": "^9.0.0",
-    "globals": "^17.2.0",
+    "globals": "^15.0.0",
     "http-server": "^14.1.1",
     "jest": "^30.2.0",
     "lerna": "^9.0.3",
@@ -40,7 +37,7 @@
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.0.0"
   },
   "engines": {
     "node": ">=18.0.0",
