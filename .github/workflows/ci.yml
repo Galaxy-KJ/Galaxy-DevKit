@@ -30,6 +30,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libusb-1.0-0-dev
+
       - name: Install dependencies
         run: npm ci
         env:
@@ -59,6 +64,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libusb-1.0-0-dev
 
       - name: Install dependencies
         run: npm ci
@@ -100,6 +110,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libusb-1.0-0-dev
 
       - name: Install dependencies
         run: npm ci
@@ -144,6 +159,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libusb-1.0-0-dev
 
       - name: Install dependencies
         run: npm ci
