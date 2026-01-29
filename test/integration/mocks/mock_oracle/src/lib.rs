@@ -16,7 +16,7 @@ impl MockOracle {
         quote: Bytes,
     ) -> Result<(i128, u64, i128), soroban_sdk::Error> {
         // Validate inputs
-        if base.is_empty() || quote.is_empty(){
+        if base.is_empty() || quote.is_empty() {
             return Err(soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
