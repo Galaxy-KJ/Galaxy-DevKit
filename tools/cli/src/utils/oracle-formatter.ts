@@ -20,6 +20,7 @@ export interface PriceOutputOptions {
   strategy?: string;
   sourcesFilter?: string[];
   totalSources?: number;
+  priceChange?: 'up' | 'down' | 'unchanged' | null;
 }
 
 export interface HistoryOutputOptions {
@@ -144,9 +145,16 @@ export function outputPrice(
   }
 
   const decimals = resolveDecimals(aggregated.symbol);
+  const formattedPrice = formatNumber(aggregated.price, decimals);
+  let priceDisplay: string = formattedPrice;
+  if (options.priceChange === 'up') {
+    priceDisplay = chalk.green(`▲ ${formattedPrice}`);
+  } else if (options.priceChange === 'down') {
+    priceDisplay = chalk.red(`▼ ${formattedPrice}`);
+  }
   const rows: Array<Array<string | number>> = [
     ['Symbol', aggregated.symbol],
-    ['Price', formatNumber(aggregated.price, decimals)],
+    ['Price', priceDisplay],
     ['Confidence', `${formatNumber(aggregated.confidence * 100, 2)}%`],
     [
       'Sources Used',

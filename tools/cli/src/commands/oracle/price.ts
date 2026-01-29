@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   MedianStrategy,
+  MeanStrategy,
   WeightedAverageStrategy,
   TWAPStrategy,
   PriceCache,
@@ -46,8 +47,12 @@ function selectStrategy(name?: string) {
     return { strategy: new MedianStrategy(), label: 'median' };
   }
 
-  if (name === 'weighted_average') {
-    return { strategy: new WeightedAverageStrategy(), label: 'weighted_average' };
+  if (name === 'mean') {
+    return { strategy: new MeanStrategy(), label: 'mean' };
+  }
+
+  if (name === 'weighted' || name === 'weighted_average') {
+    return { strategy: new WeightedAverageStrategy(), label: 'weighted' };
   }
 
   if (name === 'twap') {
@@ -60,7 +65,7 @@ function selectStrategy(name?: string) {
 export const priceCommand = new Command('price')
   .description('Query current aggregated price for an asset')
   .argument('<symbol>', 'Asset symbol (e.g. XLM/USD)')
-  .option('-s, --strategy <strategy>', 'Aggregation strategy (median, twap, weighted_average)', 'median')
+  .option('-s, --strategy <strategy>', 'Aggregation strategy (median, mean, twap, weighted)', 'median')
   .option('--sources <sources>', 'Comma-separated list of sources to use')
   .option('--network <network>', 'Oracle network (testnet/mainnet)', 'testnet')
   .option('--json', 'Output machine-readable JSON')
@@ -78,16 +83,32 @@ export const priceCommand = new Command('price')
       });
       aggregator.setStrategy(strategy);
 
+      let previousPrice: number | null = null;
+
       const runOnce = async (): Promise<void> => {
         const spinner = options.json ? null : ora('Fetching price...').start();
         try {
           const aggregated = await aggregator.getAggregatedPrice(symbol);
           spinner?.stop();
+
+          let priceChange: 'up' | 'down' | 'unchanged' | null = null;
+          if (previousPrice !== null) {
+            if (aggregated.price > previousPrice) {
+              priceChange = 'up';
+            } else if (aggregated.price < previousPrice) {
+              priceChange = 'down';
+            } else {
+              priceChange = 'unchanged';
+            }
+          }
+          previousPrice = aggregated.price;
+
           outputPrice(aggregated, {
             json: Boolean(options.json),
             strategy: label,
             sourcesFilter,
             totalSources,
+            priceChange,
           });
         } catch (error) {
           spinner?.fail('Failed to fetch price');

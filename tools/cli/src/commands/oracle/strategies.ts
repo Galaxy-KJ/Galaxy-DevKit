@@ -15,11 +15,15 @@ const STRATEGIES = [
     description: 'Median of source prices (default).',
   },
   {
+    name: 'mean',
+    description: 'Simple arithmetic average of source prices.',
+  },
+  {
     name: 'twap',
     description: 'Time-weighted average based on price recency.',
   },
   {
-    name: 'weighted_average',
+    name: 'weighted',
     description: 'Weighted average using configured source weights.',
   },
 ];
