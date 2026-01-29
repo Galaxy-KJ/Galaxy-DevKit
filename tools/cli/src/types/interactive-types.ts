@@ -42,7 +42,7 @@ export interface SessionConfig {
   /** Session timeout in milliseconds (0 = no timeout) */
   timeout: number;
   /** Path to session state file */
-  statePath: string;
+  statePath?: string;
 }
 
 /**
@@ -66,7 +66,7 @@ export interface HistoryConfig {
   /** Maximum number of history entries to keep */
   maxEntries: number;
   /** Path to history file */
-  historyPath: string;
+  historyPath?: string;
   /** Whether to persist history to disk */
   persist: boolean;
   /** Whether to deduplicate consecutive identical commands */

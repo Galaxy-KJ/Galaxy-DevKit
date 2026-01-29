@@ -37,6 +37,10 @@ program.addCommand(walletCommand);
 // Register interactive command
 program.addCommand(createInteractiveCommand(program));
 
+// Watch command
+import { watchCommand } from './commands/watch/index.js';
+program.addCommand(watchCommand);
+
 // Init command
 program
   .command('init')

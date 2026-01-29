@@ -2,16 +2,15 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
-import fs from 'fs-extra';
-import path from 'path';
-import os from 'os';
 import { Keypair } from '@stellar/stellar-sdk';
+import { walletStorage } from '../../utils/wallet-storage.js';
 
 export const createWalletCommand = new Command('create')
     .description('Create a new wallet and display public key')
     .option('-n, --name <name>', 'Wallet name')
     .option('--testnet', 'Use testnet (default)')
     .option('--mainnet', 'Use mainnet')
+    .option('--json', 'Output as JSON')
     .action(async (options: any) => {
         const spinner = ora('Creating new wallet...').start();
 
@@ -24,6 +23,10 @@ export const createWalletCommand = new Command('create')
             // 2. Determine wallet name
             let walletName = options.name;
             if (!walletName) {
+                if (options.json) {
+                    console.error(JSON.stringify({ error: 'Wallet name is required in JSON mode' }));
+                    process.exit(1);
+                }
                 spinner.stop();
                 const answers = await inquirer.prompt([
                     {
@@ -38,47 +41,56 @@ export const createWalletCommand = new Command('create')
                 spinner.start('Creating new wallet...');
             }
 
-            // 3. Ensure wallets directory exists
-            const homeDir = os.homedir();
-            const walletsDir = path.join(homeDir, '.galaxy', 'wallets');
-            await fs.ensureDir(walletsDir);
-
-            // 4. Check if wallet already exists
-            const walletPath = path.join(walletsDir, `${walletName}.json`);
-            if (await fs.pathExists(walletPath)) {
-                spinner.fail(chalk.red(`Wallet '${walletName}' already exists!`));
-                return;
+            // 3. Check if wallet already exists
+            if (await walletStorage.walletExists(walletName)) {
+                if (options.json) {
+                    console.log(JSON.stringify({ error: `Wallet '${walletName}' already exists` }));
+                } else {
+                    spinner.fail(chalk.red(`Wallet '${walletName}' already exists!`));
+                }
+                process.exit(1);
             }
 
-            // 5. Save wallet (encrypted ideally, but simple for now as per minimal reqs, maybe prompt for password in future)
-            // For this task, we'll save it as JSON. 
-            // STRICTLY FOLLOW SECURITY BEST PRACTICES: In a real app we'd encrypt this. 
-            // The issue description mentions "Secure storage: Use keytar or similar".
-            // But I am not asked to add keytar dependency. 
-            // I will just save standard JSON for now, or maybe prompt for password to encrypt?
-            // "Backup/restore commands" mention encryption. "Create" implies just creating.
-            // I'll stick to a simple JSON file for now to satisfy the "create" requirement.
-
+            // 4. Save wallet
             const walletData = {
                 publicKey,
-                secretKey: secret, // stored in plaintext for now, warning needed
-                network: options.mainnet ? 'mainnet' : 'testnet',
+                secretKey: secret,
+                network: (options.mainnet ? 'mainnet' : 'testnet') as 'mainnet' | 'testnet',
                 createdAt: new Date().toISOString()
             };
 
-            await fs.writeJson(walletPath, walletData, { spaces: 2 });
+            await walletStorage.saveWallet(walletName, walletData);
 
-            spinner.succeed(chalk.green(`Wallet '${walletName}' created successfully!`));
-            console.log(chalk.blue('\n🔑 Wallet Details:'));
-            console.log(chalk.gray(`  Public Key: ${publicKey}`));
-            console.log(chalk.gray(`  Secret Key: ${secret}`));
-            console.log(chalk.yellow('\n⚠️  WARNING: Keep your secret key safe! Do not share it with anyone.'));
-            console.log(chalk.gray(`  Saved to: ${walletPath}`));
+            if (options.json) {
+                console.log(JSON.stringify({
+                    success: true,
+                    name: walletName,
+                    publicKey,
+                    secretKey: secret,
+                    network: walletData.network,
+                    createdAt: walletData.createdAt,
+                    path: walletStorage.getWalletPath(walletName)
+                }, null, 2));
+            } else {
+                spinner.succeed(chalk.green(`Wallet '${walletName}' created successfully!`));
+                console.log(chalk.blue('\n🔑 Wallet Details:'));
+                console.log(chalk.gray(`  Name: ${walletName}`));
+                console.log(chalk.gray(`  Public Key: ${publicKey}`));
+                console.log(chalk.gray(`  Secret Key: ${secret}`));
+                console.log(chalk.gray(`  Network: ${walletData.network}`));
+                console.log(chalk.yellow('\n⚠️  WARNING: Keep your secret key safe! Do not share it with anyone.'));
+                console.log(chalk.gray(`  Saved to: ${walletStorage.getWalletPath(walletName)}`));
+            }
 
         } catch (error) {
-            spinner.fail(chalk.red('Failed to create wallet'));
-            if (error instanceof Error) {
-                console.error(chalk.red(error.message));
+            if (options.json) {
+                console.log(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }));
+            } else {
+                spinner.fail(chalk.red('Failed to create wallet'));
+                if (error instanceof Error) {
+                    console.error(chalk.red(error.message));
+                }
             }
+            process.exit(1);
         }
     });

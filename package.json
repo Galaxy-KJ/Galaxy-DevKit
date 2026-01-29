@@ -11,9 +11,9 @@
     "build": "lerna run build --scope @galaxy/core-oracles --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint --scope @galaxy/core-defi-protocols || (exit 0)",
+    "lint": "lerna run lint --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check --scope @galaxy/core-defi-protocols || (exit 0)",
+    "type-check": "lerna run type-check --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",
@@ -23,17 +23,21 @@
     "serve:docs": "npx http-server docs -p 8080"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.0.0",
+    "@eslint/js": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "concurrently": "^8.0.0",
     "eslint": "^9.0.0",
+    "globals": "^15.0.0",
     "http-server": "^14.1.1",
     "jest": "^30.2.0",
     "lerna": "^9.0.3",
     "prettier": "^3.0.0",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0"
   },
   "engines": {
     "node": ">=18.0.0",
