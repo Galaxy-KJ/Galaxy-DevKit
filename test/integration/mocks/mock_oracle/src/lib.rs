@@ -2,7 +2,7 @@
 
 //! Mock Oracle Contract for Testing
 
-use soroban_sdk::{contract, contractimpl, Env, Bytes, Vec};
+use soroban_sdk::{contract, contractimpl, Bytes, Env, Vec};
 
 #[contract]
 pub struct MockOracle;
@@ -10,9 +10,13 @@ pub struct MockOracle;
 #[contractimpl]
 impl MockOracle {
     /// Get price for a trading pair
-    pub fn get_price(_env: Env, base: Bytes, quote: Bytes) -> Result<(i128, u64, i128), soroban_sdk::Error> {
+    pub fn get_price(
+        _env: Env,
+        base: Bytes,
+        quote: Bytes,
+    ) -> Result<(i128, u64, i128), soroban_sdk::Error> {
         // Validate inputs
-        if base.len() == 0 || quote.len() == 0 {
+        if base.is_empty() || quote.is_empty(){
             return Err(soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,

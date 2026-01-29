@@ -2,7 +2,7 @@
 
 //! Mock Decentralized Exchange (DEX) Contract for Testing
 
-use soroban_sdk::{contract, contractimpl, Env, Address};
+use soroban_sdk::{contract, contractimpl, Address, Env};
 
 #[contract]
 pub struct MockDEX;
