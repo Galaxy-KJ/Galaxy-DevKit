@@ -492,6 +492,64 @@ describe('BlendProtocol - Operations Tests', () => {
       expect(result.status).toBe('failed');
       expect(result.ledger).toBe(12347);
     });
+
+    it('should throw error on simulation failure for withdraw', async () => {
+      const mockKeypair = {
+        publicKey: jest.fn(() => testAddress),
+        sign: jest.fn()
+      };
+      (Keypair.fromSecret as jest.Mock).mockReturnValue(mockKeypair);
+
+      const mockTx = {
+        sign: jest.fn(),
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation error
+      const mockSimulation = {
+        error: 'Simulation failed: insufficient funds'
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+
+      await expect(
+        blendProtocol.withdraw(testAddress, testPrivateKey, testAsset, '500000')
+      ).rejects.toThrow('Simulation failed');
+    });
+
+    it('should validate address before withdrawing', async () => {
+      await expect(
+        blendProtocol.withdraw('invalid', testPrivateKey, testAsset, '500000')
+      ).rejects.toThrow('Invalid Stellar address');
+    });
+
+    it('should validate amount before withdrawing', async () => {
+      await expect(
+        blendProtocol.withdraw(testAddress, testPrivateKey, testAsset, '-100')
+      ).rejects.toThrow('Amount must be a positive number');
+    });
+
+    it('should validate asset before withdrawing', async () => {
+      const invalidAsset: Asset = {
+        code: '',
+        issuer: '',
+        type: 'credit_alphanum4'
+      };
+
+      await expect(
+        blendProtocol.withdraw(testAddress, testPrivateKey, invalidAsset, '500000')
+      ).rejects.toThrow('Invalid asset');
+    });
   });
 
   // ========================================
@@ -566,6 +624,64 @@ describe('BlendProtocol - Operations Tests', () => {
         blendProtocol.borrow(testAddress, testPrivateKey, testAsset, '250000')
       ).rejects.toThrow('Pool contract not initialized');
     });
+
+    it('should throw error on simulation failure for borrow', async () => {
+      const mockKeypair = {
+        publicKey: jest.fn(() => testAddress),
+        sign: jest.fn()
+      };
+      (Keypair.fromSecret as jest.Mock).mockReturnValue(mockKeypair);
+
+      const mockTx = {
+        sign: jest.fn(),
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation error
+      const mockSimulation = {
+        error: 'Simulation failed: collateral insufficient'
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+
+      await expect(
+        blendProtocol.borrow(testAddress, testPrivateKey, testAsset, '250000')
+      ).rejects.toThrow('Simulation failed');
+    });
+
+    it('should validate address before borrowing', async () => {
+      await expect(
+        blendProtocol.borrow('invalid', testPrivateKey, testAsset, '250000')
+      ).rejects.toThrow('Invalid Stellar address');
+    });
+
+    it('should validate amount before borrowing', async () => {
+      await expect(
+        blendProtocol.borrow(testAddress, testPrivateKey, testAsset, '0')
+      ).rejects.toThrow('Amount must be a positive number');
+    });
+
+    it('should validate asset before borrowing', async () => {
+      const invalidAsset: Asset = {
+        code: '',
+        issuer: '',
+        type: 'credit_alphanum4'
+      };
+
+      await expect(
+        blendProtocol.borrow(testAddress, testPrivateKey, invalidAsset, '250000')
+      ).rejects.toThrow('Invalid asset');
+    });
   });
 
   // ========================================
@@ -639,6 +755,64 @@ describe('BlendProtocol - Operations Tests', () => {
       await expect(
         blendProtocol.repay(testAddress, testPrivateKey, testAsset, '250000')
       ).rejects.toThrow('Pool contract not initialized');
+    });
+
+    it('should throw error on simulation failure for repay', async () => {
+      const mockKeypair = {
+        publicKey: jest.fn(() => testAddress),
+        sign: jest.fn()
+      };
+      (Keypair.fromSecret as jest.Mock).mockReturnValue(mockKeypair);
+
+      const mockTx = {
+        sign: jest.fn(),
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation error
+      const mockSimulation = {
+        error: 'Simulation failed: repayment error'
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+
+      await expect(
+        blendProtocol.repay(testAddress, testPrivateKey, testAsset, '250000')
+      ).rejects.toThrow('Simulation failed');
+    });
+
+    it('should validate address before repaying', async () => {
+      await expect(
+        blendProtocol.repay('invalid', testPrivateKey, testAsset, '250000')
+      ).rejects.toThrow('Invalid Stellar address');
+    });
+
+    it('should validate amount before repaying', async () => {
+      await expect(
+        blendProtocol.repay(testAddress, testPrivateKey, testAsset, '-50')
+      ).rejects.toThrow('Amount must be a positive number');
+    });
+
+    it('should validate asset before repaying', async () => {
+      const invalidAsset: Asset = {
+        code: '',
+        issuer: '',
+        type: 'credit_alphanum4'
+      };
+
+      await expect(
+        blendProtocol.repay(testAddress, testPrivateKey, invalidAsset, '250000')
+      ).rejects.toThrow('Invalid asset');
     });
   });
 
@@ -935,6 +1109,117 @@ describe('BlendProtocol - Operations Tests', () => {
           collateralAsset
         )
       ).rejects.toThrow('Invalid Stellar address');
+    });
+
+    it('should validate debt amount', async () => {
+      // Mock healthy position to bypass health check first
+      jest.spyOn(blendProtocol, 'getHealthFactor').mockResolvedValue({
+        value: '0.5',
+        liquidationThreshold: '0.85',
+        maxLTV: '0.75',
+        isHealthy: false
+      });
+
+      await expect(
+        blendProtocol.liquidate(
+          liquidatorAddress,
+          testPrivateKey,
+          borrowerAddress,
+          testAsset,
+          '-100',
+          collateralAsset
+        )
+      ).rejects.toThrow('Amount must be a positive number');
+    });
+
+    it('should validate debt asset', async () => {
+      const invalidAsset: Asset = {
+        code: '',
+        issuer: '',
+        type: 'credit_alphanum4'
+      };
+
+      await expect(
+        blendProtocol.liquidate(
+          liquidatorAddress,
+          testPrivateKey,
+          borrowerAddress,
+          invalidAsset,
+          '100000',
+          collateralAsset
+        )
+      ).rejects.toThrow('Invalid asset');
+    });
+
+    it('should validate collateral asset', async () => {
+      const invalidAsset: Asset = {
+        code: '',
+        issuer: '',
+        type: 'credit_alphanum4'
+      };
+
+      await expect(
+        blendProtocol.liquidate(
+          liquidatorAddress,
+          testPrivateKey,
+          borrowerAddress,
+          testAsset,
+          '100000',
+          invalidAsset
+        )
+      ).rejects.toThrow('Invalid asset');
+    });
+
+    it('should throw error on simulation failure for liquidate', async () => {
+      // Mock unhealthy position
+      jest.spyOn(blendProtocol, 'getHealthFactor').mockResolvedValue({
+        value: '0.5',
+        liquidationThreshold: '0.85',
+        maxLTV: '0.75',
+        isHealthy: false
+      });
+
+      const mockKeypair = {
+        publicKey: jest.fn(() => liquidatorAddress),
+        sign: jest.fn()
+      };
+      (Keypair.fromSecret as jest.Mock).mockReturnValue(mockKeypair);
+
+      mockHorizonServer.loadAccount = jest.fn().mockResolvedValue({
+        sequenceNumber: jest.fn(() => '1000000000'),
+        accountId: jest.fn(() => liquidatorAddress),
+        incrementSequenceNumber: jest.fn()
+      });
+
+      const mockTx = {
+        sign: jest.fn(),
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation error
+      mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
+        error: 'Liquidation simulation failed: invalid parameters'
+      });
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
+
+      await expect(
+        blendProtocol.liquidate(
+          liquidatorAddress,
+          testPrivateKey,
+          borrowerAddress,
+          testAsset,
+          '100000',
+          collateralAsset
+        )
+      ).rejects.toThrow('Liquidation simulation failed');
     });
   });
 

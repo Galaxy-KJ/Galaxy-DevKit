@@ -32,7 +32,7 @@ describe('wallet create command', () => {
     });
 
     afterEach(async () => {
-        await fs.remove(path.dirname(testWalletsDir));
+        await fs.emptyDir(testWalletsDir);
     });
 
     it('should create a new wallet with given name', async () => {
@@ -48,6 +48,7 @@ describe('wallet create command', () => {
             createdAt: new Date().toISOString()
         };
 
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         // Verify wallet was created
@@ -72,6 +73,7 @@ describe('wallet create command', () => {
             createdAt: new Date().toISOString()
         };
 
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         const savedWallet = await fs.readJson(walletPath);
@@ -90,6 +92,7 @@ describe('wallet create command', () => {
             network: 'testnet',
             createdAt: new Date().toISOString()
         };
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         // Try to create duplicate
@@ -116,6 +119,7 @@ describe('wallet create command', () => {
             createdAt: now.toISOString()
         };
 
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         const savedWallet = await fs.readJson(walletPath);

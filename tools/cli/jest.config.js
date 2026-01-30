@@ -1,9 +1,7 @@
 export default {
-  preset: 'ts-jest/presets/default-esm',
+  preset: 'ts-jest',
   testEnvironment: 'node',
-  extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@galaxy/core/(.*)$': '<rootDir>/packages/core/$1/src',
     '^@galaxy/contracts/(.*)$': '<rootDir>/packages/contracts/$1/src',
     '^@galaxy/api/(.*)$': '<rootDir>/packages/api/$1/src',
@@ -15,9 +13,8 @@ export default {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        useESM: true,
         tsconfig: {
-          module: 'ESNext',
+          module: 'CommonJS',
           moduleResolution: 'node',
           esModuleInterop: true,
           allowSyntheticDefaultImports: true
@@ -25,6 +22,9 @@ export default {
       }
     ]
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@stellar)/)'
+  ],
   testMatch: [
     '**/__tests__/**/*.test.ts',
     '**/__tests__/**/*.spec.ts'

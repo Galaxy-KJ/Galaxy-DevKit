@@ -209,7 +209,7 @@ describe('Biometric Authentication Tests', () => {
 
             const now = new Date();
             const expiresAt = new Date(session.expiresAt);
-            const isValid = authenticated && now < expiresAt;
+            const isValid = session.authenticated && now < expiresAt;
 
             expect(isValid).toBe(true);
         });
