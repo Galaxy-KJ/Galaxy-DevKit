@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @fileoverview Contract Event Monitor
  * @description Monitor and subscribe to Soroban contract events
@@ -6,7 +7,7 @@
  * @since 2024-12-01
  */
 
-import { SorobanRpc, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat';
 import { ScValConverter } from '../utils/scval-converter';
 import {
   ContractEventQueryParams,

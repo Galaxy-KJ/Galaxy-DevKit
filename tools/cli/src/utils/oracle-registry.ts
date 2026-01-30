@@ -15,9 +15,9 @@ import {
   type IOracleSource,
   type PriceData,
   type SourceInfo,
-} from '@galaxy/core-oracles';
+} from '@galaxy-kj/core-oracles';
 
-/** Local mock source when @galaxy/core-oracles dist does not export MockOracleSource. Re-exported for watch/oracle and watch/dashboard. */
+/** Local mock source when @galaxy-kj/core-oracles dist does not export MockOracleSource. Re-exported for watch/oracle and watch/dashboard. */
 export class MockOracleSource implements IOracleSource {
   readonly name: string;
   private prices: Map<string, number>;

@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/core-oracles",
+  "name": "@galaxy-kj/core-oracles",
   "version": "1.0.0",
   "description": "Galaxy Oracles - Price oracle aggregation system for Stellar DeFi protocols",
   "type": "module",
@@ -50,7 +50,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/core/oracles"
-  }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }

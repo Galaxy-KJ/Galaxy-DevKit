@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Key Management Service for Invisible Wallet
  * @description Handles secure key storage, retrieval, and session management

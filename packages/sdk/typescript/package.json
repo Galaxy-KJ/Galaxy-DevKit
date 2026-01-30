@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/sdk-typescript",
+  "name": "@galaxy-kj/sdk-typescript",
   "version": "1.0.0",
   "description": "Galaxy TypeScript SDK - Auto-generated TypeScript SDK for Galaxy DevKit",
   "main": "dist/index.js",
@@ -15,12 +15,12 @@
     "generate": "node scripts/generate-sdk.js"
   },
   "dependencies": {
-    "@galaxy/core-stellar-sdk": "^1.0.0",
-    "@galaxy/core-invisible-wallet": "^1.0.0",
-    "@galaxy/core-automation": "^1.0.0",
-    "@galaxy/api-rest": "^1.0.0",
-    "@galaxy/api-graphql": "^1.0.0",
-    "@galaxy/api-websocket": "^1.0.0",
+    "@galaxy-kj/core-stellar-sdk": "^1.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^1.0.0",
+    "@galaxy-kj/core-automation": "^1.0.0",
+    "@galaxy-kj/api-rest": "^1.0.0",
+    "@galaxy-kj/api-graphql": "^1.0.0",
+    "@galaxy-kj/api-websocket": "^1.0.0",
     "axios": "^1.6.2",
     "ws": "^8.14.2"
   },
@@ -42,7 +42,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/sdk/typescript"
   }
 }

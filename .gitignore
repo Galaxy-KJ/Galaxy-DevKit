@@ -20,6 +20,9 @@ IMPLEMENTATION_PLAN.md
 .env.test.local
 .env.production.local
 
+# NPM config with tokens (NEVER commit this)
+.npmrc
+
 # IDE
 .vscode/
 .idea/

@@ -15,7 +15,7 @@ import type {
   PriceData,
   PriceSource,
   SourceInfo,
-} from '@galaxy/core-oracles';
+} from '@galaxy-kj/core-oracles';
 
 export interface PriceOutputOptions {
   json?: boolean;

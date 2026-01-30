@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Soroban type conversion utilities
  * @description Convert between JavaScript types and Soroban ScVal

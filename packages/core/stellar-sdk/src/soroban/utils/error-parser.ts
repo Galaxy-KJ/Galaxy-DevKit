@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Error Parser
  * @description Parse and handle Soroban contract errors

@@ -14,7 +14,7 @@ import {
   WeightedAverageStrategy,
   TWAPStrategy,
   PriceCache,
-} from '@galaxy/core-oracles';
+} from '@galaxy-kj/core-oracles';
 import { createOracleAggregator } from '../../utils/oracle-registry.js';
 import { parseDuration } from '../../utils/parse-duration.js';
 import { outputPrice } from '../../utils/oracle-formatter.js';

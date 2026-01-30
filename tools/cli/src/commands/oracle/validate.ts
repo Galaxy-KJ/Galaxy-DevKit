@@ -14,7 +14,7 @@ import {
   validatePrice,
   checkStaleness,
   PriceData,
-} from '@galaxy/core-oracles';
+} from '@galaxy-kj/core-oracles';
 import { createOracleSources } from '../../utils/oracle-registry.js';
 import { parseDuration } from '../../utils/parse-duration.js';
 import { outputValidation, ValidationResult } from '../../utils/oracle-formatter.js';

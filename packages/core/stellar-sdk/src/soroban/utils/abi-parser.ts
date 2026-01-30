@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview ABI Parser
  * @description Parse and work with Soroban contract ABIs

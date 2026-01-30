@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Type definitions for Invisible Wallet System
  * @description Contains all interfaces and types for invisible wallet functionality

@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/core-automation",
+  "name": "@galaxy-kj/core-automation",
   "version": "1.0.0",
   "description": "Galaxy Automation System - Automated trading and DeFi operations",
   "main": "dist/index.js",
@@ -14,8 +14,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@galaxy/core-stellar-sdk": "^1.0.0",
-    "@galaxy/core-invisible-wallet": "^1.0.0",
+    "@galaxy-kj/core-stellar-sdk": "^1.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^1.0.0",
     "@supabase/supabase-js": "^2.38.0",
     "node-cron": "^3.0.3"
   },
@@ -37,8 +37,17 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/core/automation"
-  }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }
 

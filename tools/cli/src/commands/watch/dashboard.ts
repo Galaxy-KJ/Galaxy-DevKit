@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { StreamManager } from '../../utils/stream-manager.js';
 import { MockOracleSource } from '../../utils/oracle-registry.js';
-import { OracleAggregator, MedianStrategy } from '@galaxy/core-oracles';
+import { OracleAggregator, MedianStrategy } from '@galaxy-kj/core-oracles';
 import chalk from 'chalk';
 
 const dashboardWatchCommand = new Command('dashboard');

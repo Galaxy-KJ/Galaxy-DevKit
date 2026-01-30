@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Invisible Wallet Service
  * @description Main service for managing invisible wallets

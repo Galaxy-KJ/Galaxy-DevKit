@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/core-defi-protocols",
+  "name": "@galaxy-kj/core-defi-protocols",
   "version": "1.0.0",
   "description": "Galaxy DeFi Protocols - Integration layer for Stellar DeFi protocols (Blend, Soroswap, etc.)",
   "main": "dist/index.js",
@@ -44,7 +44,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/core/defi-protocols"
-  }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }

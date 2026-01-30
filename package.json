@@ -8,18 +8,18 @@
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build --scope @galaxy/core-oracles --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
+    "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
+    "lint": "lerna run lint --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check --scope @galaxy/core-defi-protocols --scope @galaxy/cli || (exit 0)",
+    "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
     "version": "lerna version",
     "publish": "lerna publish",
     "test": "jest",
-    "cli": "npm run start:ts --workspace=@galaxy/cli",
+    "cli": "npm run start:ts --workspace=@galaxy-kj/cli",
     "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
     "serve:docs": "npx http-server docs -p 8080"
   },
@@ -46,7 +46,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git"
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git"
   },
   "keywords": [
     "stellar",

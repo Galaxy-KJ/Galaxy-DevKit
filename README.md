@@ -107,16 +107,20 @@ Choose your preferred interface:
 
 ## 🚀 Quick Start
 
-### Installation
+### 📦 Installation
 
 ```bash
-npm install @galaxy/core-defi-protocols @galaxy/core-invisible-wallet
+npm install @galaxy-kj/core-defi-protocols @galaxy-kj/core-invisible-wallet
 ```
+
+📖 **[Full Installation Guide](./INSTALLATION.md)** - Detailed setup instructions
+
+---
 
 ### Example: Create a Wallet
 
 ```typescript
-import { WalletManager } from '@galaxy/core-invisible-wallet';
+import { WalletManager } from '@galaxy-kj/core-invisible-wallet';
 
 // Create a wallet for your user
 const wallet = await WalletManager.createWallet({
@@ -135,7 +139,7 @@ await wallet.sendPayment({
 ### Example: Integrate DeFi
 
 ```typescript
-import { getProtocolFactory } from '@galaxy/core-defi-protocols';
+import { getProtocolFactory } from '@galaxy-kj/core-defi-protocols';
 
 // Connect to a DeFi protocol
 const factory = getProtocolFactory();
@@ -156,7 +160,7 @@ await protocol.borrow('XLM', '500');    // Borrow XLM
 ### Example: Automation
 
 ```typescript
-import { AutomationEngine } from '@galaxy/core-automation';
+import { AutomationEngine } from '@galaxy-kj/core-automation';
 
 // Create an automation rule
 const automation = new AutomationEngine();
@@ -184,10 +188,10 @@ automation.createRule({
 
 Galaxy DevKit includes the following ready-to-use packages:
 
-- **`@galaxy/core-defi-protocols`** - Unified integration with Stellar DeFi protocols
-- **`@galaxy/core-invisible-wallet`** - Secure and user-friendly wallet system
-- **`@galaxy/core-automation`** - Automation engine for DeFi operations
-- **`@galaxy/core-stellar-sdk`** - Simplified wrapper for Stellar SDK
+- **`@galaxy-kj/core-defi-protocols`** - Unified integration with Stellar DeFi protocols
+- **`@galaxy-kj/core-invisible-wallet`** - Secure and user-friendly wallet system
+- **`@galaxy-kj/core-automation`** - Automation engine for DeFi operations
+- **`@galaxy-kj/core-stellar-sdk`** - Simplified wrapper for Stellar SDK
 
 For more information, see the [complete documentation](docs/README.md).
 

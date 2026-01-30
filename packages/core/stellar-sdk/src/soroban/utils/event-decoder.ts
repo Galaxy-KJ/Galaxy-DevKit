@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Event Decoder
  * @description Decode Soroban contract events

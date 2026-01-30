@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/cli",
+  "name": "@galaxy-kj/cli",
   "version": "1.0.0",
   "description": "Galaxy CLI - Command line tools for Galaxy DevKit",
   "type": "module",
@@ -20,8 +20,8 @@
     "start:ts": "tsx src/index.ts"
   },
   "dependencies": {
-    "@galaxy/core-defi-protocols": "file:../../packages/core/defi-protocols",
-    "@galaxy/core-oracles": "file:../../packages/core/oracles",
+    "@galaxy-kj/core-defi-protocols": "file:../../packages/core/defi-protocols",
+    "@galaxy-kj/core-oracles": "file:../../packages/core/oracles",
     "@stellar/stellar-sdk": "^14.5.0",
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.11.0",
@@ -60,7 +60,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "tools/cli"
-  }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }

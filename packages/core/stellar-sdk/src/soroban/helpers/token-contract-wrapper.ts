@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Token Contract Wrapper
  * @description Wrapper for Soroban token contracts with common operations

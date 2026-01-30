@@ -1,5 +1,5 @@
 {
-  "name": "@galaxy/api-websocket",
+  "name": "@galaxy-kj/api-websocket",
   "version": "1.0.0",
   "description": "Galaxy WebSocket API - Real-time WebSocket API for Galaxy DevKit",
   "main": "dist/index.js",
@@ -46,7 +46,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/api/websocket"
   }
 }

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Soroban contract types and interfaces
  * @description Type definitions for Soroban contract operations

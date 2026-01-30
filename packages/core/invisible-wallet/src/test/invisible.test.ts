@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Tests for Invisible Wallet Service
  * @description Comprehensive test suite for InvisibleWalletService

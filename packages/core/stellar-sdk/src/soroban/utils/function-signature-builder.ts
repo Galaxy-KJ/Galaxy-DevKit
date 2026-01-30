@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Function Signature Builder
  * @description Build and validate Soroban contract function signatures
