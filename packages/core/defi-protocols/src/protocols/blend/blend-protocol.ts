@@ -88,8 +88,6 @@ export class BlendProtocol extends BaseProtocol {
 
       // Load pool configuration
       await this.loadPoolConfig();
-
-      console.log(`Blend Protocol initialized on ${this.config.network.network}`);
     } catch (error) {
       throw new Error(`Failed to setup Blend Protocol: ${error}`);
     }
