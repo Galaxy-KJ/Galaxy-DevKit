@@ -59,6 +59,7 @@
   "author": "Galaxy DevKit Team",
   "license": "MIT",
   "dependencies": {
+    "@blend-capital/blend-sdk": "^3.2.2",
     "@stellar/stellar-sdk": "^14.4.3",
     "node-cron": "^4.2.1"
   },
