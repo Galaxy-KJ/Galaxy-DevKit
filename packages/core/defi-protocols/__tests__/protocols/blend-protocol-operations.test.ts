@@ -29,6 +29,17 @@ jest.mock('@stellar/stellar-sdk', () => {
   const actual = jest.requireActual('@stellar/stellar-sdk');
   return {
     ...actual,
+    Keypair: {
+      fromSecret: jest.fn(),
+      fromPublicKey: jest.fn((key) => {
+        // Validate that the key is a valid Stellar address format
+        // Valid Stellar addresses start with G and are 56 characters long
+        if (typeof key !== 'string' || !key.match(/^G[A-Z2-7]{55}$/)) {
+          throw new Error(`Invalid Stellar address: ${key}`);
+        }
+        return { publicKey: () => key };
+      })
+    },
     Contract: jest.fn().mockImplementation((address) => ({
       call: jest.fn((...args) => ({
         toXDR: jest.fn(() => 'mocked-xdr')
@@ -93,16 +104,20 @@ describe('BlendProtocol - Operations Tests', () => {
   let mockSorobanServer: jest.Mocked<rpc.Server>;
   let mockContract: jest.Mocked<Contract>;
 
-  const testAddress = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
-  const testPrivateKey = 'SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+  // Generate real valid Stellar keypairs for testing
+  const actualKeypair = jest.requireActual('@stellar/stellar-sdk').Keypair;
+  const testKeypair = actualKeypair.random();
+  const testAddress = testKeypair.publicKey();
+  const testPrivateKey = testKeypair.secret();
   const testAsset: Asset = {
     code: 'USDC',
-    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    issuer: testAddress,
     type: 'credit_alphanum4'
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
 
     mockConfig = {
       protocolId: 'blend',
@@ -156,11 +171,14 @@ describe('BlendProtocol - Operations Tests', () => {
 
     it('should not re-initialize if already initialized', async () => {
       await blendProtocol.initialize();
-      const spy = jest.spyOn(mockHorizonServer, 'ledgers');
+
+      // Clear the call history from the first initialization
+      mockHorizonServer.ledgers.mockClear();
 
       await blendProtocol.initialize();
 
-      expect(spy).not.toHaveBeenCalled();
+      // If properly handling re-initialization, ledgers should not be called again
+      expect(mockHorizonServer.ledgers).not.toHaveBeenCalled();
     });
 
     it('should throw error if setup fails', async () => {
@@ -765,7 +783,8 @@ describe('BlendProtocol - Operations Tests', () => {
   // ========================================
 
   describe('liquidate()', () => {
-    const liquidatorAddress = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+    const liquidatorKeypair = actualKeypair.random();
+    const liquidatorAddress = liquidatorKeypair.publicKey();
     const borrowerAddress = testAddress;
     const collateralAsset: Asset = {
       code: 'XLM',
@@ -1139,13 +1158,13 @@ describe('BlendProtocol - Operations Tests', () => {
     it('should return default address for unknown asset', () => {
       const unknownAsset: Asset = {
         code: 'UNKNOWN',
-        issuer: 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4',
+        issuer: 'GCZYLNGU4CA5DPKX2LEJW5OZFUCBHPBQFF5JW2BPFAQG4ZRCJSKEKFHT',
         type: 'credit_alphanum4'
       };
 
       const address = (blendProtocol as any).assetToContractAddress(unknownAsset);
 
-      expect(address).toBe('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4');
+      expect(address).toBe('GCZYLNGU4CA5DPKX2LEJW5OZFUCBHPBQFF5JW2BPFAQG4ZRCJSKEKFHT');
     });
 
     it('should return default address for asset without issuer', () => {
