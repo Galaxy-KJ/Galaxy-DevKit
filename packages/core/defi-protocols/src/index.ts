@@ -14,6 +14,9 @@ export * from './types/operations';
 // Base Protocol
 export { BaseProtocol } from './protocols/base-protocol';
 
+// Protocol Implementations
+export * from './protocols/blend';
+
 // Services
 export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory';
 
