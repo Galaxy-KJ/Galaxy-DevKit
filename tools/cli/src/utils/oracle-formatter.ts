@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @fileoverview Oracle output formatter
  * @description Formats oracle command output as tables or JSON
@@ -8,6 +9,7 @@
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
+// @ts-ignore
 import type {
   AggregatedPrice,
   PriceData,

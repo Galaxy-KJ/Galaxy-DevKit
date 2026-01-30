@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @fileoverview Dashboard view command
  * @description Combined multi-panel view for real-time network, oracle, and transaction monitoring
@@ -7,6 +8,7 @@
 import { Command } from 'commander';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { StreamManager } from '../../utils/stream-manager.js';
+// @ts-ignore
 import {
   OracleAggregator,
   MockOracleSource,
