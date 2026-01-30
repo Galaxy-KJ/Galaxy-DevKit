@@ -49,11 +49,146 @@ cp env.example .env.local
 # 6. Build the project
 npm run build
 
-# 7. Test CLI
+# 7. Setup and test CLI
 cd tools/cli
 npm run build
 npm link
+galaxy --version
 galaxy help
+
+# Or test CLI directly without linking
+cd ../..
+node tools/cli/dist/tools/cli/src/index.js --help
+```
+
+### 🔧 Working with the CLI
+
+#### Running CLI Commands Locally
+
+There are three ways to run the CLI during development:
+
+**Option 1: Direct Execution (Fastest for testing)**
+```bash
+# From project root
+npm run build
+node tools/cli/dist/tools/cli/src/index.js [command] [options]
+
+# Examples
+node tools/cli/dist/tools/cli/src/index.js --version
+node tools/cli/dist/tools/cli/src/index.js wallet create --help
+node tools/cli/dist/tools/cli/src/index.js oracle price XLM/USD
+```
+
+**Option 2: Global Link (Best for development)**
+```bash
+# Link CLI globally
+cd tools/cli
+npm run build
+npm link
+
+# Now use 'galaxy' command anywhere
+galaxy --version
+galaxy help
+galaxy wallet list
+galaxy oracle price XLM/USD
+
+# Unlink when done
+npm unlink -g @galaxy/cli
+```
+
+**Option 3: Create Alias (Convenient)**
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias galaxy="node $(pwd)/tools/cli/dist/tools/cli/src/index.js"
+
+# Reload shell
+source ~/.bashrc  # or source ~/.zshrc
+
+# Use alias
+galaxy help
+```
+
+#### CLI Development Workflow
+
+**1. Create New Command:**
+```bash
+# Create command file
+mkdir -p tools/cli/src/commands/my-command
+touch tools/cli/src/commands/my-command/index.ts
+
+# Add command implementation
+# See existing commands for examples
+```
+
+**2. Register Command:**
+```typescript
+// tools/cli/src/index.ts
+import { myCommand } from './commands/my-command/index.js';
+
+// Register command
+program.addCommand(myCommand);
+```
+
+**3. Build and Test:**
+```bash
+cd tools/cli
+
+# Build TypeScript
+npm run build
+
+# Test command
+node dist/tools/cli/src/index.js my-command --help
+
+# Or if linked
+galaxy my-command --help
+```
+
+**4. Add Tests:**
+```bash
+# Create test file
+touch tools/cli/src/commands/my-command/__tests__/index.test.ts
+
+# Run tests
+npm run test
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+**5. Update Documentation:**
+- Update `tools/cli/README.md`
+- Update `docs/guides/cli-guide.md`
+- Add examples to `docs/examples/`
+
+#### Available CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `galaxy create <name>` | Create new Stellar DApp project |
+| `galaxy init` | Initialize Galaxy DevKit in current directory |
+| `galaxy build` | Build the project |
+| `galaxy dev` | Start development server |
+| `galaxy deploy` | Deploy to production |
+| `galaxy wallet <cmd>` | Wallet management (create, import, list, balance, send) |
+| `galaxy blend <cmd>` | Blend Protocol operations (stats, supply, borrow, withdraw, repay) |
+| `galaxy oracle <cmd>` | Oracle price data (price, history, sources, validate) |
+| `galaxy watch <cmd>` | Real-time monitoring (account, transaction, oracle, contract, network, dashboard) |
+| `galaxy interactive` | Launch interactive REPL mode |
+| `galaxy help` | Show help information |
+
+#### CLI Testing Checklist
+
+Before submitting CLI changes:
+
+- [ ] Command works with direct execution
+- [ ] Command works when linked globally
+- [ ] Help text is clear and accurate
+- [ ] Examples are provided
+- [ ] Error messages are helpful
+- [ ] Unit tests added/updated
+- [ ] Integration tests pass
+- [ ] Documentation updated
+- [ ] README updated
 ```
 
 ### 🗄️ Database Setup

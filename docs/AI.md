@@ -1037,7 +1037,39 @@ Usage notes:
 ### CLI
 
 - `tools/cli/src/index.ts` - CLI entry point
-- `tools/cli/src/commands/` - CLI commands
+- `tools/cli/src/commands/create.ts` - Project creation command
+- `tools/cli/src/commands/oracle/` - Oracle price data commands
+- `tools/cli/src/commands/wallet/` - Wallet management commands
+- `tools/cli/src/commands/blend/` - Blend Protocol DeFi commands
+- `tools/cli/src/commands/watch/` - Real-time network monitoring commands
+- `tools/cli/src/commands/interactive/` - Interactive REPL mode
+
+**Available CLI Commands:**
+- `galaxy create <name>` - Create new Stellar DApp project
+- `galaxy wallet <command>` - Manage Stellar wallets (create, import, list, balance, send)
+- `galaxy blend <command>` - Interact with Blend Protocol (stats, supply, borrow, withdraw, repay)
+- `galaxy oracle <command>` - Query oracle price data (price, history, sources, validate)
+- `galaxy watch <command>` - Monitor network activity (account, transaction, oracle, contract, network, dashboard)
+- `galaxy interactive` - Launch interactive REPL mode with autocomplete and command history
+- `galaxy init` - Initialize Galaxy DevKit in current directory
+- `galaxy build` - Build the project
+- `galaxy dev` - Start development server
+- `galaxy deploy` - Deploy to production
+
+**How to Run the CLI:**
+```bash
+# Option 1: From monorepo (development)
+npm run build
+node tools/cli/dist/tools/cli/src/index.js [command]
+
+# Option 2: Link globally (local testing)
+cd tools/cli && npm run build && npm link
+galaxy [command]
+
+# Option 3: Published package (end users)
+npm install -g @galaxy/cli
+galaxy [command]
+```
 
 ### APIs
 

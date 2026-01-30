@@ -14,8 +14,43 @@ const networkWatchCommand = new Command('network');
 networkWatchCommand
   .description('Monitor network activity (ledgers, TPS)')
   .option('--network <type>', 'Network (testnet/mainnet)', 'testnet')
+  .option('--json', 'Output stream as JSON instead of dashboard', false)
   .action(async options => {
     const streamManager = new StreamManager({ network: options.network });
+
+    if (options.json) {
+      console.log(
+        JSON.stringify({
+          status: 'started',
+          network: options.network,
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      streamManager.watchLedgers().subscribe({
+        next: ledger => {
+          console.log(
+            JSON.stringify({
+              type: 'ledger',
+              sequence: ledger.sequence,
+              tx_count: ledger.successful_transaction_count,
+              timestamp: new Date().toISOString(),
+            })
+          );
+        },
+        error: err => {
+          console.log(
+            JSON.stringify({
+              status: 'error',
+              message: err.message,
+              timestamp: new Date().toISOString(),
+            })
+          );
+        },
+      });
+      return;
+    }
+
     const ui = new TerminalUI(
       `Galaxy Watch - Network Activity [${options.network}]`
     );
