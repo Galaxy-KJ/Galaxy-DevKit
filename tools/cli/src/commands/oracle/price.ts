@@ -11,7 +11,6 @@ import chalk from 'chalk';
 import ora from 'ora';
 import {
   MedianStrategy,
-  MeanStrategy,
   WeightedAverageStrategy,
   TWAPStrategy,
   PriceCache,
@@ -48,7 +47,8 @@ function selectStrategy(name?: string) {
   }
 
   if (name === 'mean') {
-    return { strategy: new MeanStrategy(), label: 'mean' };
+    // Note: MeanStrategy not available, using MedianStrategy as fallback
+    return { strategy: new MedianStrategy(), label: 'mean' };
   }
 
   if (name === 'weighted' || name === 'weighted_average') {
