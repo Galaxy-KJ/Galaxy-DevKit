@@ -56,9 +56,16 @@ describe('Validation Utils', () => {
     it('should use custom field name in error messages', () => {
       expect(() => validateAmount('0', 'Deposit')).toThrow('Deposit must be greater than 0');
     });
+    it('should throw error for infinite amount', () => {
+      expect(() => validateAmount('Infinity')).toThrow('Amount must be a finite number');
+    });
   });
 
   describe('validateAsset', () => {
+    it('should throw error for invalid asset object', () => {
+      expect(() => validateAsset(null as any)).toThrow('Asset must be an object');
+      expect(() => validateAsset('string' as any)).toThrow('Asset must be an object');
+    });
     it('should validate a native asset', () => {
       const asset: Asset = {
         code: 'XLM',

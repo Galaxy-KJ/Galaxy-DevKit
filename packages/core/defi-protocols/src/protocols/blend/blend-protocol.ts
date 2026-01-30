@@ -625,6 +625,10 @@ export class BlendProtocol extends BaseProtocol {
     this.ensureInitialized();
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, this would query the contract or indexer
       // for positions with health factor below threshold
       // For now, return empty array as placeholder
@@ -676,6 +680,10 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, fetch actual APY from contract
       return {
         supplyAPY: '0',
@@ -697,6 +705,10 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, fetch actual APY from contract
       return {
         supplyAPY: '0',
@@ -718,6 +730,10 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, fetch from contract
       return '0';
     } catch (error) {
@@ -735,6 +751,10 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, fetch from contract
       return '0';
     } catch (error) {
@@ -752,6 +772,10 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      if (!this.poolContract) {
+        throw new Error('Pool contract not initialized');
+      }
+
       // In a real implementation, fetch from contract
       return {
         asset,
@@ -836,24 +860,7 @@ export class BlendProtocol extends BaseProtocol {
     };
   }
 
-  /**
-   * Parse health factor from simulation result
-   * @private
-   * @param {rpc.Api.SimulateTransactionResponse} simulatedTx - Simulation result
-   * @returns {HealthFactor}
-   */
-  private parseHealthFactorData(
-    simulatedTx: rpc.Api.SimulateTransactionResponse
-  ): HealthFactor {
-    // In a real implementation, parse actual data from simulation result
-    // For now, return placeholder
-    return {
-      value: '0',
-      liquidationThreshold: '0.85',
-      maxLTV: '0.75',
-      isHealthy: true
-    };
-  }
+
 
   /**
    * Parse liquidation result
