@@ -60,7 +60,9 @@ vi.mock('@stellar/stellar-sdk', () => {
 
     return {
         Horizon: {
-            Server: vi.fn().mockImplementation(() => mockServer),
+            Server: vi.fn().mockImplementation(function () {
+                return mockServer;
+            }),
         },
     };
 });

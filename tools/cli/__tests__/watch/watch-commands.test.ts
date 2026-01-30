@@ -97,24 +97,24 @@ describe('Watch Commands', () => {
             expect(accountWatchCommand.description()).toContain('real-time');
         });
 
-        it('should have network option with default testnet', () => {
-            const { accountWatchCommand } = require('../../src/commands/watch/account.js');
+        it('should have network option with default testnet', async () => {
+            const { accountWatchCommand } = await import('../../src/commands/watch/account.js');
             const networkOption = accountWatchCommand.options.find(
                 (opt: any) => opt.long === '--network'
             );
             expect(networkOption).toBeDefined();
         });
 
-        it('should have json flag option', () => {
-            const { accountWatchCommand } = require('../../src/commands/watch/account.js');
+        it('should have json flag option', async () => {
+            const { accountWatchCommand } = await import('../../src/commands/watch/account.js');
             const jsonOption = accountWatchCommand.options.find(
                 (opt: any) => opt.long === '--json'
             );
             expect(jsonOption).toBeDefined();
         });
 
-        it('should have interval option', () => {
-            const { accountWatchCommand } = require('../../src/commands/watch/account.js');
+        it('should have interval option', async () => {
+            const { accountWatchCommand } = await import('../../src/commands/watch/account.js');
             const intervalOption = accountWatchCommand.options.find(
                 (opt: any) => opt.long === '--interval'
             );
@@ -132,16 +132,16 @@ describe('Watch Commands', () => {
             expect(transactionWatchCommand.description()).toContain('confirmed');
         });
 
-        it('should have timeout option with default 60s', () => {
-            const { transactionWatchCommand } = require('../../src/commands/watch/transaction.js');
+        it('should have timeout option with default 60s', async () => {
+            const { transactionWatchCommand } = await import('../../src/commands/watch/transaction.js');
             const timeoutOption = transactionWatchCommand.options.find(
                 (opt: any) => opt.long === '--timeout'
             );
             expect(timeoutOption).toBeDefined();
         });
 
-        it('should have json flag option', () => {
-            const { transactionWatchCommand } = require('../../src/commands/watch/transaction.js');
+        it('should have json flag option', async () => {
+            const { transactionWatchCommand } = await import('../../src/commands/watch/transaction.js');
             const jsonOption = transactionWatchCommand.options.find(
                 (opt: any) => opt.long === '--json'
             );
@@ -159,16 +159,16 @@ describe('Watch Commands', () => {
             expect(oracleWatchCommand.description()).toContain('price');
         });
 
-        it('should have interval option', () => {
-            const { oracleWatchCommand } = require('../../src/commands/watch/oracle.js');
+        it('should have interval option', async () => {
+            const { oracleWatchCommand } = await import('../../src/commands/watch/oracle.js');
             const intervalOption = oracleWatchCommand.options.find(
                 (opt: any) => opt.long === '--interval'
             );
             expect(intervalOption).toBeDefined();
         });
 
-        it('should have json flag option', () => {
-            const { oracleWatchCommand } = require('../../src/commands/watch/oracle.js');
+        it('should have json flag option', async () => {
+            const { oracleWatchCommand } = await import('../../src/commands/watch/oracle.js');
             const jsonOption = oracleWatchCommand.options.find(
                 (opt: any) => opt.long === '--json'
             );
@@ -186,16 +186,16 @@ describe('Watch Commands', () => {
             expect(contractWatchCommand.description()).toContain('event');
         });
 
-        it('should have event filter option', () => {
-            const { contractWatchCommand } = require('../../src/commands/watch/contract.js');
+        it('should have event filter option', async () => {
+            const { contractWatchCommand } = await import('../../src/commands/watch/contract.js');
             const eventOption = contractWatchCommand.options.find(
                 (opt: any) => opt.long === '--event'
             );
             expect(eventOption).toBeDefined();
         });
 
-        it('should have json flag option', () => {
-            const { contractWatchCommand } = require('../../src/commands/watch/contract.js');
+        it('should have json flag option', async () => {
+            const { contractWatchCommand } = await import('../../src/commands/watch/contract.js');
             const jsonOption = contractWatchCommand.options.find(
                 (opt: any) => opt.long === '--json'
             );
@@ -224,8 +224,8 @@ describe('Watch Commands', () => {
             expect(dashboardWatchCommand.description()).toContain('multi-panel');
         });
 
-        it('should have --dashboard alias', () => {
-            const { dashboardWatchCommand } = require('../../src/commands/watch/dashboard.js');
+        it('should have --dashboard alias', async () => {
+            const { dashboardWatchCommand } = await import('../../src/commands/watch/dashboard.js');
             expect(dashboardWatchCommand.alias()).toBe('--dashboard');
         });
     });
