@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/core-oracles",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Galaxy Oracles - Price oracle aggregation system for Stellar DeFi protocols",
   "type": "module",
   "main": "dist/index.js",
@@ -29,12 +29,12 @@
     "bignumber.js": "^9.1.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^9.0.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
-    "typescript": "^5.9.3",
-    "eslint": "^9.0.0"
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "stellar",

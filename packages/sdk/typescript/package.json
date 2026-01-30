@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/sdk-typescript",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Galaxy TypeScript SDK - Auto-generated TypeScript SDK for Galaxy DevKit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,21 +15,21 @@
     "generate": "node scripts/generate-sdk.js"
   },
   "dependencies": {
-    "@galaxy-kj/core-stellar-sdk": "^1.0.0",
-    "@galaxy-kj/core-invisible-wallet": "^1.0.0",
-    "@galaxy-kj/core-automation": "^1.0.0",
-    "@galaxy-kj/api-rest": "^1.0.0",
-    "@galaxy-kj/api-graphql": "^1.0.0",
-    "@galaxy-kj/api-websocket": "^1.0.0",
+    "@galaxy-kj/api-graphql": "^2.0.0",
+    "@galaxy-kj/api-rest": "^2.0.0",
+    "@galaxy-kj/api-websocket": "^2.0.0",
+    "@galaxy-kj/core-automation": "^2.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^2.0.0",
+    "@galaxy-kj/core-stellar-sdk": "^2.0.0",
     "axios": "^1.6.2",
     "ws": "^8.14.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.8.3",
     "jest": "^30.0.5",
-    "ts-jest": "^29.0.0"
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.8.3"
   },
   "keywords": [
     "stellar",
@@ -46,4 +46,3 @@
     "directory": "packages/sdk/typescript"
   }
 }
-

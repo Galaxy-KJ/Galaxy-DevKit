@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/cli",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Galaxy CLI - Command line tools for Galaxy DevKit",
   "type": "module",
   "main": "dist/tools/cli/src/index.js",
