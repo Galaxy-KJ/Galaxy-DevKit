@@ -16,16 +16,18 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@blend-capital/blend-sdk": "^3.2.2",
     "@stellar/stellar-sdk": "^14.4.3",
     "bignumber.js": "^9.1.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^9.0.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
-    "typescript": "^5.9.3",
-    "eslint": "^9.0.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "stellar",

@@ -9,7 +9,6 @@ module.exports = {
     ...tsJestTransformCfg,
   },
   moduleNameMapper: {
-    "^(.*)\\.js$": "$1",
     "^@galaxy/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
