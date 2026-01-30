@@ -7,8 +7,8 @@
  */
 
 // Types
-export type * from './types/oracle-types';
-export type * from './types/IOracleSource';
+export * from './types/oracle-types';
+export * from './types/IOracleSource';
 
 // Aggregator
 export { OracleAggregator } from './aggregator/OracleAggregator';
