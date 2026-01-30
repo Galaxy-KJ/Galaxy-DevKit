@@ -12,7 +12,10 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "lint": "echo 'No linting configured for CLI'",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@galaxy/core-defi-protocols": "file:../../packages/core/defi-protocols",
