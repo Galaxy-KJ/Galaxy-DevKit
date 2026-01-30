@@ -25,6 +25,7 @@
     "node_modules",
     "dist",
     "tests",
-    "__tests__"
+    "__tests__",
+    "../../packages/core/wallet/auth/**/*"
   ]
 }
