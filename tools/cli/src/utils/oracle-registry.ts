@@ -10,14 +10,45 @@
 import fs from 'fs-extra';
 import path from 'path';
 import NodeCache from 'node-cache';
-// @ts-ignore
 import {
   OracleAggregator,
-  MockOracleSource,
-  IOracleSource,
-  PriceData,
-  SourceInfo,
+  type IOracleSource,
+  type PriceData,
+  type SourceInfo,
 } from '@galaxy/core-oracles';
+
+/** Local mock source when @galaxy/core-oracles dist does not export MockOracleSource. Re-exported for watch/oracle and watch/dashboard. */
+export class MockOracleSource implements IOracleSource {
+  readonly name: string;
+  private prices: Map<string, number>;
+
+  constructor(name: string, prices: Map<string, number> = new Map()) {
+    this.name = name;
+    this.prices = prices;
+  }
+
+  async getPrice(symbol: string): Promise<PriceData> {
+    const price = this.prices.get(symbol) ?? 100;
+    return { symbol, price, timestamp: new Date(), source: this.name };
+  }
+
+  async getPrices(symbols: string[]): Promise<PriceData[]> {
+    return Promise.all(symbols.map((s) => this.getPrice(s)));
+  }
+
+  getSourceInfo(): SourceInfo {
+    return {
+      name: this.name,
+      description: `Mock oracle source ${this.name}`,
+      version: '1.0.0',
+      supportedSymbols: Array.from(this.prices.keys()),
+    };
+  }
+
+  async isHealthy(): Promise<boolean> {
+    return true;
+  }
+}
 
 export interface CustomOracleSourceConfig {
   name: string;

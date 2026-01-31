@@ -7,7 +7,11 @@ export default {
     '^@galaxy/api/(.*)$': '<rootDir>/packages/api/$1/src',
     '^@galaxy/sdk/(.*)$': '<rootDir>/packages/sdk/$1/src',
     '^@galaxy/templates/(.*)$': '<rootDir>/packages/templates/$1/src',
-    '^@galaxy/tools/(.*)$': '<rootDir>/tools/$1/src'
+    '^@galaxy/tools/(.*)$': '<rootDir>/tools/$1/src',
+    // Resolve relative .js imports to .ts (ESM-style imports in source)
+    '^(\\.\\.?/.*)\\.js$': '$1',
+    // Mock node-cache for tests that load session (e.g. REPL tests)
+    '^node-cache$': '<rootDir>/__tests__/__mocks__/node-cache.js',
   },
   transform: {
     '^.+\\.tsx?$': [
@@ -48,7 +52,7 @@ export default {
     }
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  roots: ['<rootDir>/packages', '<rootDir>/tools'],
+  roots: ['<rootDir>'],
   verbose: true,
   testTimeout: 30000
 };

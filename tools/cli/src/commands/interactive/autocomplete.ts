@@ -297,6 +297,39 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
       { name: 'deploy-contract', description: 'Deploy contract (guided)', parent: 'workflow' },
     ],
   },
+  // Blend Protocol DeFi commands
+  {
+    name: 'blend',
+    description: 'Blend Protocol DeFi (lending and borrowing)',
+    subcommands: [
+      { name: 'supply', description: 'Supply assets to Blend', parent: 'blend' },
+      { name: 'withdraw', description: 'Withdraw assets from Blend', parent: 'blend' },
+      { name: 'borrow', description: 'Borrow assets from Blend', parent: 'blend' },
+      { name: 'repay', description: 'Repay borrowed assets', parent: 'blend' },
+      { name: 'position', description: 'View lending/borrowing position', parent: 'blend' },
+      { name: 'health', description: 'Protocol health and status', parent: 'blend' },
+      { name: 'liquidate', description: 'Liquidate undercollateralized positions', parent: 'blend' },
+      { name: 'stats', description: 'Protocol statistics', parent: 'blend' },
+    ],
+    examples: ['blend supply', 'blend borrow', 'blend position'],
+  },
+  // Watch / real-time monitoring commands
+  {
+    name: 'watch',
+    description: 'Monitor Stellar network activity in real-time',
+    subcommands: [
+      { name: 'account', description: 'Watch account balance and activity', parent: 'watch' },
+      { name: 'transaction', description: 'Track transaction confirmation', parent: 'watch' },
+      { name: 'network', description: 'Stream ledger activity', parent: 'watch' },
+      { name: 'oracle', description: 'Monitor oracle prices', parent: 'watch' },
+      { name: 'contract', description: 'Watch contract events', parent: 'watch' },
+      { name: 'dashboard', description: 'Multi-panel combined monitoring view', parent: 'watch' },
+    ],
+    options: [
+      { long: '--dashboard', description: 'Show combined monitoring view', requiresValue: false },
+    ],
+    examples: ['watch account', 'watch oracle XLM/USD', 'watch dashboard'],
+  },
 ];
 
 /**

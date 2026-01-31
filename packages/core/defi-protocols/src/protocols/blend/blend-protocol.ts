@@ -892,4 +892,20 @@ export class BlendProtocol extends BaseProtocol {
     // In a real implementation, parse actual collateral received
     return '0';
   }
+
+  /**
+   * Parse health factor data from simulation result
+   * @private
+   * @param {unknown} simulation - Simulation or raw result
+   * @returns {HealthFactor}
+   */
+  private parseHealthFactorData(simulation: unknown): HealthFactor {
+    // In a real implementation, parse actual health factor from simulation result
+    return {
+      value: '0',
+      liquidationThreshold: '0.85',
+      maxLTV: '0.75',
+      isHealthy: true
+    };
+  }
 }
