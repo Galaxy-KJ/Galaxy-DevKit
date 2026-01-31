@@ -883,6 +883,69 @@ classDiagram
 
 ---
 
+### Path Payments & Multi-Hop Swap Architecture
+
+**Purpose**: Path finding, swap execution, and slippage protection for cross-asset payments using Stellar Horizon path payment endpoints.
+
+```mermaid
+graph TB
+    subgraph "PathPaymentManager"
+        Find[findPaths]
+        Best[getBestPath]
+        Estimate[estimateSwap]
+        Execute[executeSwap]
+        Cache[Path Cache]
+        Analytics[Swap Analytics]
+    end
+
+    subgraph "Path Finding"
+        StrictSend[Strict Send Paths]
+        StrictReceive[Strict Receive Paths]
+        Rank[Path Ranking by Price]
+    end
+
+    subgraph "Horizon API"
+        Horizon[Horizon Server]
+    end
+
+    subgraph "Protection"
+        Slippage[Slippage Protection]
+        PriceImpact[Price Impact Check]
+    end
+
+    User[User / App] --> Find
+    Find --> StrictSend
+    Find --> StrictReceive
+    StrictSend --> Horizon
+    StrictReceive --> Horizon
+    Horizon --> Rank
+    Rank --> Best
+    Best --> Cache
+    Find --> Cache
+    Best --> Estimate
+    Estimate --> PriceImpact
+    Estimate --> Slippage
+    User --> Execute
+    Execute --> Best
+    Execute --> Slippage
+    Execute --> Horizon
+    Execute --> Analytics
+
+    style Find fill:#e1f5ff
+    style Execute fill:#fff3e0
+    style Slippage fill:#ffebee
+```
+
+**Flow:**
+1. **findPaths** – Call Horizon `/paths/strict-send` or `/paths/strict-receive`; optional path cache with TTL.
+2. **getBestPath** – Rank paths by destination amount (strict send) or source amount (strict receive).
+3. **estimateSwap** – Compute output, price impact, min received / max cost; no execution.
+4. **executeSwap** – Build path payment op (strict send/receive), validate slippage, sign, submit.
+5. **Slippage** – Enforce `minDestinationAmount`, `maxSendAmount`, `maxSlippage`, optional `priceLimit`.
+6. **Analytics** – Record swap history and path success rates.
+
+---
+
 ### 4. Automation Engine
 ### 2.1 Sponsored Reserves System
 

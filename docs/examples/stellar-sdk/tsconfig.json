@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@galaxy/core-stellar-sdk": ["../../../packages/core/stellar-sdk/src"],
+      "@galaxy/core-stellar-sdk/*": ["../../../packages/core/stellar-sdk/src/*"]
+    }
+  },
+  "include": ["*.ts"]
+}

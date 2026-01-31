@@ -158,6 +158,20 @@ const xlmBalances = await service.getClaimableBalancesByAsset(Asset.native(), 10
 const balance = await service.getClaimableBalance(balanceId);
 ```
 
+**Path Payments (Path Finding & Swap):**
+- **PathPaymentManager** – find paths (strict send / strict receive), get best path, execute swaps, estimate output, slippage protection, price impact, path cache, swap analytics.
+- **Strict send**: Fixed source amount; Horizon returns paths with varying destination amount.
+- **Strict receive**: Fixed destination amount; Horizon returns paths with varying source amount.
+- **Path ranking**: Best path by price (max destination for strict send, min source for strict receive).
+- **Slippage**: `minDestinationAmount`, `maxSendAmount`, `maxSlippage`; validate before execution.
+- **Price impact**: Per-path `priceImpact`; warn when ≥ `HIGH_PRICE_IMPACT_THRESHOLD` (5%).
+- **Path cache**: TTL cache for path results; clear with `clearPathCache()`.
+- **Examples**: `docs/examples/stellar-sdk/18-simple-swap.ts`, `19-path-finding.ts`, `20-multi-hop-swap.ts`, `21-slippage-protection.ts`.
+
+**Key files:**
+- `packages/core/stellar-sdk/src/path-payments/path-payment-manager.ts`
+- `packages/core/stellar-sdk/src/path-payments/types.ts`
+
 **Liquidity Pool Operations:**
 
 **Pool Operations Workflow:**

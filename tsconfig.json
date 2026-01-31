@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@galaxy/core/*": ["packages/core/*/src"],
+      "@galaxy/core-stellar-sdk": ["packages/core/stellar-sdk/src"],
+      "@galaxy/core-wallet": ["packages/core/wallet/src"],
+      "@galaxy/core-defi-protocols": ["packages/core/defi-protocols/src"],
+      "@galaxy/contracts/*": ["packages/contracts/*/src"],
+      "@galaxy/api/*": ["packages/api/*/src"],
+      "@galaxy/sdk/*": ["packages/sdk/*/src"],
+      "@galaxy/templates/*": ["packages/templates/*/src"],
+      "@galaxy/tools/*": ["tools/*/src"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "tools/*/src/**/*",
+    "**/*.ts",
+    "**/*.tsx",
+    "packages/core/invisible-wallet/src/services/invisible-wallet.service.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
+  ]
+}
