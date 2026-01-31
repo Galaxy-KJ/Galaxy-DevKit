@@ -14,6 +14,7 @@ import { SessionManager, getSessionManager } from './session.js';
 import { HistoryManager, getHistoryManager } from './history.js';
 import { AutocompleteManager, getAutocompleteManager } from './autocomplete.js';
 import { WorkflowManager, getWorkflowManager } from './workflows.js';
+import { readLineWithHistory } from './tty-line-reader.js';
 
 /** Default REPL configuration */
 const DEFAULT_REPL_CONFIG: ReplConfig = {
@@ -302,24 +303,28 @@ export class GalaxyRepl {
 
     this.running = true;
 
-    // Create readline interface
-    this.rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      completer: this.completer.bind(this),
-      terminal: true,
-    });
-
-    // Handle Ctrl+C
-    this.rl.on('SIGINT', () => {
-      console.log(chalk.gray('\n(Press Ctrl+D or type "exit" to quit)'));
-      this.rl?.prompt();
-    });
-
-    // Handle Ctrl+D
-    this.rl.on('close', () => {
-      this.stop();
-    });
+    if (process.stdin.isTTY) {
+      // Use custom TTY reader (prompt() will use readLineWithHistory with Ctrl+R and Up/Down)
+      this.rl = null;
+    } else {
+      // Non-TTY: use readline for piped input
+      const initialHistory = this.historyManager
+        .getRecent(this.config.history.maxEntries)
+        .map((e) => e.command);
+      const readlineOptions: readline.ReadLineOptions = {
+        input: process.stdin,
+        output: process.stdout,
+        completer: this.completer.bind(this),
+        terminal: false,
+        history: initialHistory,
+        historySize: this.config.history.maxEntries,
+        removeHistoryDuplicates: this.config.history.deduplicate,
+      };
+      this.rl = readline.createInterface(readlineOptions);
+      this.rl.on('close', () => {
+        this.stop();
+      });
+    }
 
     // Main REPL loop
     await this.loop();
@@ -329,7 +334,7 @@ export class GalaxyRepl {
    * Main REPL loop
    */
   private async loop(): Promise<void> {
-    while (this.running && this.rl) {
+    while (this.running) {
       try {
         const input = await this.prompt();
 
@@ -350,6 +355,7 @@ export class GalaxyRepl {
 
         // Record in history
         await this.historyManager.add(trimmedInput, result.success, duration);
+        this.pushToReadlineHistory(trimmedInput);
         this.sessionManager.recordCommand();
 
         if (result.exit) {
@@ -365,22 +371,45 @@ export class GalaxyRepl {
   }
 
   /**
-   * Display prompt and get user input
+   * Display prompt and get user input.
+   * When stdin is a TTY, uses custom reader with Up/Down history and Ctrl+R reverse-i-search.
+   * Otherwise uses readline.question (e.g. when piping).
    */
   private prompt(): Promise<string | null> {
+    const prefix = this.sessionManager.getPromptPrefix();
+    const promptStr = chalk.cyan(prefix + this.config.prompt);
+
+    if (process.stdin.isTTY) {
+      return readLineWithHistory({
+        prompt: promptStr,
+        historyManager: this.historyManager,
+        onSigint: () => {
+          console.log(chalk.gray('\n(Press Ctrl+D or type "exit" to quit)'));
+        },
+        completer: this.completer.bind(this),
+      });
+    }
+
+    if (!this.rl) {
+      return Promise.resolve(null);
+    }
     return new Promise((resolve) => {
-      if (!this.rl) {
-        resolve(null);
-        return;
-      }
-
-      const prefix = this.sessionManager.getPromptPrefix();
-      const promptStr = chalk.cyan(prefix + this.config.prompt);
-
-      this.rl.question(promptStr, (answer) => {
+      this.rl!.question(promptStr, (answer) => {
         resolve(answer);
       });
     });
+  }
+
+  /**
+   * Push a line to readline's internal history for arrow-key (Up/Down) navigation.
+   * Node's readline doesn't expose a public API for this; we use the internal history array when available.
+   */
+  private pushToReadlineHistory(line: string): void {
+    if (!this.rl || !line.trim()) return;
+    const rlWithHistory = this.rl as readline.Interface & { history?: string[] };
+    if (Array.isArray(rlWithHistory.history)) {
+      rlWithHistory.history.push(line);
+    }
   }
 
   /**
@@ -460,8 +489,8 @@ export class GalaxyRepl {
 
     if (this.rl) {
       this.rl.close();
-      this.rl = null;
     }
+    this.rl = null;
   }
 
   /**

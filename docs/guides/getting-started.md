@@ -106,6 +106,48 @@ galaxy-devkit/
 
 ### Using the CLI
 
+#### Option 1: Using CLI from the Monorepo (Recommended for Contributors)
+
+1. **Build the CLI:**
+   ```bash
+   npm run build
+   ```
+
+2. **Create a new project:**
+   ```bash
+   node tools/cli/dist/tools/cli/src/index.js create my-dapp --template basic
+   ```
+
+3. **Or link the CLI globally:**
+   ```bash
+   cd tools/cli
+   npm run build
+   npm link
+   cd ../..
+   ```
+
+4. **Now you can use the `galaxy` command:**
+   ```bash
+   galaxy create my-dapp --template basic
+   ```
+
+5. **Navigate to project:**
+   ```bash
+   cd my-dapp
+   ```
+
+6. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+7. **Start development server:**
+   ```bash
+   npm run dev
+   ```
+
+#### Option 2: Using Published CLI (For End Users)
+
 1. **Install Galaxy CLI globally:**
    ```bash
    npm install -g @galaxy/cli
