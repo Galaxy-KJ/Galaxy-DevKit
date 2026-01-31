@@ -1,0 +1,183 @@
+//! Mock Lending Protocol Contract for Testing
+//!
+//! This is a simplified lending protocol contract that allows:
+//! - Supplying tokens to earn interest
+//! - Borrowing tokens with collateral
+//! - Repaying borrowed amounts
+//! - Liquidating undercollateralized positions
+//!
+//! WARNING: This is a MOCK contract for testing only.
+//! It does NOT implement real lending logic.
+
+use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol, Address, Int128};
+
+#[contract]
+pub struct MockLendingProtocol;
+
+/// Events for lending operations
+pub mod events {
+    use soroban_sdk::{symbol_short, Env, Symbol, Address, Int128};
+
+    pub(crate) fn supply(env: &Env, user: &Address, amount: Int128) {
+        env.events()
+            .publish((symbol_short!("supply"),), (user, amount));
+    }
+
+    pub(crate) fn borrow(env: &Env, user: &Address, amount: Int128) {
+        env.events()
+            .publish((symbol_short!("borrow"),), (user, amount));
+    }
+
+    pub(crate) fn repay(env: &Env, user: &Address, amount: Int128) {
+        env.events()
+            .publish((symbol_short!("repay"),), (user, amount));
+    }
+}
+
+#[contractimpl]
+impl MockLendingProtocol {
+    /// Supply tokens to the lending protocol
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address (who is supplying)
+    /// * `amount` - Amount to supply (in stroops)
+    ///
+    /// # Returns
+    /// * Result with success or error
+    pub fn supply(env: Env, user: Address, amount: Int128) -> Result<Int128, Symbol> {
+        // Validate amount
+        if amount <= 0 {
+            return Err(symbol_short!("inv_amt")); // Invalid amount
+        }
+
+        // In a real contract, this would:
+        // 1. Transfer tokens from user to contract
+        // 2. Update user's supply balance
+        // 3. Update total supply
+        // 4. Calculate and emit interest
+
+        // For testing, just return the amount (mock)
+        events::supply(&env, &user, amount);
+        Ok(amount)
+    }
+
+    /// Borrow tokens from the lending protocol
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address (who is borrowing)
+    /// * `amount` - Amount to borrow (in stroops)
+    ///
+    /// # Returns
+    /// * Result with success or error
+    pub fn borrow(env: Env, user: Address, amount: Int128) -> Result<Int128, Symbol> {
+        // Validate amount
+        if amount <= 0 {
+            return Err(symbol_short!("inv_amt")); // Invalid amount
+        }
+
+        // In a real contract, this would:
+        // 1. Check collateral ratio (must be > 1.5x)
+        // 2. Check available liquidity
+        // 3. Transfer tokens to user
+        // 4. Update borrow balance
+        // 5. Calculate interest
+
+        // For testing, just return the amount (mock)
+        events::borrow(&env, &user, amount);
+        Ok(amount)
+    }
+
+    /// Repay borrowed tokens
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address (who is repaying)
+    /// * `amount` - Amount to repay (in stroops)
+    ///
+    /// # Returns
+    /// * Result with remaining debt or error
+    pub fn repay(env: Env, user: Address, amount: Int128) -> Result<Int128, Symbol> {
+        // Validate amount
+        if amount <= 0 {
+            return Err(symbol_short!("inv_amt")); // Invalid amount
+        }
+
+        // In a real contract, this would:
+        // 1. Transfer tokens from user to contract
+        // 2. Apply payment to interest first, then principal
+        // 3. Update borrow balance
+        // 4. Return remaining debt
+
+        // For testing, return 0 (fully repaid - mock)
+        events::repay(&env, &user, amount);
+        Ok(0)
+    }
+
+    /// Get user's supply balance
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address
+    ///
+    /// # Returns
+    /// * User's supply balance (in stroops)
+    pub fn supply_balance(env: Env, user: Address) -> Int128 {
+        // For testing, return 1,000 XLM as mock balance
+        1_000_000_000
+    }
+
+    /// Get user's borrow balance
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address
+    ///
+    /// # Returns
+    /// * User's borrow balance (in stroops)
+    pub fn borrow_balance(env: Env, user: Address) -> Int128 {
+        // For testing, return 0 (no debt - mock)
+        0
+    }
+
+    /// Get current interest rate (APY)
+    ///
+    /// # Returns
+    /// * Interest rate in basis points (100 = 1%)
+    pub fn interest_rate(env: Env) -> Int128 {
+        // Return 5% APY (500 basis points)
+        500
+    }
+
+    /// Get total supplied amount
+    ///
+    /// # Returns
+    /// * Total supplied tokens (in stroops)
+    pub fn total_supply(env: Env) -> Int128 {
+        // For testing, return 1 million XLM
+        1_000_000_000_000
+    }
+
+    /// Get total borrowed amount
+    ///
+    /// # Returns
+    /// * Total borrowed tokens (in stroops)
+    pub fn total_borrow(env: Env) -> Int128 {
+        // For testing, return 500,000 XLM
+        500_000_000_000
+    }
+
+    /// Get user's collateral ratio
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - User address
+    ///
+    /// # Returns
+    /// * Collateral ratio (1000 = 1.0x)
+    pub fn collateral_ratio(env: Env, user: Address) -> Int128 {
+        // For testing, return 1.5x (safe)
+        1_500
+    }
+}

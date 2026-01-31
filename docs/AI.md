@@ -1538,3 +1538,16 @@ await expect(ledger.getPublicKey()).rejects.toThrow();
 - [x] Wallet README includes biometric setup and examples.
 
 TODO: I can add TSDoc/JSDoc comments to the biometric files listed above to raise docstring coverage — confirm and I'll implement those changes and run tests.
+
+## Testing Patterns
+
+### Integration Testing
+Use mock Soroban contracts for DeFi protocol testing on Stellar testnet.
+
+See `docs/testing/SOROBAN_MOCKS.md` for detailed mock contract reference.
+
+### Mock Contract Usage
+Mock contracts provide isolated testing for:
+- Lending protocols (supply/borrow)
+- DEX operations (swaps/liquidity)
+- Price oracles (feeds)
