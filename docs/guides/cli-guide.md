@@ -13,7 +13,39 @@ Complete guide for using Galaxy DevKit CLI tools.
 
 ## 🚀 Installation
 
-### Global Installation
+### Option 1: Local Development (From Monorepo)
+
+If you're working on Galaxy DevKit itself or want to run the CLI from source:
+
+```bash
+# 1. Build the CLI
+npm run build
+
+# 2. Run the CLI directly
+node tools/cli/dist/tools/cli/src/index.js [command] [options]
+
+# Or create an alias for convenience
+alias galaxy="node $(pwd)/tools/cli/dist/tools/cli/src/index.js"
+```
+
+### Option 2: Global Link (For Local Testing)
+
+```bash
+# Navigate to CLI directory
+cd tools/cli
+
+# Build the CLI
+npm run build
+
+# Link globally
+npm link
+
+# Now you can use 'galaxy' command anywhere
+galaxy --version
+galaxy help
+```
+
+### Option 3: Global Installation (Published Package)
 ```bash
 npm install -g @galaxy/cli
 ```
@@ -225,6 +257,67 @@ export const WalletManager: React.FC = () => {
 };
 ```
 
+### `galaxy wallet`
+
+Manage Stellar wallets from the command line.
+
+```bash
+galaxy wallet create
+```
+
+**Common Commands:**
+- `galaxy wallet create` - Create a new wallet
+- `galaxy wallet import` - Import an existing wallet
+- `galaxy wallet list` - List all wallets
+- `galaxy wallet balance <address>` - Check wallet balance
+- `galaxy wallet send` - Send a payment
+
+**Examples:**
+```bash
+# Create new wallet
+galaxy wallet create --name my-wallet --network testnet
+
+# Import wallet from secret key
+galaxy wallet import --secret SXXX...
+
+# Check balance
+galaxy wallet balance GXXX... --network testnet
+
+# Send payment
+galaxy wallet send --from GXXX... --to GYYY... --amount 100 --asset XLM
+```
+
+See [Wallet Commands Documentation](../cli/wallet.md) for complete details.
+
+### `galaxy blend`
+
+Interact with Blend Protocol for DeFi operations.
+
+```bash
+galaxy blend stats
+```
+
+**Common Commands:**
+- `galaxy blend stats` - View Blend protocol statistics
+- `galaxy blend supply` - Supply assets to lending pool
+- `galaxy blend borrow` - Borrow assets from pool
+- `galaxy blend withdraw` - Withdraw supplied assets
+- `galaxy blend repay` - Repay borrowed assets
+
+**Examples:**
+```bash
+# View protocol stats
+galaxy blend stats --network testnet
+
+# Supply USDC to pool
+galaxy blend supply --asset USDC --amount 1000 --pool mainnet
+
+# Borrow XLM
+galaxy blend borrow --asset XLM --amount 500 --pool mainnet
+```
+
+See [Blend Commands Documentation](../cli/blend.md) for complete details.
+
 ### `galaxy oracle`
 
 Query and validate oracle price data during development.
@@ -259,6 +352,78 @@ galaxy oracle validate XLM/USD --network testnet
 
 galaxy oracle strategies list
 ```
+
+See [Oracle Commands Documentation](../cli/oracle.md) for complete details.
+
+### `galaxy watch`
+
+Monitor Stellar network activity in real-time.
+
+```bash
+galaxy watch account GXXX...
+```
+
+**Common Commands:**
+- `galaxy watch account <address>` - Monitor account balance and payments
+- `galaxy watch transaction <hash>` - Track transaction until confirmation
+- `galaxy watch oracle <symbol>` - Stream price updates from oracles
+- `galaxy watch contract <id>` - Monitor Soroban contract events
+- `galaxy watch network` - View live ledger and TPS stats
+- `galaxy watch dashboard` - Multi-panel combined view
+
+**Examples:**
+```bash
+# Watch account activity
+galaxy watch account GXXX... --interval 5
+
+# Track specific transaction
+galaxy watch transaction 7a8b...123f --timeout 60
+
+# Monitor XLM price
+galaxy watch oracle XLM --interval 2
+
+# View network dashboard
+galaxy watch dashboard --network mainnet
+```
+
+See [Watch Commands Documentation](../cli/watch.md) for complete details.
+
+### `galaxy interactive`
+
+Launch interactive REPL mode with autocomplete and command history.
+
+```bash
+galaxy interactive
+# or simply
+galaxy
+```
+
+**Features:**
+- Tab completion for commands and options
+- Command history with arrow keys
+- Session state management
+- Guided workflows
+- Real-time feedback
+
+**Example Session:**
+```console
+$ galaxy
+
+🌌 Galaxy DevKit Interactive Mode
+Type 'help' for commands or 'exit' to quit
+
+galaxy> wallet create
+? Wallet name: dev-wallet
+✓ Wallet created: GABC...XYZ
+
+galaxy> oracle price XLM/USD
+XLM/USD: $0.1234 (5/5 sources)
+
+galaxy> exit
+Goodbye! 👋
+```
+
+See [Interactive Mode Documentation](../cli/interactive.md) for complete details.
 
 ### `galaxy test`
 

@@ -1,0 +1,499 @@
+/**
+ * @fileoverview Tests for Soroswap Protocol implementation
+ * @description Unit tests for Soroswap DEX protocol with full mock coverage
+ * @author Galaxy DevKit Team
+ * @version 1.0.0
+ * @since 2024-01-30
+ */
+
+import { SoroswapProtocol } from '../../src/protocols/soroswap/soroswap-protocol';
+import { ProtocolConfig, ProtocolType, Asset } from '../../src/types/defi-types';
+import { InvalidOperationError } from '../../src/errors';
+import { rpc } from '@stellar/stellar-sdk';
+
+// ==========================================
+// MOCKS
+// ==========================================
+
+// Mock Stellar SDK
+jest.mock('@stellar/stellar-sdk', () => {
+  const mockContractCall = jest.fn().mockReturnValue({ type: 'invoke_contract' });
+  const mockContract = jest.fn().mockImplementation(() => ({
+    call: mockContractCall,
+  }));
+
+  return {
+    Contract: mockContract,
+    TransactionBuilder: jest.fn().mockImplementation(() => ({
+      addOperation: jest.fn().mockReturnThis(),
+      setTimeout: jest.fn().mockReturnThis(),
+      build: jest.fn().mockReturnValue({
+        sign: jest.fn(),
+        toXDR: jest.fn().mockReturnValue('mock-xdr'),
+      }),
+    })),
+    Keypair: {
+      fromSecret: jest.fn().mockReturnValue({
+        publicKey: () => 'test-public-key',
+        secret: () => 'test-secret',
+        sign: jest.fn(),
+      }),
+      fromPublicKey: jest.fn().mockReturnValue({ publicKey: () => 'test-public-key' }),
+      random: jest.fn(),
+    },
+    Address: jest.fn().mockImplementation((addr: string) => ({
+      toScVal: jest.fn().mockReturnValue({ type: 'address', value: addr }),
+    })),
+    nativeToScVal: jest.fn().mockReturnValue({ type: 'scval' }),
+    BASE_FEE: '100',
+    rpc: {
+      Server: jest.fn(),
+      Api: {
+        isSimulationError: jest.fn(),
+      },
+      assembleTransaction: jest.fn().mockReturnValue({
+        build: jest.fn().mockReturnValue({
+          sign: jest.fn(),
+          toXDR: jest.fn().mockReturnValue('mock-xdr'),
+        }),
+      }),
+    },
+    StrKey: {
+      isValidEd25519PublicKey: jest.fn().mockReturnValue(true),
+    },
+    Horizon: {
+      Server: jest.fn(),
+    },
+    Networks: {
+      TESTNET: 'TESTNET',
+      PUBLIC: 'PUBLIC',
+    },
+    Asset: jest.fn(),
+  };
+});
+
+// ==========================================
+// TESTS
+// ==========================================
+
+describe('SoroswapProtocol', () => {
+  let soroswapProtocol: SoroswapProtocol;
+  let mockConfig: ProtocolConfig;
+  let mockHorizonServer: any;
+
+  const testAddress = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+  const testPrivateKey = 'SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+  const testAsset: Asset = {
+    code: 'USDC',
+    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    type: 'credit_alphanum4'
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockConfig = {
+      protocolId: 'soroswap',
+      name: 'Soroswap',
+      network: {
+        network: 'testnet',
+        horizonUrl: 'https://horizon-testnet.stellar.org',
+        sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
+        passphrase: 'Test SDF Network ; September 2015'
+      },
+      contractAddresses: {
+        router: 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD',
+        factory: 'CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY'
+      },
+      metadata: {}
+    };
+
+    soroswapProtocol = new SoroswapProtocol(mockConfig);
+
+    // Mock Horizon Server
+    mockHorizonServer = {
+      loadAccount: jest.fn().mockResolvedValue({
+        accountId: () => testAddress,
+        sequenceNumber: () => '123',
+        incrementSequenceNumber: jest.fn(),
+      }),
+      ledgers: jest.fn().mockReturnValue({
+        limit: jest.fn().mockReturnValue({
+          call: jest.fn().mockResolvedValue({})
+        })
+      })
+    };
+    (soroswapProtocol as any).horizonServer = mockHorizonServer;
+  });
+
+  // ==========================================
+  // INITIALIZATION
+  // ==========================================
+
+  describe('Initialization', () => {
+    it('should initialize successfully', async () => {
+      await soroswapProtocol.initialize();
+      expect(soroswapProtocol.isInitialized()).toBe(true);
+    });
+
+    it('should set protocol type to DEX', () => {
+      expect(soroswapProtocol.type).toBe(ProtocolType.DEX);
+    });
+
+    it('should set protocol id to soroswap', () => {
+      expect(soroswapProtocol.protocolId).toBe('soroswap');
+    });
+
+    it('should set protocol name to Soroswap', () => {
+      expect(soroswapProtocol.name).toBe('Soroswap');
+    });
+
+    it('should initialize router and factory contracts', async () => {
+      await soroswapProtocol.initialize();
+
+      const routerContract = (soroswapProtocol as any).routerContract;
+      const factoryContract = (soroswapProtocol as any).factoryContract;
+
+      expect(routerContract).not.toBeNull();
+      expect(factoryContract).not.toBeNull();
+    });
+
+    it('should not re-initialize if already initialized', async () => {
+      await soroswapProtocol.initialize();
+      await soroswapProtocol.initialize(); // Should not throw
+
+      expect(soroswapProtocol.isInitialized()).toBe(true);
+    });
+
+    it('should throw if contract addresses are missing', async () => {
+      const badConfig = { ...mockConfig, contractAddresses: {} };
+      const badProtocol = new SoroswapProtocol(badConfig);
+      (badProtocol as any).horizonServer = mockHorizonServer;
+
+      await expect(badProtocol.initialize()).rejects.toThrow('Contract addresses are required');
+    });
+
+    it('should throw if router address is missing', async () => {
+      const badConfig = {
+        ...mockConfig,
+        contractAddresses: { factory: 'CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY' }
+      };
+      const badProtocol = new SoroswapProtocol(badConfig);
+      (badProtocol as any).horizonServer = mockHorizonServer;
+
+      await expect(badProtocol.initialize()).rejects.toThrow(/Contract address not found for key: router/);
+    });
+  });
+
+  // ==========================================
+  // PROTOCOL INFORMATION
+  // ==========================================
+
+  describe('Protocol Information', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return placeholder stats', async () => {
+      const stats = await soroswapProtocol.getStats();
+
+      expect(stats.tvl).toBe('0');
+      expect(stats.totalSupply).toBe('0');
+      expect(stats.totalBorrow).toBe('0');
+      expect(stats.utilizationRate).toBe(0);
+      expect(stats.timestamp).toBeInstanceOf(Date);
+    });
+  });
+
+  // ==========================================
+  // LENDING OPERATIONS (Should throw InvalidOperationError)
+  // ==========================================
+
+  describe('Lending Operations (not supported)', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should throw InvalidOperationError on supply()', async () => {
+      await expect(
+        soroswapProtocol.supply(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.supply(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(/Supply is not supported by Soroswap/);
+    });
+
+    it('should throw InvalidOperationError on borrow()', async () => {
+      await expect(
+        soroswapProtocol.borrow(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.borrow(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(/Borrow is not supported by Soroswap/);
+    });
+
+    it('should throw InvalidOperationError on repay()', async () => {
+      await expect(
+        soroswapProtocol.repay(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.repay(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(/Repay is not supported by Soroswap/);
+    });
+
+    it('should throw InvalidOperationError on withdraw()', async () => {
+      await expect(
+        soroswapProtocol.withdraw(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.withdraw(testAddress, testPrivateKey, testAsset, '100')
+      ).rejects.toThrow(/Withdraw is not supported by Soroswap/);
+    });
+
+    it('should include protocolId in InvalidOperationError', async () => {
+      try {
+        await soroswapProtocol.supply(testAddress, testPrivateKey, testAsset, '100');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidOperationError);
+        expect((error as InvalidOperationError).protocolId).toBe('soroswap');
+        expect((error as InvalidOperationError).operationType).toBe('supply');
+      }
+    });
+  });
+
+  // ==========================================
+  // POSITION MANAGEMENT (Not applicable to DEX)
+  // ==========================================
+
+  describe('Position Management (not applicable)', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should throw InvalidOperationError on getPosition()', async () => {
+      await expect(
+        soroswapProtocol.getPosition(testAddress)
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.getPosition(testAddress)
+      ).rejects.toThrow(/getPosition is not supported by Soroswap/);
+    });
+
+    it('should throw InvalidOperationError on getHealthFactor()', async () => {
+      await expect(
+        soroswapProtocol.getHealthFactor(testAddress)
+      ).rejects.toThrow(InvalidOperationError);
+
+      await expect(
+        soroswapProtocol.getHealthFactor(testAddress)
+      ).rejects.toThrow(/getHealthFactor is not supported by Soroswap/);
+    });
+  });
+
+  // ==========================================
+  // LENDING-SPECIFIC INFO (Not applicable to DEX)
+  // ==========================================
+
+  describe('Lending-specific Info (not applicable)', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should throw InvalidOperationError on getSupplyAPY()', async () => {
+      await expect(
+        soroswapProtocol.getSupplyAPY(testAsset)
+      ).rejects.toThrow(InvalidOperationError);
+    });
+
+    it('should throw InvalidOperationError on getBorrowAPY()', async () => {
+      await expect(
+        soroswapProtocol.getBorrowAPY(testAsset)
+      ).rejects.toThrow(InvalidOperationError);
+    });
+
+    it('should throw InvalidOperationError on getTotalSupply()', async () => {
+      await expect(
+        soroswapProtocol.getTotalSupply(testAsset)
+      ).rejects.toThrow(InvalidOperationError);
+    });
+
+    it('should throw InvalidOperationError on getTotalBorrow()', async () => {
+      await expect(
+        soroswapProtocol.getTotalBorrow(testAsset)
+      ).rejects.toThrow(InvalidOperationError);
+    });
+  });
+
+  // ==========================================
+  // DEX HELPER METHODS
+  // ==========================================
+
+  describe('DEX Helper Methods', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return pair info placeholder', async () => {
+      const tokenA = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+      const tokenB = 'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU';
+
+      const pairInfo = await soroswapProtocol.getPairInfo(tokenA, tokenB);
+
+      expect(pairInfo).toBeDefined();
+      expect(pairInfo.fee).toBe('0.003');
+      expect(pairInfo.reserve0).toBe('0');
+      expect(pairInfo.reserve1).toBe('0');
+      expect(pairInfo.totalSupply).toBe('0');
+    });
+
+    it('should return empty pairs array', async () => {
+      const pairs = await soroswapProtocol.getAllPairs();
+
+      expect(pairs).toEqual([]);
+    });
+
+    it('should throw if factory contract is null in getPairInfo', async () => {
+      (soroswapProtocol as any).factoryContract = null;
+
+      await expect(
+        soroswapProtocol.getPairInfo('tokenA', 'tokenB')
+      ).rejects.toThrow('Factory contract not initialized');
+    });
+
+    it('should throw if factory contract is null in getAllPairs', async () => {
+      (soroswapProtocol as any).factoryContract = null;
+
+      await expect(
+        soroswapProtocol.getAllPairs()
+      ).rejects.toThrow('Factory contract not initialized');
+    });
+
+    it('should throw if not initialized in getPairInfo', () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+
+      expect(
+        uninitProtocol.getPairInfo('tokenA', 'tokenB')
+      ).rejects.toThrow(/not initialized/);
+    });
+
+    it('should throw if not initialized in getAllPairs', () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+
+      expect(
+        uninitProtocol.getAllPairs()
+      ).rejects.toThrow(/not initialized/);
+    });
+  });
+
+  // ==========================================
+  // DEX OPERATION STUBS
+  // ==========================================
+
+  describe('DEX Operation Stubs', () => {
+    const tokenIn: Asset = { code: 'XLM', type: 'native' };
+    const tokenOut: Asset = {
+      code: 'USDC',
+      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      type: 'credit_alphanum4'
+    };
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should throw "not yet implemented" on swap()', async () => {
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
+      ).rejects.toThrow(/not yet implemented/);
+    });
+
+    it('should throw "not yet implemented" on getSwapQuote()', async () => {
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '100')
+      ).rejects.toThrow(/not yet implemented/);
+    });
+
+    it('should throw "not yet implemented" on addLiquidity()', async () => {
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '100')
+      ).rejects.toThrow(/not yet implemented/);
+    });
+
+    it('should throw "not yet implemented" on removeLiquidity()', async () => {
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, testAddress, '100')
+      ).rejects.toThrow(/not yet implemented/);
+    });
+
+    it('should throw "not yet implemented" on getLiquidityPool()', async () => {
+      await expect(
+        soroswapProtocol.getLiquidityPool(tokenIn, tokenOut)
+      ).rejects.toThrow(/not yet implemented/);
+    });
+
+    it('should reference issue numbers in stub error messages', async () => {
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
+      ).rejects.toThrow(/#27/);
+
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '100')
+      ).rejects.toThrow(/#28/);
+
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '100')
+      ).rejects.toThrow(/#29/);
+
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, testAddress, '100')
+      ).rejects.toThrow(/#30/);
+    });
+
+    it('should validate inputs before throwing stub errors', async () => {
+      // Invalid address should fail validation before reaching stub
+      await expect(
+        soroswapProtocol.swap('', testPrivateKey, tokenIn, tokenOut, '100', '95')
+      ).rejects.toThrow(/Invalid wallet address/);
+
+      // Invalid amount should fail validation
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '-1', '95')
+      ).rejects.toThrow(/Amount must be a positive number/);
+
+      // Invalid asset should fail validation
+      const badAsset: Asset = { code: '', type: 'native' };
+      await expect(
+        soroswapProtocol.getSwapQuote(badAsset, tokenOut, '100')
+      ).rejects.toThrow(/Invalid asset/);
+    });
+
+    it('should require initialization for stub methods', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+
+      await expect(
+        uninitProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
+      ).rejects.toThrow(/not initialized/);
+    });
+  });
+
+  // ==========================================
+  // UNINITIALIZED STATE
+  // ==========================================
+
+  describe('Uninitialized State', () => {
+    it('should throw on getStats() when not initialized', async () => {
+      await expect(
+        soroswapProtocol.getStats()
+      ).rejects.toThrow(/not initialized/);
+    });
+
+    it('should report not initialized', () => {
+      expect(soroswapProtocol.isInitialized()).toBe(false);
+    });
+  });
+});

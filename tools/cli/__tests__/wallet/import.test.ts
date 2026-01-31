@@ -28,7 +28,7 @@ describe('wallet import command', () => {
     });
 
     afterEach(async () => {
-        await fs.remove(path.dirname(testWalletsDir));
+        await fs.emptyDir(testWalletsDir);
     });
 
     it('should import wallet from valid secret key', async () => {
@@ -47,6 +47,7 @@ describe('wallet import command', () => {
             importedAt: new Date().toISOString()
         };
 
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         // Verify
@@ -85,6 +86,7 @@ describe('wallet import command', () => {
             importedAt: new Date().toISOString()
         };
 
+        await fs.ensureDir(testWalletsDir);
         await fs.writeJson(walletPath, walletData);
 
         const savedWallet = await fs.readJson(walletPath);

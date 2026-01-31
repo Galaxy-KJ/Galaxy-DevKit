@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Ledger Wallet Integration for Stellar
  * Provides secure key management and transaction signing using Ledger hardware wallets

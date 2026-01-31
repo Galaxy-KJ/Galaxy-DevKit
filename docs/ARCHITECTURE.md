@@ -2556,6 +2556,372 @@ graph TD
 
 ---
 
+## 🖥️ CLI Architecture
+
+### Overview
+
+The Galaxy CLI (`@galaxy/cli`) provides command-line tools for developers to interact with the Galaxy DevKit ecosystem. It includes commands for project creation, wallet management, DeFi operations, oracle queries, and real-time network monitoring.
+
+### CLI Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "CLI Entry Point"
+        Main[index.ts<br/>Commander.js]
+    end
+
+    subgraph "Command Groups"
+        Create[create<br/>Project Scaffolding]
+        Wallet[wallet<br/>Wallet Management]
+        Blend[blend<br/>DeFi Operations]
+        Oracle[oracle<br/>Price Data]
+        Watch[watch<br/>Real-time Monitoring]
+        Interactive[interactive<br/>REPL Mode]
+    end
+
+    subgraph "Utilities"
+        Template[Template Loader]
+        Scaffolder[Project Scaffolder]
+        Installer[Dependency Installer]
+    end
+
+    subgraph "Services"
+        WalletSvc[Wallet Service]
+        BlendSvc[Blend Service]
+        OracleSvc[Oracle Service]
+        WatchSvc[Watch Service]
+    end
+
+    subgraph "External Dependencies"
+        Galaxy[@galaxy/core-defi-protocols]
+        Oracles[@galaxy/core-oracles]
+        Stellar[@stellar/stellar-sdk]
+    end
+
+    Main --> Create
+    Main --> Wallet
+    Main --> Blend
+    Main --> Oracle
+    Main --> Watch
+    Main --> Interactive
+
+    Create --> Template
+    Create --> Scaffolder
+    Create --> Installer
+
+    Wallet --> WalletSvc
+    Blend --> BlendSvc
+    Oracle --> OracleSvc
+    Watch --> WatchSvc
+
+    WalletSvc --> Stellar
+    BlendSvc --> Galaxy
+    OracleSvc --> Oracles
+    WatchSvc --> Stellar
+
+    style Main fill:#e3f2fd
+    style Create fill:#fff3e0
+    style Wallet fill:#e8f5e9
+    style Blend fill:#f3e5f5
+    style Oracle fill:#fce4ec
+    style Watch fill:#e1f8f9
+    style Interactive fill:#f1f8e9
+```
+
+### Command Architecture
+
+#### Project Creation (`galaxy create`)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as Galaxy CLI
+    participant Template as TemplateLoader
+    participant Scaffolder as ProjectScaffolder
+    participant Installer as DependencyInstaller
+    participant FileSystem as File System
+
+    User->>CLI: galaxy create my-app --template basic
+    CLI->>Template: loadTemplate('basic')
+    Template->>FileSystem: Read template.json
+    FileSystem-->>Template: Template config
+    Template-->>CLI: Template data
+
+    CLI->>Scaffolder: scaffoldProject(template, 'my-app')
+    Scaffolder->>Scaffolder: substituteVariables()
+    Scaffolder->>FileSystem: Create directory structure
+    Scaffolder->>FileSystem: Write files
+
+    CLI->>Installer: installDependencies('my-app')
+    Installer->>Installer: Detect package manager
+    Installer->>Installer: Run install command
+    Installer-->>CLI: Dependencies installed
+
+    CLI-->>User: Project created successfully
+```
+
+#### Wallet Commands (`galaxy wallet`)
+
+```mermaid
+graph LR
+    subgraph "Wallet Commands"
+        Create[wallet create<br/>Create new wallet]
+        Import[wallet import<br/>Import from secret]
+        List[wallet list<br/>List all wallets]
+        Balance[wallet balance<br/>Check balance]
+        Send[wallet send<br/>Send payment]
+    end
+
+    subgraph "Wallet Service"
+        WS[WalletService]
+    end
+
+    subgraph "Stellar Network"
+        Horizon[Horizon API]
+    end
+
+    Create --> WS
+    Import --> WS
+    List --> WS
+    Balance --> WS
+    Send --> WS
+
+    WS --> Horizon
+
+    style Create fill:#e8f5e9
+    style WS fill:#e3f2fd
+    style Horizon fill:#fff3e0
+```
+
+#### Oracle Commands (`galaxy oracle`)
+
+```mermaid
+graph LR
+    subgraph "Oracle Commands"
+        Price[oracle price<br/>Query current price]
+        History[oracle history<br/>TWAP calculation]
+        Sources[oracle sources<br/>Manage sources]
+        Validate[oracle validate<br/>Validate prices]
+    end
+
+    subgraph "Oracle Service"
+        OS[OracleService]
+        Aggregator[OracleAggregator]
+    end
+
+    subgraph "Price Sources"
+        CG[CoinGecko]
+        CMC[CoinMarketCap]
+        DEX[Stellar DEX]
+    end
+
+    Price --> OS
+    History --> OS
+    Sources --> OS
+    Validate --> OS
+
+    OS --> Aggregator
+    Aggregator --> CG
+    Aggregator --> CMC
+    Aggregator --> DEX
+
+    style Price fill:#fce4ec
+    style OS fill:#e3f2fd
+    style Aggregator fill:#fff3e0
+```
+
+#### Watch Commands (`galaxy watch`)
+
+```mermaid
+graph TB
+    subgraph "Watch Commands"
+        Account[watch account<br/>Monitor account]
+        Tx[watch transaction<br/>Track transaction]
+        OracleWatch[watch oracle<br/>Stream prices]
+        Contract[watch contract<br/>Monitor contract]
+        Network[watch network<br/>Network stats]
+        Dashboard[watch dashboard<br/>Combined view]
+    end
+
+    subgraph "Watch Service"
+        WS[WatchService]
+        Dashboard_UI[Dashboard UI<br/>Blessed/Blessed-Contrib]
+    end
+
+    subgraph "Data Sources"
+        Horizon[Horizon API<br/>Streaming]
+        Oracle_Svc[Oracle Service]
+        Soroban[Soroban RPC]
+    end
+
+    Account --> WS
+    Tx --> WS
+    OracleWatch --> WS
+    Contract --> WS
+    Network --> WS
+    Dashboard --> Dashboard_UI
+
+    WS --> Horizon
+    WS --> Oracle_Svc
+    WS --> Soroban
+
+    Dashboard_UI --> Horizon
+    Dashboard_UI --> Oracle_Svc
+
+    style Dashboard fill:#e1f8f9
+    style WS fill:#e3f2fd
+    style Dashboard_UI fill:#fff3e0
+```
+
+#### Interactive Mode (`galaxy interactive`)
+
+```mermaid
+graph TB
+    subgraph "Interactive Mode"
+        REPL[REPL Interface]
+        Autocomplete[Tab Completion]
+        History[Command History]
+        Session[Session Management]
+    end
+
+    subgraph "Features"
+        Commands[All CLI Commands]
+        Workflows[Guided Workflows]
+        Variables[Session Variables]
+    end
+
+    REPL --> Autocomplete
+    REPL --> History
+    REPL --> Session
+
+    Autocomplete --> Commands
+    History --> Commands
+    Session --> Variables
+    Commands --> Workflows
+
+    style REPL fill:#f1f8e9
+    style Commands fill:#e3f2fd
+    style Workflows fill:#fff3e0
+```
+
+### CLI Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Entry as index.ts
+    participant Commander as Commander.js
+    participant Command as Command Handler
+    participant Service as Service Layer
+    participant Network as Stellar/Soroban
+
+    User->>Entry: galaxy <command> [options]
+    Entry->>Entry: Check if interactive mode
+
+    alt Interactive Mode
+        Entry->>Interactive: Launch REPL
+        Interactive->>User: 🌌 Interactive Mode
+    else Direct Command
+        Entry->>Commander: Parse command
+        Commander->>Command: Execute command
+        Command->>Service: Call service method
+        Service->>Network: API request
+        Network-->>Service: Response
+        Service-->>Command: Result
+        Command-->>User: Output formatted result
+    end
+```
+
+### Configuration
+
+The CLI uses configuration files for network settings, API keys, and user preferences:
+
+```typescript
+// galaxy.config.js
+module.exports = {
+  network: 'testnet',
+  horizonUrl: 'https://horizon-testnet.stellar.org',
+  sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
+  defaultWallet: 'my-wallet',
+  // ...
+};
+```
+
+### Error Handling
+
+```mermaid
+graph TD
+    Command[Command Execution] --> Validate{Validate Input}
+
+    Validate -->|Invalid| FormatError[Format Error Message]
+    Validate -->|Valid| Execute[Execute Command]
+
+    Execute --> TryCatch{Try/Catch}
+
+    TryCatch -->|Success| FormatSuccess[Format Success Message]
+    TryCatch -->|Error| CategorizeError{Categorize Error}
+
+    CategorizeError -->|Network Error| NetworkMsg[Network Error Message]
+    CategorizeError -->|Validation Error| ValidationMsg[Validation Error Message]
+    CategorizeError -->|API Error| APIMsg[API Error Message]
+    CategorizeError -->|Unknown| UnknownMsg[Generic Error Message]
+
+    FormatError --> Display[Display to User]
+    FormatSuccess --> Display
+    NetworkMsg --> Display
+    ValidationMsg --> Display
+    APIMsg --> Display
+    UnknownMsg --> Display
+
+    style Validate fill:#fff3e0
+    style Execute fill:#e8f5e9
+    style Display fill:#e3f2fd
+    style FormatError fill:#ffebee
+```
+
+### CLI Development
+
+**Building the CLI:**
+```bash
+# Navigate to CLI directory
+cd tools/cli
+
+# Install dependencies
+npm install
+
+# Build TypeScript
+npm run build
+
+# Link globally for testing
+npm link
+
+# Test commands
+galaxy --version
+galaxy help
+```
+
+**Adding New Commands:**
+1. Create command file in `src/commands/`
+2. Implement command logic
+3. Register in `index.ts`
+4. Add tests
+5. Update documentation
+
+**Example Command:**
+```typescript
+// src/commands/my-command.ts
+import { Command } from 'commander';
+
+export const myCommand = new Command('my-command')
+  .description('Description of my command')
+  .option('-o, --option <value>', 'Option description')
+  .action(async (options) => {
+    // Command logic here
+  });
+```
+
+---
+
 ## 🧪 Testing Strategy
 
 ```mermaid
