@@ -1,0 +1,137 @@
+name: Security Audit
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main ]
+    paths:
+      - '**/package.json'
+      - '**/package-lock.json'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  security-audit:
+    name: npm Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (all levels)
+        id: audit-all
+        run: |
+          npm audit --json > audit-results.json
+          cat audit-results.json
+        continue-on-error: true
+
+      - name: Parse audit results
+        id: parse-audit
+        run: |
+          CRITICAL=$(cat audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH=$(cat audit-results.json | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE=$(cat audit-results.json | jq '.metadata.vulnerabilities.moderate // 0')
+          LOW=$(cat audit-results.json | jq '.metadata.vulnerabilities.low // 0')
+
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "moderate=$MODERATE" >> $GITHUB_OUTPUT
+          echo "low=$LOW" >> $GITHUB_OUTPUT
+
+          echo "## 🔒 Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟢 Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail on critical or high vulnerabilities
+        if: steps.parse-audit.outputs.critical != '0' || steps.parse-audit.outputs.high != '0'
+        run: |
+          echo "❌ Found critical or high severity vulnerabilities!"
+          npm audit --audit-level=high
+          exit 1
+
+      - name: Create issue for moderate vulnerabilities
+        if: steps.parse-audit.outputs.moderate != '0' && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const moderate = '${{ steps.parse-audit.outputs.moderate }}';
+            const issueTitle = `🔒 Security Alert: ${moderate} Moderate Vulnerabilities Detected`;
+            const issueBody = `
+            ## Security Audit Found Moderate Vulnerabilities
+
+            **Moderate Vulnerabilities**: ${moderate}
+
+            Please review and update dependencies:
+
+            \`\`\`bash
+            npm audit
+            npm audit fix
+            \`\`\`
+
+            Run \`npm audit\` locally to see details.
+
+            ---
+            *This issue was automatically created by the Security Audit workflow*
+            `;
+
+            // Check if similar issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['security', 'dependencies']
+            });
+
+            const existingIssue = issues.data.find(issue =>
+              issue.title.includes('Security Alert')
+            );
+
+            if (!existingIssue) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: issueBody,
+                labels: ['security', 'dependencies', 'automated']
+              });
+            }
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-results
+          path: audit-results.json
+          retention-days: 30
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          deny-licenses: GPL-3.0, AGPL-3.0
