@@ -11,6 +11,7 @@ Enhanced Stellar SDK for Galaxy DevKit with comprehensive support for Stellar op
 - ✅ Trustline management
 - ✅ Claimable balances
 - ✅ Liquidity pool operations (AMM)
+- ✅ **Path payments** (path finding, swap execution, slippage protection)
 - ✅ Network switching (testnet/mainnet)
 - ✅ React hooks support
 
@@ -273,6 +274,94 @@ await manager.revokeTrustlineSponsorship(
 );
 ```
 
+
+## Path Payments (Swap & Path Finding)
+
+Path payments enable cross-asset swaps and multi-hop payments using Stellar Horizon's path finding. Use **PathPaymentManager** for strict send (fixed send amount), strict receive (fixed receive amount), best-path selection, slippage protection, and swap analytics.
+
+### Quick Start
+
+```typescript
+import {
+  PathPaymentManager,
+  Asset,
+  Networks,
+} from '@galaxy/core-stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
+
+const config = {
+  network: 'testnet' as const,
+  horizonUrl: 'https://horizon-testnet.stellar.org',
+  passphrase: Networks.TESTNET,
+};
+const server = new Horizon.Server(config.horizonUrl);
+const pathManager = new PathPaymentManager(server, config.passphrase);
+```
+
+### Find Paths (Strict Send / Strict Receive)
+
+```typescript
+// Strict send: fixed amount to send, discover how much you receive
+const paths = await pathManager.findPaths({
+  sourceAsset: Asset.native(),
+  destAsset: new Asset('USDC', ISSUER),
+  amount: '100.0000000',
+  type: 'strict_send',
+  limit: 15,
+});
+
+// Strict receive: fixed amount to receive, discover how much to send
+const pathsReceive = await pathManager.findPaths({
+  sourceAsset: Asset.native(),
+  destAsset: new Asset('USDC', ISSUER),
+  amount: '95.0000000',
+  type: 'strict_receive',
+});
+```
+
+### Best Path & Estimate
+
+```typescript
+const best = await pathManager.getBestPath(paths, 'strict_send');
+const estimate = await pathManager.estimateSwap({
+  sendAsset: Asset.native(),
+  destAsset: new Asset('USDC', ISSUER),
+  amount: '100.0000000',
+  type: 'strict_send',
+  maxSlippage: 1,
+});
+console.log('Output:', estimate.outputAmount, 'Price impact:', estimate.priceImpact, '%');
+```
+
+### Execute Swap with Slippage Protection
+
+```typescript
+const result = await pathManager.executeSwap(
+  wallet,
+  {
+    sendAsset: Asset.native(),
+    destAsset: new Asset('USDC', ISSUER),
+    amount: '100.0000000',
+    type: 'strict_send',
+    maxSlippage: 1,
+    minDestinationAmount: '94.0000000',
+  },
+  password,
+  wallet.publicKey
+);
+console.log('Tx hash:', result.transactionHash, 'Output:', result.outputAmount);
+```
+
+### Slippage & Price Impact
+
+- **maxSlippage**: Max allowed slippage (e.g. 1 = 1%).
+- **minDestinationAmount** (strict send): Minimum amount to receive.
+- **maxSendAmount** (strict receive): Maximum amount to send.
+- **HIGH_PRICE_IMPACT_THRESHOLD** (5%): Paths above this trigger a high-impact warning.
+
+See examples: `docs/examples/stellar-sdk/18-simple-swap.ts`, `19-path-finding.ts`, `20-multi-hop-swap.ts`, `21-slippage-protection.ts`.
+
+---
 
 ## Liquidity Pool Operations
 
