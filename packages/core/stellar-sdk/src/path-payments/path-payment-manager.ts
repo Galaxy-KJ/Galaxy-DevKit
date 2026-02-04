@@ -27,9 +27,9 @@ import {
   PathAnalytics,
   PathCacheEntry,
   HIGH_PRICE_IMPACT_THRESHOLD,
-} from './types';
-import { Wallet } from '../types/stellar-types';
-import { decryptPrivateKey } from '../utils/encryption.utils';
+} from './types.js';
+import { Wallet } from '../types/stellar-types.js';
+import { decryptPrivateKey } from '../utils/encryption.utils.js';
 
 /** Default path cache TTL in milliseconds (5 minutes) */
 const DEFAULT_PATH_CACHE_TTL_MS = 5 * 60 * 1000;

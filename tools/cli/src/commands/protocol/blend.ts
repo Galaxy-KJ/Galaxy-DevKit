@@ -23,7 +23,7 @@ import {
   outputError,
   outputCancelled,
 } from '../../utils/protocol-formatter.js';
-import { PROTOCOL_IDS, Asset, TransactionResult } from '@galaxy/core-defi-protocols';
+import { PROTOCOL_IDS, Asset, TransactionResult } from '@galaxy-kj/core-defi-protocols';
 
 interface BlendCommandOptions {
   wallet?: string;

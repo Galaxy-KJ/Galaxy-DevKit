@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { getProtocolInfo, getProtocolInstance } from '../../utils/protocol-registry.js';
 import { outputProtocolInfo, outputError } from '../../utils/protocol-formatter.js';
-import { ProtocolStats } from '@galaxy/core-defi-protocols';
+import { ProtocolStats } from '@galaxy-kj/core-defi-protocols';
 
 export const infoCommand = new Command('info')
   .description('Show detailed information about a protocol')

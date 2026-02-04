@@ -24,7 +24,7 @@ import {
   outputError,
   outputCancelled,
 } from '../../utils/protocol-formatter.js';
-import { PROTOCOL_IDS, Asset, DEFAULT_SLIPPAGE } from '@galaxy/core-defi-protocols';
+import { PROTOCOL_IDS, Asset, DEFAULT_SLIPPAGE } from '@galaxy-kj/core-defi-protocols';
 
 interface SwapCommandOptions {
   wallet?: string;

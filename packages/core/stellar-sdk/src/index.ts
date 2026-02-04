@@ -159,8 +159,8 @@ export type {
   SwapAnalyticsRecord,
   PathAnalytics,
   PathCacheEntry,
-} from './path-payments/types';
-export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments';
+} from './path-payments/types.js';
+export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments/index.js';
 
 // Export sponsored reserves module
 export * from './sponsored-reserves/index.js';

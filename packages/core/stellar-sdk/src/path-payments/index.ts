@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-export { PathPaymentManager } from './path-payment-manager';
+export { PathPaymentManager } from './path-payment-manager.js';
 export type {
   PaymentPath,
   SwapParams,
@@ -19,5 +19,5 @@ export type {
   SwapAnalyticsRecord,
   PathAnalytics,
   PathCacheEntry,
-} from './types';
-export { HIGH_PRICE_IMPACT_THRESHOLD } from './types';
+} from './types.js';
+export { HIGH_PRICE_IMPACT_THRESHOLD } from './types.js';

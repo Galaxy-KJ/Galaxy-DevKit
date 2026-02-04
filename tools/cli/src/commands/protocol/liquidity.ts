@@ -24,7 +24,7 @@ import {
   outputError,
   outputCancelled,
 } from '../../utils/protocol-formatter.js';
-import { PROTOCOL_IDS, Asset, LiquidityPool } from '@galaxy/core-defi-protocols';
+import { PROTOCOL_IDS, Asset, LiquidityPool } from '@galaxy-kj/core-defi-protocols';
 
 interface LiquidityCommandOptions {
   wallet?: string;

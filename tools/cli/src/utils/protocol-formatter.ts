@@ -14,7 +14,7 @@ import {
   SwapQuote,
   LiquidityPool,
   ProtocolStats,
-} from '@galaxy/core-defi-protocols';
+} from '@galaxy-kj/core-defi-protocols';
 import {
   SupportedProtocol,
   TransactionPreview,

@@ -15,7 +15,7 @@ import {
   PROTOCOL_IDS,
   PROTOCOL_NAMES,
   getProtocolFactory,
-} from '@galaxy/core-defi-protocols';
+} from '@galaxy-kj/core-defi-protocols';
 import { walletStorage, WalletData } from './wallet-storage.js';
 
 /**
