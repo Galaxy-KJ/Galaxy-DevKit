@@ -1,16 +1,15 @@
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
+  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/__tests__'],
   testMatch: ['**/__tests__/**/*.test.ts'],
-  extensionsToTreatAsEsm: ['.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/index.ts',
     '!src/types/**',
-    '!src/protocols/base-protocol.ts', // Abstract class - tested via concrete implementations
-    '!src/constants/**', // Constants - no logic to test
+    '!src/protocols/base-protocol.ts',
+    '!src/constants/**',
   ],
   coverageThreshold: {
     global: {
@@ -24,7 +23,11 @@ module.exports = {
   verbose: true,
   transform: {
     '^.+\\.ts$': ['ts-jest', {
-      useESM: true,
+      useESM: false,
+      tsconfig: {
+        module: 'commonjs',
+        moduleResolution: 'node',
+      },
     }],
   },
   moduleNameMapper: {
