@@ -16,7 +16,7 @@
     "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
-    "version": "lerna version",
+    "bump": "lerna version",
     "publish": "lerna publish",
     "test": "jest",
     "cli": "npm run start:ts --workspace=@galaxy-kj/cli",
