@@ -16,7 +16,6 @@ import {
 const ALGO = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const SALT_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 const DEFAULT_ITERATIONS = 100000;
 const KEY_LENGTH = 32;
 

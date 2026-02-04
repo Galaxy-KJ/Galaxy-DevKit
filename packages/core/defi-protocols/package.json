@@ -8,9 +8,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "jest --config jest.config.cjs",
+    "test:watch": "jest --config jest.config.cjs --watch",
+    "test:coverage": "jest --config jest.config.cjs --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "type-check": "tsc --noEmit",
@@ -57,5 +57,5 @@
     "README.md",
     "LICENSE"
   ],
-  "gitHead": "c271b6c1dc8df2e240d54da2211b4a720ccfec26"
+  "gitHead": "85e010448d26e31ad3724c51660a7e402c561cc2"
 }

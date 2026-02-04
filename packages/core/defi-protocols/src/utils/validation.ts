@@ -24,7 +24,7 @@ export function validateAddress(address: string): boolean {
   try {
     Keypair.fromPublicKey(address);
     return true;
-  } catch (error) {
+  } catch {
     throw new Error(`Invalid Stellar address: ${address}`);
   }
 }

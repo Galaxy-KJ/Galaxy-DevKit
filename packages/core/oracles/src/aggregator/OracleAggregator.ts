@@ -307,7 +307,7 @@ export class OracleAggregator {
       }
 
       return price;
-    } catch (error) {
+    } catch {
       // Record failure
       this.recordFailure(sourceName);
 
@@ -365,7 +365,7 @@ export class OracleAggregator {
     let prices = await this.fetchPricesFromAllSources(symbol);
 
     // Validate prices
-    const { valid, invalid } = validatePrices(prices, this.config);
+    const { valid } = validatePrices(prices, this.config);
     prices = valid;
 
     // Check minimum sources requirement
@@ -467,7 +467,7 @@ export class OracleAggregator {
             health.isHealthy = isHealthy;
             health.lastChecked = new Date();
           }
-        } catch (error) {
+        } catch {
           healthMap.set(name, false);
           const health = this.sourceHealth.get(name);
           if (health) {

@@ -109,7 +109,7 @@ export class KeyManagementService {
   retrievePrivateKey(encryptedKey: string, password: string): string {
     try {
       return decryptPrivateKey(encryptedKey, password);
-    } catch (error) {
+    } catch {
       throw new Error('Invalid password or corrupted key data');
     }
   }
@@ -153,8 +153,7 @@ export class KeyManagementService {
       ]);
 
       if (error) {
-        throw Error('Failed to store session in database ', error);
-        console.warn('Failed to store session in database:', error);
+        throw new Error(`Failed to store session in database: ${error.message}`);
       }
     } catch (error) {
       console.warn('Database session storage error:', error);
@@ -409,7 +408,7 @@ export class KeyManagementService {
     try {
       const decrypted = decryptPrivateKey(backupData, password);
       return JSON.parse(decrypted);
-    } catch (error) {
+    } catch {
       throw new Error('Invalid backup data or password');
     }
   }

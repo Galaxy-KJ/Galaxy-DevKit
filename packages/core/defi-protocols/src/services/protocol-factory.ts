@@ -7,7 +7,7 @@
  */
 
 import { IDefiProtocol, IProtocolFactory } from '../types/protocol-interface.js';
-import { ProtocolConfig, ProtocolType } from '../types/defi-types.js';
+import { ProtocolConfig } from '../types/defi-types.js';
 
 /**
  * Protocol constructor type

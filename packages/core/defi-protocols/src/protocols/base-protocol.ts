@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { Horizon, Networks, Keypair } from '@stellar/stellar-sdk';
+import { Horizon, Keypair } from '@stellar/stellar-sdk';
 import { IDefiProtocol } from '../types/protocol-interface.js';
 import {
   Asset,
@@ -16,9 +16,7 @@ import {
   APYInfo,
   ProtocolStats,
   ProtocolConfig,
-  ProtocolType,
-  SwapQuote,
-  LiquidityPool
+  ProtocolType
 } from '../types/defi-types.js';
 
 /**
@@ -232,7 +230,7 @@ export abstract class BaseProtocol implements IDefiProtocol {
 
     try {
       Keypair.fromPublicKey(address);
-    } catch (error) {
+    } catch {
       throw new Error(`Invalid Stellar address: ${address}`);
     }
   }

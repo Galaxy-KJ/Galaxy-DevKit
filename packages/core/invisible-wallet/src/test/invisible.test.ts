@@ -8,8 +8,9 @@
 import { InvisibleWalletService } from '../services/invisible-wallet.service.js';
 import { KeyManagementService } from '../services/key-managment.service.js';
 import { StellarService } from '../../../stellar-sdk/src/services/stellar-service.js';
-import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
-import { WalletEventType } from '../types/wallet.types.js';
+// Used for mocking
+import type { NetworkUtils as _NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
+import type { WalletEventType as _WalletEventType } from '../types/wallet.types.js';
 import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
 
 // Mock dependencies
@@ -474,8 +475,7 @@ describe('InvisibleWalletService', () => {
         error: null,
       });
 
-      const transactions =
-        await service.getTransactionHistory('iwallet_123_abc');
+      await service.getTransactionHistory('iwallet_123_abc');
 
       expect(mockStellarService.getTransactionHistory).toHaveBeenCalledWith(
         mockKeypair.publicKey,

@@ -40,7 +40,6 @@ export function isRetryableError(error: Error): boolean {
   if (!error) return false;
 
   const message = error.message || '';
-  const name = error.name || '';
 
   // Network errors
   if (

@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { Keypair, Transaction } from '@stellar/stellar-sdk';
+// Stellar SDK types available via @stellar/stellar-sdk when needed
 
 /**
  * Network configuration for DeFi protocols

@@ -9,6 +9,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 export * from '@stellar/stellar-sdk';
 
 // Type shim for SorobanRpc (legacy compatibility)
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace SorobanRpc {
   export class Server {
     constructor(serverURL: string, opts?: any) {
