@@ -19,7 +19,7 @@ import {
   ScInt,
   Address,
 } from '@stellar/stellar-sdk';
-import { ScValConverter } from '../utils/scval-converter.js';
+import { ScValConverter } from './utils/scval-converter.js';
 import {
   ContractDeploymentParams,
   ContractInvocationParams,

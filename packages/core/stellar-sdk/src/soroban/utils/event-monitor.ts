@@ -8,7 +8,7 @@
  */
 
 import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat.js';
-import { ScValConverter } from '../utils/scval-converter.js';
+import { ScValConverter } from './scval-converter.js';
 import {
   ContractEventQueryParams,
   ContractEventDetail,
