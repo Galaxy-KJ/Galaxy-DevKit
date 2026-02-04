@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/core-stellar-sdk",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Galaxy Stellar SDK - Enhanced Stellar SDK with Soroban smart contract support for Galaxy DevKit",
   "type": "module",
   "main": "dist/index.js",

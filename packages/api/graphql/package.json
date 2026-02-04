@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/api-graphql",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Galaxy GraphQL API - Unified GraphQL API for Galaxy DevKit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,9 +15,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@galaxy-kj/core-automation": "^2.0.0",
-    "@galaxy-kj/core-invisible-wallet": "^2.0.0",
-    "@galaxy-kj/core-stellar-sdk": "^2.0.0",
+    "@galaxy-kj/core-automation": "^2.1.0",
+    "@galaxy-kj/core-invisible-wallet": "^2.1.0",
+    "@galaxy-kj/core-stellar-sdk": "^2.1.0",
     "@supabase/supabase-js": "^2.38.0",
     "apollo-server-core": "^3.12.1",
     "apollo-server-express": "^3.12.1",
