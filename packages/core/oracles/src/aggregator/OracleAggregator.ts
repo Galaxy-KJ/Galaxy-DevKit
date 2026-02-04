@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { IOracleSource } from '../types/IOracleSource';
+import { IOracleSource } from '../types/IOracleSource.js';
 import {
   PriceData,
   AggregatedPrice,
@@ -15,17 +15,17 @@ import {
   CacheConfig,
   CircuitBreakerState,
   CircuitBreakerConfig,
-} from '../types/oracle-types';
-import { AggregationStrategy } from './strategies/AggregationStrategy';
-import { MedianStrategy } from './strategies/MedianStrategy';
-import { PriceCache } from '../cache/price-cache';
+} from '../types/oracle-types.js';
+import { AggregationStrategy } from './strategies/AggregationStrategy.js';
+import { MedianStrategy } from './strategies/MedianStrategy.js';
+import { PriceCache } from '../cache/price-cache.js';
 import {
   validatePrices,
   requireMinimumSources,
   filterByDeviation,
-} from '../validation/price-validator';
-import { filterOutliers, OutlierMethod } from '../utils/outlier-detection';
-import { retryWithBackoff } from '../utils/retry-utils';
+} from '../validation/price-validator.js';
+import { filterOutliers, OutlierMethod } from '../utils/outlier-detection.js';
+import { retryWithBackoff } from '../utils/retry-utils.js';
 
 /**
  * Default aggregation configuration

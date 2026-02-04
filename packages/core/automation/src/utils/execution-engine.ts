@@ -7,7 +7,7 @@ import {
   ExecutionResult,
   AutomationError,
   StellarNetwork,
-} from '../types/automation-types';
+} from '../types/automation-types.js';
 
 export class ExecutionEngine {
   private server: StellarSdk.Horizon.Server;

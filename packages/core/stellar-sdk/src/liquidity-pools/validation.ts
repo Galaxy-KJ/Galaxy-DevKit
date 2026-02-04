@@ -11,7 +11,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 import {
   LiquidityPoolDeposit,
   LiquidityPoolWithdraw,
-} from './types';
+} from './types.js';
 
 /**
  * Validates pool ID format (64-character hex string)

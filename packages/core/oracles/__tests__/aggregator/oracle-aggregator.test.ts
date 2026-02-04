@@ -3,15 +3,15 @@
  * @description Unit tests for OracleAggregator class
  */
 
-import { OracleAggregator } from '../../src/aggregator/OracleAggregator';
-import { IOracleSource } from '../../src/types/IOracleSource';
+import { OracleAggregator } from '../../src/aggregator/OracleAggregator.js';
+import { IOracleSource } from '../../src/types/IOracleSource.js';
 import {
   PriceData,
   SourceInfo,
   AggregatedPrice,
-} from '../../src/types/oracle-types';
-import { MedianStrategy } from '../../src/aggregator/strategies/MedianStrategy';
-import { WeightedAverageStrategy } from '../../src/aggregator/strategies/WeightedAverageStrategy';
+} from '../../src/types/oracle-types.js';
+import { MedianStrategy } from '../../src/aggregator/strategies/MedianStrategy.js';
+import { WeightedAverageStrategy } from '../../src/aggregator/strategies/WeightedAverageStrategy.js';
 
 // Mock oracle source implementation
 class MockOracleSource implements IOracleSource {

@@ -7,13 +7,13 @@
  * @since 2024-12-01
  */
 
-import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat';
-import { ScValConverter } from '../utils/scval-converter';
+import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat.js';
+import { ScValConverter } from '../utils/scval-converter.js';
 import {
   ContractEventQueryParams,
   ContractEventDetail,
   EventSubscription,
-} from '../types/contract-types';
+} from '../types/contract-types.js';
 
 export class ContractEventMonitor {
   private server: SorobanRpc.Server;

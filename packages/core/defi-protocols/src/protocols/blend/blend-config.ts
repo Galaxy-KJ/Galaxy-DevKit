@@ -6,7 +6,7 @@
  * @since 2024-01-29
  */
 
-import { ProtocolConfig } from '../../types/defi-types';
+import { ProtocolConfig } from '../../types/defi-types.js';
 
 /**
  * Blend Protocol Testnet Configuration

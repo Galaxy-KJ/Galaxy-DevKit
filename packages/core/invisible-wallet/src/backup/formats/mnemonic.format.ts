@@ -8,13 +8,13 @@
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import { Keypair } from '@stellar/stellar-sdk';
-import { BaseBackupFormat, FormatOptions } from './base-format';
+import { BaseBackupFormat, FormatOptions } from './base-format.js';
 import {
   BackupFormat,
   MnemonicBackup,
   WalletBackupData,
-} from '../types/backup-types';
-import { EncryptedJsonFormat } from './encrypted-json.format';
+} from '../types/backup-types.js';
+import { EncryptedJsonFormat } from './encrypted-json.format.js';
 
 const DEFAULT_DERIVATION_PATH = "m/44'/148'";
 

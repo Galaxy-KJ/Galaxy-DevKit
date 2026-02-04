@@ -13,7 +13,7 @@ import {
   ContractFunction,
   ContractEvent,
   ScType,
-} from '../types/contract-types';
+} from '../types/contract-types.js';
 
 export class AbiParser {
   /**

@@ -9,9 +9,9 @@
  */
 
 import { Keypair, xdr } from '@stellar/stellar-sdk';
-import { SorobanContractManager } from '../soroban-contract-manager';
-import { ScValConverter } from '../utils/scval-converter';
-import { TokenContractInfo } from '../types/contract-types';
+import { SorobanContractManager } from '../soroban-contract-manager.js';
+import { ScValConverter } from '../utils/scval-converter.js';
+import { TokenContractInfo } from '../types/contract-types.js';
 
 export class TokenContractWrapper {
   private manager: SorobanContractManager;

@@ -3,9 +3,9 @@
  * @description Tests for claimable balance creation, claiming, and querying
  */
 
-import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager';
+import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager.js';
 import { Asset, Horizon, Operation, BASE_FEE } from '@stellar/stellar-sdk';
-import { Wallet } from '../types/stellar-types';
+import { Wallet } from '../types/stellar-types.js';
 
 // Mock dependencies
 jest.mock('../utils/encryption.utils', () => ({

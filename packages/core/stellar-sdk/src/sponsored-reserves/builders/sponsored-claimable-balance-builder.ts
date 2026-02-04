@@ -15,20 +15,20 @@ import {
   xdr,
   Claimant as StellarClaimant,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   SponsorshipResult,
   ClaimableBalanceEntryConfig,
   Claimant,
   ClaimPredicate,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateAssetCode,
   validateAmount,
   validateClaimants,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 /**
  * Builder class for sponsored claimable balance operations

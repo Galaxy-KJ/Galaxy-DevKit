@@ -5,7 +5,7 @@
  * @version 1.0.0
  */
 
-import { KDFType, KDFParams } from '../types/backup-types';
+import { KDFType, KDFParams } from '../types/backup-types.js';
 
 export interface IKDFProvider {
   readonly type: KDFType;

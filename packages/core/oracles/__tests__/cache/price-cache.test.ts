@@ -3,8 +3,8 @@
  * @description Unit tests for price caching functionality
  */
 
-import { PriceCache } from '../../src/cache/price-cache';
-import { PriceData, AggregatedPrice } from '../../src/types/oracle-types';
+import { PriceCache } from '../../src/cache/price-cache.js';
+import { PriceData, AggregatedPrice } from '../../src/types/oracle-types.js';
 
 describe('PriceCache', () => {
   let cache: PriceCache;

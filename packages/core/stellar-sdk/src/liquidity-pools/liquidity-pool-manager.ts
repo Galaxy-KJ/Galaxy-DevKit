@@ -26,21 +26,21 @@ import {
   DepositEstimate,
   WithdrawEstimate,
   PoolShare,
-} from './types';
+} from './types.js';
 import {
   validateDepositParams,
   validateWithdrawParams,
   validatePoolId,
   validatePublicKey,
-} from './validation';
+} from './validation.js';
 import {
   calculateDepositShares,
   calculateWithdrawAmounts,
   estimateDeposit,
   estimateWithdraw,
-} from './calculations';
-import { Wallet } from '../types/stellar-types';
-import { decryptPrivateKey } from '../utils/encryption.utils';
+} from './calculations.js';
+import { Wallet } from '../types/stellar-types.js';
+import { decryptPrivateKey } from '../utils/encryption.utils.js';
 
 /**
  * Liquidity Pool Manager class

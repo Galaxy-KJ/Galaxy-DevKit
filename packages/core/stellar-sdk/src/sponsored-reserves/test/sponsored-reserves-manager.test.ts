@@ -6,8 +6,8 @@
  * @since 2024-12-01
  */
 
-import { SponsoredReservesManager } from '../services/sponsored-reserves-manager';
-import { SponsorshipConfig, RevokeSponsorshipTarget } from '../types/sponsored-reserves-types';
+import { SponsoredReservesManager } from '../services/sponsored-reserves-manager.js';
+import { SponsorshipConfig, RevokeSponsorshipTarget } from '../types/sponsored-reserves-types.js';
 
 // Mock Stellar SDK
 const mockServer = {

@@ -8,7 +8,7 @@
  * @since 2024-12-01
  */
 
-import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types';
+import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
 
 
 export interface InvisibleWalletConfig {

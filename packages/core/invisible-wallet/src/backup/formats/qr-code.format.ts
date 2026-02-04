@@ -6,14 +6,14 @@
  */
 
 import * as QRCode from 'qrcode';
-import { BaseBackupFormat, FormatOptions } from './base-format';
-import { EncryptedJsonFormat, EncryptedJsonOptions } from './encrypted-json.format';
+import { BaseBackupFormat, FormatOptions } from './base-format.js';
+import { EncryptedJsonFormat, EncryptedJsonOptions } from './encrypted-json.format.js';
 import {
   BackupFormat,
   WalletBackupData,
   EncryptedBackup,
   QRCodeOptions,
-} from '../types/backup-types';
+} from '../types/backup-types.js';
 
 export interface QRCodeBackup {
   qrDataUrl: string;

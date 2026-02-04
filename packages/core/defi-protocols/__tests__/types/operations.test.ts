@@ -13,7 +13,7 @@ import {
     AddLiquidityOperation,
     RemoveLiquidityOperation,
     ProtocolOperation
-} from '../../src/types/operations';
+} from '../../src/types/operations.js';
 import {
     isSupplyOperation,
     isWithdrawOperation,
@@ -29,8 +29,8 @@ import {
     isValidAmount,
     isOperationType,
     isProtocolOperation
-} from '../../src/utils/type-guards';
-import { Asset } from '../../src/types/defi-types';
+} from '../../src/utils/type-guards.js';
+import { Asset } from '../../src/types/defi-types.js';
 
 describe('Operation Types', () => {
     const mockAsset: Asset = {
@@ -535,5 +535,5 @@ import {
     isNativeAsset,
     isCreditAsset,
     isBaseOperation,
-} from '../../src/utils/type-guards';
+} from '../../src/utils/type-guards.js';
 

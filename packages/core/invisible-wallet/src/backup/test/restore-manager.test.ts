@@ -3,10 +3,10 @@
  * @description Tests for backup restoration functionality
  */
 
-import { RestoreManager } from '../services/restore-manager';
-import { BackupManager } from '../services/backup-manager';
-import { ShamirManager } from '../shamir/shamir-manager';
-import { EncryptedBackup, WalletBackupData, BACKUP_VERSION } from '../types/backup-types';
+import { RestoreManager } from '../services/restore-manager.js';
+import { BackupManager } from '../services/backup-manager.js';
+import { ShamirManager } from '../shamir/shamir-manager.js';
+import { EncryptedBackup, WalletBackupData, BACKUP_VERSION } from '../types/backup-types.js';
 
 describe('RestoreManager', () => {
   let restoreManager: RestoreManager;

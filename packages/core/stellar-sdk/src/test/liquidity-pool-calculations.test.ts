@@ -16,8 +16,8 @@ import {
   estimateWithdraw,
   calculateMinimumAmounts,
   calculatePriceBounds,
-} from '../liquidity-pools/calculations';
-import { LiquidityPool } from '../liquidity-pools/types';
+} from '../liquidity-pools/calculations.js';
+import { LiquidityPool } from '../liquidity-pools/types.js';
 
 describe('Liquidity Pool Calculations', () => {
   // Valid Stellar testnet public key for issuer

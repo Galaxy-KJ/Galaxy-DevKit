@@ -8,38 +8,11 @@
 import { Command } from 'commander';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { StreamManager } from '../../utils/stream-manager.js';
-import { MockOracleSource } from '../../utils/oracle-registry.js';
-import { OracleAggregator, MedianStrategy } from '@galaxy-kj/core-oracles';
+import { createOracleAggregator } from '../../utils/oracle-registry.js';
+import { MedianStrategy } from '@galaxy-kj/core-oracles';
 import chalk from 'chalk';
 
 const dashboardWatchCommand = new Command('dashboard');
-
-/**
- * Create oracle aggregator for dashboard price display
- */
-function createOracleAggregator(): OracleAggregator {
-  const aggregator = new OracleAggregator({ minSources: 1 });
-  aggregator.setStrategy(new MedianStrategy());
-
-  const basePrices = new Map<string, number>([
-    ['XLM', 0.1234],
-    ['BTC', 50230],
-    ['ETH', 2850],
-    ['USDC', 1.0],
-  ]);
-
-  const source1 = new MockOracleSource('MarketData-1', new Map(basePrices));
-  aggregator.addSource(source1, 1.0);
-
-  const source2Prices = new Map<string, number>();
-  basePrices.forEach((price, symbol) => {
-    source2Prices.set(symbol, price * (1 + (Math.random() - 0.5) * 0.002));
-  });
-  const source2 = new MockOracleSource('MarketData-2', source2Prices);
-  aggregator.addSource(source2, 0.8);
-
-  return aggregator;
-}
 
 dashboardWatchCommand
   .alias('--dashboard')
@@ -48,7 +21,8 @@ dashboardWatchCommand
   .action(async options => {
     const ui = new TerminalUI(`Galaxy DevKit Dashboard [${options.network}]`);
     const streamManager = new StreamManager({ network: options.network });
-    const aggregator = createOracleAggregator();
+    const aggregator = await createOracleAggregator({ network: options.network });
+    aggregator.setStrategy(new MedianStrategy());
 
     // Panel 1: Network Stats (top-left)
     const netLog = ui.createLogBox({

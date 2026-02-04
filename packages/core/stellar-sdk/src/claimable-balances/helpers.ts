@@ -16,9 +16,9 @@ import {
   TimeLockedBalanceParams,
   VestingScheduleParams,
   EscrowParams,
-} from './types';
-import { beforeAbsoluteTime, unconditional, and, or } from './predicate-builder';
-import { toStellarPredicate } from './predicate-builder';
+} from './types.js';
+import { beforeAbsoluteTime, unconditional, and, or } from './predicate-builder.js';
+import { toStellarPredicate } from './predicate-builder.js';
 
 /**
  * Creates a time-locked claimable balance operation

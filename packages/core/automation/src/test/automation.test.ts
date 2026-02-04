@@ -2,7 +2,7 @@
  * Jest tests for AutomationService
  */
 
-import { AutomationService } from '../services/automation.service';
+import { AutomationService } from '../services/automation.service.js';
 import {
   AutomationRule,
   AutomationStatus,
@@ -11,10 +11,10 @@ import {
   ConditionLogic,
   ConditionOperator,
   StellarNetwork,
-} from '../types/automation-types';
-import { CronManager } from '../utils/cron-manager';
-import { ConditionEvaluator } from '../utils/condition-evaluator';
-import { ExecutionEngine } from '../utils/execution-engine';
+} from '../types/automation-types.js';
+import { CronManager } from '../utils/cron-manager.js';
+import { ConditionEvaluator } from '../utils/condition-evaluator.js';
+import { ExecutionEngine } from '../utils/execution-engine.js';
 
 
 jest.mock('../utils/cron-manager');

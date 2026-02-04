@@ -13,14 +13,14 @@ import {
   Horizon,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
-import { SponsorshipResult, DataEntryConfig } from '../types/sponsored-reserves-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
+import { SponsorshipResult, DataEntryConfig } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateDataEntryName,
   validateDataEntryValue,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 /**
  * Builder class for sponsored data entry operations

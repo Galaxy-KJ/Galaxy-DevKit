@@ -33,22 +33,22 @@ export type {
   SponsorshipEligibility,
   UnsignedTransactionOptions,
   UnsignedTransactionResult,
-} from './types/sponsored-reserves-types';
+} from './types/sponsored-reserves-types.js';
 
 // Export main manager
-export { SponsoredReservesManager } from './services/sponsored-reserves-manager';
+export { SponsoredReservesManager } from './services/sponsored-reserves-manager.js';
 
 // Export builders
-export { SponsoredAccountBuilder } from './builders/sponsored-account-builder';
-export { SponsoredTrustlineBuilder } from './builders/sponsored-trustline-builder';
-export { SponsoredClaimableBalanceBuilder } from './builders/sponsored-claimable-balance-builder';
-export { SponsoredSignerBuilder } from './builders/sponsored-signer-builder';
-export { SponsoredDataEntryBuilder } from './builders/sponsored-data-entry-builder';
+export { SponsoredAccountBuilder } from './builders/sponsored-account-builder.js';
+export { SponsoredTrustlineBuilder } from './builders/sponsored-trustline-builder.js';
+export { SponsoredClaimableBalanceBuilder } from './builders/sponsored-claimable-balance-builder.js';
+export { SponsoredSignerBuilder } from './builders/sponsored-signer-builder.js';
+export { SponsoredDataEntryBuilder } from './builders/sponsored-data-entry-builder.js';
 
 // Export templates
-export { UserOnboardingTemplate } from './templates/user-onboarding-template';
-export { ClaimableBalanceTemplate } from './templates/claimable-balance-template';
-export { MultiOperationTemplate } from './templates/multi-operation-template';
+export { UserOnboardingTemplate } from './templates/user-onboarding-template.js';
+export { ClaimableBalanceTemplate } from './templates/claimable-balance-template.js';
+export { MultiOperationTemplate } from './templates/multi-operation-template.js';
 
 // Export validation utilities
 export {
@@ -66,7 +66,7 @@ export {
   validateEntryType,
   validatePreAuthTxHash,
   validateSha256Hash,
-} from './utils/sponsorship-validation';
+} from './utils/sponsorship-validation.js';
 
 // Export cost calculation utilities
 export {
@@ -84,4 +84,4 @@ export {
   xlmToStroops,
   stroopsToXlm,
   formatCost,
-} from './utils/cost-calculator';
+} from './utils/cost-calculator.js';

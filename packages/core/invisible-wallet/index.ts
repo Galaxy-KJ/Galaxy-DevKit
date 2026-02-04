@@ -6,16 +6,16 @@
  * @since 2024-12-01
  */
 
-export { InvisibleWalletService } from './src/services/invisible-wallet.service';
-export { KeyManagementService } from './src/services/key-managment.service';
-export * from './src/types/wallet.types';
-export * from './src/utils/encryption.utils';
+export { InvisibleWalletService } from './src/services/invisible-wallet.service.js';
+export { KeyManagementService } from './src/services/key-managment.service.js';
+export * from './src/types/wallet.types.js';
+export * from './src/utils/encryption.utils.js';
 
 // Backup module exports
-export * from './src/backup';
+export * from './src/backup/index.js';
 
 // Re-export commonly used utilities
-export { NetworkUtils } from '../stellar-sdk/src/utils/network-utils';
+export { NetworkUtils } from '../stellar-sdk/src/utils/network-utils.js';
 
 /**
  * Default configuration for invisible wallet

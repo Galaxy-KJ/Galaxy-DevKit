@@ -2,8 +2,8 @@
  * @fileoverview Tests for MeanStrategy
  */
 
-import { MeanStrategy } from '../../src/aggregator/strategies/MeanStrategy';
-import { PriceData } from '../../src/types/oracle-types';
+import { MeanStrategy } from '../../src/aggregator/strategies/MeanStrategy.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('MeanStrategy', () => {
     let strategy: MeanStrategy;

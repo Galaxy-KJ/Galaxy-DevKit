@@ -13,7 +13,7 @@ import {
   SponsoredEntryType,
   UserOnboardingConfig,
   MultiOperationSponsorshipConfig,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 
 /**
  * Current Stellar base reserve in XLM

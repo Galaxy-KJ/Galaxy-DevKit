@@ -6,13 +6,13 @@
  * @since 2024-01-29
  */
 
-import { BlendProtocol } from '../../src/protocols/blend/blend-protocol';
+import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
 import {
   ProtocolConfig,
   ProtocolType,
   Asset,
   TransactionResult
-} from '../../src/types/defi-types';
+} from '../../src/types/defi-types.js';
 import {
   Contract,
   TransactionBuilder,

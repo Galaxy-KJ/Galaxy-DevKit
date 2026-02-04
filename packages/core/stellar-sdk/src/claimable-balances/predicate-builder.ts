@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { ClaimPredicate } from './types';
+import { ClaimPredicate } from './types.js';
 import { Claimant, xdr } from '@stellar/stellar-sdk';
 
 /**

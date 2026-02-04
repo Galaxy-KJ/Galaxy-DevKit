@@ -17,7 +17,7 @@ import {
   xdr,
   Claimant as StellarClaimant,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   SponsorshipConfig,
   SponsoredEntry,
@@ -30,16 +30,16 @@ import {
   UnsignedTransactionResult,
   Claimant,
   ClaimPredicate,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateSponsorBalance,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 import {
   calculateEntryReserve,
   getDetailedBreakdown,
-} from '../utils/cost-calculator';
+} from '../utils/cost-calculator.js';
 
 /**
  * Manager class for Stellar sponsored reserves operations

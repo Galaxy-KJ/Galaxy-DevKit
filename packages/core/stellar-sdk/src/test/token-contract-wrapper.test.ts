@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { TokenContractWrapper } from '../helpers/token-contract-wrapper';
+import { TokenContractWrapper } from '../helpers/token-contract-wrapper.js';
 import { Keypair } from '@stellar/stellar-sdk';
 
 // Mock dependencies

@@ -19,13 +19,13 @@ export type {
   Network,
   Asset,
   TransactionStatus,
-} from './types/stellar-types';
+} from './types/stellar-types.js';
 
 // Export services
-export { StellarService } from './services/stellar-service';
+export { StellarService } from './services/stellar-service.js';
 
 // Export hooks
-export { useStellar } from './hooks/use-stellar';
+export { useStellar } from './hooks/use-stellar.js';
 
 // Export utilities
 export {
@@ -44,10 +44,10 @@ export {
   createMemo,
   calculateFee,
   isValidAssetCode,
-} from './utils/stellar-utils';
+} from './utils/stellar-utils.js';
 
 // Export Soroban functionality
-export * from './soroban';
+export * from './soroban/index.js';
 
 // Export claimable balances
 export type {
@@ -61,7 +61,7 @@ export type {
   TimeLockedBalanceParams,
   VestingScheduleParams,
   EscrowParams,
-} from './claimable-balances/types';
+} from './claimable-balances/types.js';
 
 export {
   ClaimableBalanceManager,
@@ -80,7 +80,7 @@ export {
   createTwoPartyEscrow,
   createConditionalRelease,
   createRefundableBalance,
-} from './claimable-balances';
+} from './claimable-balances/index.js';
 
 // Export liquidity pools
 export type {
@@ -95,7 +95,7 @@ export type {
   WithdrawEstimate,
   PoolShare,
   PoolTrade,
-} from './liquidity-pools/types';
+} from './liquidity-pools/types.js';
 
 export {
   LiquidityPoolManager,
@@ -132,7 +132,7 @@ export {
   toStellarPrecision,
   assetsEqual,
   sortAssets,
-} from './liquidity-pools';
+} from './liquidity-pools/index.js';
 
 // Re-export Stellar SDK for convenience
 export {
@@ -145,4 +145,4 @@ export {
 } from '@stellar/stellar-sdk';
 
 // Export sponsored reserves module
-export * from './sponsored-reserves';
+export * from './sponsored-reserves/index.js';

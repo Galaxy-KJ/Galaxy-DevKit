@@ -17,8 +17,8 @@ import {
     AddLiquidityOperation,
     RemoveLiquidityOperation,
     BaseOperation
-} from '../types/operations';
-import { Asset, AssetType } from '../types/defi-types';
+} from '../types/operations.js';
+import { Asset, AssetType } from '../types/defi-types.js';
 
 // ============================================
 // Operation Type Guards

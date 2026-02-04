@@ -17,13 +17,13 @@ import {
   decryptPrivateKey,
   generateSessionToken,
   validatePassword,
-} from '../utils/encryption.utils';
+} from '../utils/encryption.utils.js';
 import {
   WalletSession,
   DeviceInfo,
   InvisibleWallet,
-} from '../types/wallet.types';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client';
+} from '../types/wallet.types.js';
+import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
 
 /**
  * Service class for key management operations

@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { PriceData, SourceInfo } from './oracle-types';
+import { PriceData, SourceInfo } from './oracle-types.js';
 
 /**
  * Oracle source interface

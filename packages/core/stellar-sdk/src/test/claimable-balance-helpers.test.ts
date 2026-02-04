@@ -35,7 +35,7 @@ import {
   createTwoPartyEscrow,
   createConditionalRelease,
   createRefundableBalance,
-} from '../claimable-balances/helpers';
+} from '../claimable-balances/helpers.js';
 import { Asset, Account } from '@stellar/stellar-sdk';
 
 describe('Claimable Balance Helpers', () => {

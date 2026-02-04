@@ -13,10 +13,10 @@ import {
   Horizon,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
-import { SponsorshipResult, AccountEntryConfig } from '../types/sponsored-reserves-types';
-import { validatePublicKey, validateSecretKey, validateAmount } from '../utils/sponsorship-validation';
-import { SponsoredReservesManager } from '../services/sponsored-reserves-manager';
+import { NetworkConfig } from '../../types/stellar-types.js';
+import { SponsorshipResult, AccountEntryConfig } from '../types/sponsored-reserves-types.js';
+import { validatePublicKey, validateSecretKey, validateAmount } from '../utils/sponsorship-validation.js';
+import { SponsoredReservesManager } from '../services/sponsored-reserves-manager.js';
 
 /**
  * Builder class for sponsored account creation

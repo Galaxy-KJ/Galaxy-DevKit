@@ -4,11 +4,14 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![npm version](https://img.shields.io/badge/npm-v2.1.0-red.svg)](https://www.npmjs.com/package/@galaxy-kj/core-oracles)
 [![Stellar](https://img.shields.io/badge/Stellar-Soroban-purple)](https://stellar.org/)
+
+> **v2.1.0 Update:** Real-time CoinGecko integration for Stellar Mainnet prices.
 
 ## 📋 Overview
 
-`@galaxy/core-oracles` provides a robust price aggregation system that fetches and combines price data from multiple oracle sources. It includes outlier detection, validation, caching, and multiple aggregation strategies to ensure accurate and reliable price feeds.
+`@galaxy-kj/core-oracles` provides a robust price aggregation system that fetches and combines price data from multiple oracle sources. It includes outlier detection, validation, caching, and multiple aggregation strategies to ensure accurate and reliable price feeds.
 
 ### Key Features
 
@@ -26,11 +29,10 @@
 
 The package provides implementations for popular price data providers:
 
-### Built-in Sources
+### Built-in Sources (Real-time)
 
-- **CoinGecko** - Comprehensive cryptocurrency price data
-- **CoinMarketCap** - Professional market data and analytics
-- **Custom API Sources** - Implement your own sources via `IOracleSource`
+- **CoinGecko** - Native integration for real-time price feeds on Stellar mainnet (XLM, BTC, ETH, USDC, etc.).
+- **Custom API Sources** - Easy implementation of additional sources via `IOracleSource`.
 
 ### Mock Sources (for testing)
 
@@ -42,7 +44,7 @@ The package provides implementations for popular price data providers:
 ## �📦 Installation
 
 ```bash
-npm install @galaxy/core-oracles
+npm install @galaxy-kj/core-oracles
 ```
 
 ## 🚀 Quick Start
@@ -53,73 +55,29 @@ npm install @galaxy/core-oracles
 import {
   OracleAggregator,
   MedianStrategy,
-  IOracleSource,
+  CoinGeckoSource,
   PriceData,
-  SourceInfo,
-} from '@galaxy/core-oracles';
+} from '@galaxy-kj/core-oracles';
 
-// 1. Create oracle sources (implement IOracleSource)
-class CoinGeckoSource implements IOracleSource {
-  readonly name = 'coingecko';
-
-  async getPrice(symbol: string): Promise<PriceData> {
-    // Fetch from CoinGecko API
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`
-    );
-    const data = await response.json();
-
-    return {
-      symbol,
-      price: data[symbol].usd,
-      timestamp: new Date(),
-      source: this.name,
-    };
-  }
-
-  async getPrices(symbols: string[]): Promise<PriceData[]> {
-    return Promise.all(symbols.map(s => this.getPrice(s)));
-  }
-
-  getSourceInfo(): SourceInfo {
-    return {
-      name: this.name,
-      description: 'CoinGecko price feed',
-      version: '1.0.0',
-      supportedSymbols: [],
-    };
-  }
-
-  async isHealthy(): Promise<boolean> {
-    try {
-      await this.getPrice('bitcoin');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-// 2. Create aggregator and add sources
+// 1. Create aggregator with configuration
 const aggregator = new OracleAggregator({
-  minSources: 2,
+  minSources: 1,
   maxDeviationPercent: 10,
   maxStalenessMs: 60000,
   enableOutlierDetection: true,
-  outlierThreshold: 2.0,
 });
 
+// 2. Add built-in CoinGecko source (New in v2.1.0)
+// Uses native fetch (Node 18+) or axios if preferred
 const coingecko = new CoinGeckoSource();
-const coinmarketcap = new CoinMarketCapSource(); // Similar implementation
-
-aggregator.addSource(coingecko, 1.0);
-aggregator.addSource(coinmarketcap, 1.0);
+aggregator.addSource(coingecko);
 
 // 3. Get aggregated price
 const aggregated = await aggregator.getAggregatedPrice('XLM');
-console.log('Aggregated Price:', aggregated.price);
-console.log('Confidence:', aggregated.confidence);
-console.log('Sources Used:', aggregated.sourcesUsed);
+
+console.log(`Price: ${aggregated.price} USD`);
+console.log(`Confidence: ${aggregated.confidence}`);
+console.log(`Sources: ${aggregated.sourcesUsed.join(', ')}`);
 ```
 
 ## 📚 Core Concepts
@@ -143,8 +101,9 @@ interface IOracleSource {
 The aggregator supports three strategies:
 
 1. **MedianStrategy** (default) - Uses median price, robust against outliers
-2. **WeightedAverageStrategy** - Weighted average based on source weights
-3. **TWAPStrategy** - Time-weighted average price, weights recent prices higher
+2. **MeanStrategy** - Simple arithmetic average of all prices
+3. **WeightedAverageStrategy** - Weighted average based on source weights
+4. **TWAPStrategy** - Time-weighted average price, weights recent prices higher
 
 ```typescript
 // Use median strategy (default)
@@ -155,7 +114,7 @@ aggregator.setStrategy(new MedianStrategy());
 aggregator.setStrategy(new WeightedAverageStrategy());
 
 // Use TWAP
-import { PriceCache } from '@galaxy/core-oracles';
+import { PriceCache, TWAPStrategy } from '@galaxy-kj/core-oracles';
 const cache = new PriceCache({ ttlMs: 60000 });
 aggregator.setStrategy(new TWAPStrategy(cache, 60000));
 ```
@@ -477,6 +436,21 @@ See the `docs/examples/oracles/` directory for complete examples:
 - `03-aggregator-setup.ts` - Basic aggregator setup and usage
 - `04-custom-source.ts` - Implementing a custom IOracleSource
 - `05-strategies.ts` - Using different aggregation strategies
+
+## 💻 CLI Usage
+
+If you have the Galaxy CLI installed, you can interact with oracles directly:
+
+```bash
+# Get current price for XLM on mainnet (uses CoinGecko)
+galaxy oracle price XLM --network mainnet
+
+# Watch price updates in real-time
+galaxy watch oracle XLM --network mainnet
+
+# View the full oracle dashboard
+galaxy watch dashboard --network mainnet
+```
 
 ## 🤝 Contributing
 

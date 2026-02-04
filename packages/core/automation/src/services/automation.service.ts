@@ -11,10 +11,10 @@ import {
   AutomationMetrics,
   TriggerType,
   StellarNetwork,
-} from '../types/automation-types';
-import { CronManager } from '../utils/cron-manager';
-import { ConditionEvaluator } from '../utils/condition-evaluator';
-import { ExecutionEngine } from '../utils/execution-engine';
+} from '../types/automation-types.js';
+import { CronManager } from '../utils/cron-manager.js';
+import { ConditionEvaluator } from '../utils/condition-evaluator.js';
+import { ExecutionEngine } from '../utils/execution-engine.js';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;

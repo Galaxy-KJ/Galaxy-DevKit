@@ -5,15 +5,15 @@
  * @version 1.0.0
  */
 
-import { BaseBackupFormat, FormatOptions } from './base-format';
-import { EncryptedJsonFormat, EncryptedJsonOptions } from './encrypted-json.format';
-import { QRCodeFormat } from './qr-code.format';
+import { BaseBackupFormat, FormatOptions } from './base-format.js';
+import { EncryptedJsonFormat, EncryptedJsonOptions } from './encrypted-json.format.js';
+import { QRCodeFormat } from './qr-code.format.js';
 import {
   BackupFormat,
   WalletBackupData,
   EncryptedBackup,
   PaperWalletOptions,
-} from '../types/backup-types';
+} from '../types/backup-types.js';
 
 export interface PaperWalletBackup {
   html: string;

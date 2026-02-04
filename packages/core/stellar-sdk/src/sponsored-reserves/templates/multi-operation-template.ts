@@ -15,19 +15,19 @@ import {
   Horizon,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   MultiOperationSponsorshipConfig,
   SponsoredOperation,
   SponsorshipResult,
   SponsorshipCost,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateAssetCode,
-} from '../utils/sponsorship-validation';
-import { calculateMultiOperationCost } from '../utils/cost-calculator';
+} from '../utils/sponsorship-validation.js';
+import { calculateMultiOperationCost } from '../utils/cost-calculator.js';
 
 /**
  * Template class for multi-operation sponsored transactions

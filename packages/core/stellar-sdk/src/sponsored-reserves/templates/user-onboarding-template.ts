@@ -15,19 +15,19 @@ import {
   Horizon,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   UserOnboardingConfig,
   SponsorshipResult,
   SponsorshipCost,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateAssetCode,
   validateDataEntryName,
-} from '../utils/sponsorship-validation';
-import { calculateOnboardingCost } from '../utils/cost-calculator';
+} from '../utils/sponsorship-validation.js';
+import { calculateOnboardingCost } from '../utils/cost-calculator.js';
 
 /**
  * Template class for user onboarding with sponsored reserves

@@ -6,8 +6,8 @@
  * @since 2024-01-15
  */
 
-import { PriceData } from '../../types/oracle-types';
-import { AggregationStrategy } from './AggregationStrategy';
+import { PriceData } from '../../types/oracle-types.js';
+import { AggregationStrategy } from './AggregationStrategy.js';
 
 /**
  * Median aggregation strategy

@@ -3,8 +3,8 @@
  * @description Unit tests for weighted average aggregation strategy
  */
 
-import { WeightedAverageStrategy } from '../../src/aggregator/strategies/WeightedAverageStrategy';
-import { PriceData } from '../../src/types/oracle-types';
+import { WeightedAverageStrategy } from '../../src/aggregator/strategies/WeightedAverageStrategy.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('WeightedAverageStrategy', () => {
   let strategy: WeightedAverageStrategy;

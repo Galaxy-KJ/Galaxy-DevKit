@@ -6,8 +6,8 @@
  * @since 2024-12-01
  */
 import { Asset } from '@stellar/stellar-sdk';
-import { Wallet, WalletConfig, NetworkConfig, AccountInfo, Balance, PaymentParams, PaymentResult, TransactionInfo } from '../types/stellar-types';
-import type { CreateClaimableBalanceParams, ClaimBalanceParams, QueryClaimableBalancesParams, ClaimableBalanceResult, ClaimableBalance } from '../claimable-balances/types';
+import { Wallet, WalletConfig, NetworkConfig, AccountInfo, Balance, PaymentParams, PaymentResult, TransactionInfo } from '../types/stellar-types.js';
+import type { CreateClaimableBalanceParams, ClaimBalanceParams, QueryClaimableBalancesParams, ClaimableBalanceResult, ClaimableBalance } from '../claimable-balances/types.js';
 /**
  * Service class for Stellar operations
  * @class StellarService

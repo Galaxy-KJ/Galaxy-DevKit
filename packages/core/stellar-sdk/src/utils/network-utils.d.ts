@@ -5,7 +5,7 @@
  * @version 1.0.0
  * @since 2024-12-01
  */
-import { NetworkConfig } from '../types/stellar-types';
+import { NetworkConfig } from '../types/stellar-types.js';
 /**
  * Network utility class
  * @class NetworkUtils

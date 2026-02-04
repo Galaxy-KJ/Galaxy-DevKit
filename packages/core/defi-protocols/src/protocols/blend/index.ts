@@ -6,7 +6,7 @@
  * @since 2024-01-29
  */
 
-export { BlendProtocol } from './blend-protocol';
+export { BlendProtocol } from './blend-protocol.js';
 export type {
   BlendPoolConfig,
   BlendPoolAsset,
@@ -17,9 +17,9 @@ export type {
   LiquidationOpportunity,
   LiquidationResult,
   BlendEvent
-} from './blend-types';
-export { BlendEventType } from './blend-types';
-export { registerBlendProtocol } from './blend-registration';
+} from './blend-types.js';
+export { BlendEventType } from './blend-types.js';
+export { registerBlendProtocol } from './blend-registration.js';
 export {
   BLEND_TESTNET_CONFIG,
   BLEND_MAINNET_CONFIG,
@@ -29,4 +29,4 @@ export {
   getBlendConfig,
   convertToStroops,
   convertFromStroops
-} from './blend-config';
+} from './blend-config.js';

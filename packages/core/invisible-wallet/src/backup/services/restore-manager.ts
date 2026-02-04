@@ -12,14 +12,14 @@ import {
   BackupValidationResult,
   ShamirShare,
   MnemonicBackup,
-} from '../types/backup-types';
-import { EncryptedJsonFormat } from '../formats/encrypted-json.format';
-import { QRCodeBackup } from '../formats/qr-code.format';
-import { PaperWalletBackup } from '../formats/paper-wallet.format';
-import { MnemonicFormat } from '../formats/mnemonic.format';
-import { ShamirManager } from '../shamir/shamir-manager';
-import { BackupValidator } from '../validation/backup-validator';
-import { MigrationService } from './migration.service';
+} from '../types/backup-types.js';
+import { EncryptedJsonFormat } from '../formats/encrypted-json.format.js';
+import { QRCodeBackup } from '../formats/qr-code.format.js';
+import { PaperWalletBackup } from '../formats/paper-wallet.format.js';
+import { MnemonicFormat } from '../formats/mnemonic.format.js';
+import { ShamirManager } from '../shamir/shamir-manager.js';
+import { BackupValidator } from '../validation/backup-validator.js';
+import { MigrationService } from './migration.service.js';
 
 export interface RestoreResult {
   success: boolean;

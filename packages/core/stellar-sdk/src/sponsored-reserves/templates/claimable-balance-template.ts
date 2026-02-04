@@ -16,19 +16,19 @@ import {
   Claimant as StellarClaimant,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   ClaimableBalanceSponsorshipConfig,
   SponsorshipResult,
   Claimant,
   ClaimPredicate,
-} from '../types/sponsored-reserves-types';
+} from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateAmount,
   validateClaimants,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 /**
  * Template class for sponsored claimable balance operations

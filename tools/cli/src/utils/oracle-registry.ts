@@ -12,6 +12,7 @@ import path from 'path';
 import NodeCache from 'node-cache';
 import {
   OracleAggregator,
+  CoinGeckoSource,
   type IOracleSource,
   type PriceData,
   type SourceInfo,
@@ -110,6 +111,14 @@ function createDefaultMockSources(): OracleSourceEntry[] {
     { source: new MockOracleSource('coinmarketcap', buildPriceMap(0.003)), weight: 1.0, type: 'default' },
     { source: new MockOracleSource('binance', buildPriceMap(-0.002)), weight: 1.0, type: 'default' },
   ];
+}
+
+/** Default sources for mainnet: real CoinGecko API. For testnet: mocks. */
+function createDefaultSources(network: string): OracleSourceEntry[] {
+  if (network === 'mainnet') {
+    return [{ source: new CoinGeckoSource(), weight: 1.0, type: 'default' }];
+  }
+  return createDefaultMockSources();
 }
 
 function getFetch(): (
@@ -292,15 +301,17 @@ export async function saveOracleConfig(
   await fs.writeJson(configPath, config, { spaces: 2 });
 }
 
-export function getDefaultSourceNames(): string[] {
-  return createDefaultMockSources().map(({ source }) => source.name);
+export function getDefaultSourceNames(network?: string): string[] {
+  return createDefaultSources(network ?? 'testnet').map(({ source }) => source.name);
 }
 
 export async function createOracleAggregator(
   options: OracleAggregatorOptions = {}
 ): Promise<OracleAggregator> {
-  const aggregator = new OracleAggregator();
+  const network = options.network ?? 'testnet';
   const sources = await createOracleSources(options);
+  const minSources = sources.length === 1 ? 1 : 2;
+  const aggregator = new OracleAggregator({ minSources });
   for (const entry of sources) {
     aggregator.addSource(entry.source, entry.weight);
   }
@@ -326,15 +337,16 @@ export async function createOracleSources(
     !includeSet || includeSet.has(normalizeSourceName(name));
 
   const entries: OracleSourceEntry[] = [];
+  const network = options.network ?? 'testnet';
+  const defaultEntries = createDefaultSources(network);
 
-  for (const entry of createDefaultMockSources()) {
+  for (const entry of defaultEntries) {
     if (shouldInclude(entry.source.name)) {
       entries.push(entry);
     }
   }
 
   const customSources = options.customSources ?? (await loadOracleConfig(options.cwd)).sources;
-  const network = options.network ?? 'testnet';
   for (const custom of customSources) {
     if (!shouldInclude(custom.name)) {
       continue;

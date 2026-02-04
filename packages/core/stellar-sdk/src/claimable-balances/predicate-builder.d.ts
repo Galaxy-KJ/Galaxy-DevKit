@@ -5,7 +5,7 @@
  * @version 1.0.0
  * @since 2024-12-01
  */
-import { ClaimPredicate } from './types';
+import { ClaimPredicate } from './types.js';
 import { ClaimPredicate as StellarClaimPredicate } from '@stellar/stellar-sdk';
 /**
  * Creates an unconditional predicate (can claim anytime)

@@ -8,10 +8,10 @@
  * @since 2024-12-01
  */
 
-import { KeyManagementService } from './key-managment.service';
-import { StellarService } from '../../../stellar-sdk/src/services/stellar-service';
-import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client';
+import { KeyManagementService } from './key-managment.service.js';
+import { StellarService } from '../../../stellar-sdk/src/services/stellar-service.js';
+import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
+import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
 import {
   InvisibleWallet,
   InvisibleWalletConfig,
@@ -19,7 +19,7 @@ import {
   WalletUnlockResult,
   WalletEventType,
   DeviceInfo,
-} from '../types/wallet.types';
+} from '../types/wallet.types.js';
 import {
   PaymentParams,
   PaymentResult,
@@ -28,8 +28,8 @@ import {
   TransactionInfo,
   NetworkConfig,
   Wallet,
-} from '../../../stellar-sdk/src/types/stellar-types';
-import { validatePassword } from '../utils/encryption.utils';
+} from '../../../stellar-sdk/src/types/stellar-types.js';
+import { validatePassword } from '../utils/encryption.utils.js';
 
 export class InvisibleWalletService {
   private keyManagement: KeyManagementService;

@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { Asset } from './defi-types';
+import { Asset } from './defi-types.js';
 
 /**
  * Operation type enumeration

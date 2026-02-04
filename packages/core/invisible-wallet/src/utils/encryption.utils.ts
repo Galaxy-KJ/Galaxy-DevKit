@@ -11,7 +11,7 @@ import {
   EncryptedData,
   KeyDerivationParams,
   PasswordStrength,
-} from '../types/wallet.types';
+} from '../types/wallet.types.js';
 
 const ALGO = 'aes-256-gcm';
 const IV_LENGTH = 12;

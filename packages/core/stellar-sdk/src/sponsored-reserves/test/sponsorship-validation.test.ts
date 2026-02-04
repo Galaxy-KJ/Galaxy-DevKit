@@ -19,7 +19,7 @@ import {
   validateDataEntryValue,
   validateSignerWeight,
   validateEntryType,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 // Mock Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import {
   encryptPrivateKey,
   decryptPrivateKey,
-} from '../utils/encryption.utils';
+} from '../utils/encryption.utils.js';
 
 describe('Encryption Utils', () => {
   const testPrivateKey = 'SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';

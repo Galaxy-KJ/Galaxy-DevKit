@@ -3,8 +3,8 @@
  * @description Unit tests for median aggregation strategy
  */
 
-import { MedianStrategy } from '../../src/aggregator/strategies/MedianStrategy';
-import { PriceData } from '../../src/types/oracle-types';
+import { MedianStrategy } from '../../src/aggregator/strategies/MedianStrategy.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('MedianStrategy', () => {
   let strategy: MedianStrategy;

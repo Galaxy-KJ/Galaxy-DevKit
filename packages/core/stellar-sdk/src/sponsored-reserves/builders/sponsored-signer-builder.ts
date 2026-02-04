@@ -14,15 +14,15 @@ import {
   StrKey,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
-import { SponsorshipResult, SignerEntryConfig } from '../types/sponsored-reserves-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
+import { SponsorshipResult, SignerEntryConfig } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateSignerWeight,
   validatePreAuthTxHash,
   validateSha256Hash,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 /**
  * Builder class for sponsored signer operations

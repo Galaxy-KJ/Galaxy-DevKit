@@ -9,8 +9,8 @@ import {
   detectOutliersZScore,
   filterOutliers,
   OutlierMethod,
-} from '../../src/utils/outlier-detection';
-import { PriceData } from '../../src/types/oracle-types';
+} from '../../src/utils/outlier-detection.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('outlier-detection', () => {
   const createPrice = (price: number, source: string): PriceData => ({

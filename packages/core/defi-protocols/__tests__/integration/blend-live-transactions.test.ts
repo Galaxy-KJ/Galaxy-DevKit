@@ -4,8 +4,8 @@
  */
 
 import { Keypair } from '@stellar/stellar-sdk';
-import { BlendProtocol } from '../../src/protocols/blend/blend-protocol';
-import { ProtocolConfig, Asset } from '../../src/types/defi-types';
+import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
+import { ProtocolConfig, Asset } from '../../src/types/defi-types.js';
 
 const TESTNET_CONFIG: ProtocolConfig = {
   protocolId: 'blend',

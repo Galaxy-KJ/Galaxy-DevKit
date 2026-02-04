@@ -6,8 +6,8 @@
  * @since 2024-01-29
  */
 
-import { BlendProtocol } from '../blend-protocol';
-import { Asset, ProtocolConfig } from '../../../types/defi-types';
+import { BlendProtocol } from '../blend-protocol.js';
+import { Asset, ProtocolConfig } from '../../../types/defi-types.js';
 
 /**
  * Example: Initialize Blend Protocol

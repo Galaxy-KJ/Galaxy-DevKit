@@ -13,10 +13,10 @@ import {
   WalletBackupData,
   KDFType,
   BACKUP_VERSION,
-} from '../types/backup-types';
-import { BackupValidator } from '../validation/backup-validator';
-import { EncryptedJsonFormat } from '../formats/encrypted-json.format';
-import { generateChecksum } from '../validation/checksum.utils';
+} from '../types/backup-types.js';
+import { BackupValidator } from '../validation/backup-validator.js';
+import { EncryptedJsonFormat } from '../formats/encrypted-json.format.js';
+import { generateChecksum } from '../validation/checksum.utils.js';
 
 const LEGACY_ITERATIONS = 100000;
 const LEGACY_KEY_LENGTH = 32;

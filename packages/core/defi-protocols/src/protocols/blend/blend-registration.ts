@@ -6,8 +6,8 @@
  * @since 2024-01-29
  */
 
-import { getProtocolFactory } from '../../services/protocol-factory';
-import { BlendProtocol } from './blend-protocol';
+import { getProtocolFactory } from '../../services/protocol-factory.js';
+import { BlendProtocol } from './blend-protocol.js';
 
 /**
  * Register Blend protocol with the factory

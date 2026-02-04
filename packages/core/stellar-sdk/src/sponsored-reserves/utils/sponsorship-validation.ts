@@ -7,7 +7,7 @@
  */
 
 import { StrKey } from '@stellar/stellar-sdk';
-import { Claimant, SponsoredEntryType } from '../types/sponsored-reserves-types';
+import { Claimant, SponsoredEntryType } from '../types/sponsored-reserves-types.js';
 
 /**
  * Validates a Stellar public key

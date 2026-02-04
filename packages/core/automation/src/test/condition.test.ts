@@ -1,11 +1,11 @@
-import { ConditionEvaluator } from '../utils/condition-evaluator';
+import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import {
   Condition,
   ConditionGroup,
   ConditionOperator,
   ConditionLogic,
   ExecutionContext,
-} from '../types/automation-types';
+} from '../types/automation-types.js';
 
 describe('ConditionEvaluator', () => {
   let evaluator: ConditionEvaluator;

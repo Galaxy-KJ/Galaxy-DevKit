@@ -19,7 +19,7 @@ import {
   ScInt,
   Address,
 } from '@stellar/stellar-sdk';
-import { ScValConverter } from '../utils/scval-converter';
+import { ScValConverter } from '../utils/scval-converter.js';
 import {
   ContractDeploymentParams,
   ContractInvocationParams,
@@ -32,7 +32,7 @@ import {
   ContractAbi,
   ContractUpgradeParams,
   ContractUpgradeResult,
-} from '../types/contract-types';
+} from '../types/contract-types.js';
 
 export class SorobanContractManager {
   private rpcUrl: string;

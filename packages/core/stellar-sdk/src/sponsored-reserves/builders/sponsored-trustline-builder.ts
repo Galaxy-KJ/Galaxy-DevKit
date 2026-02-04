@@ -14,14 +14,14 @@ import {
   Horizon,
   xdr,
 } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../../types/stellar-types';
-import { SponsorshipResult, TrustlineEntryConfig } from '../types/sponsored-reserves-types';
+import { NetworkConfig } from '../../types/stellar-types.js';
+import { SponsorshipResult, TrustlineEntryConfig } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
   validateAssetCode,
   validateAmount,
-} from '../utils/sponsorship-validation';
+} from '../utils/sponsorship-validation.js';
 
 /**
  * Builder class for sponsored trustline operations

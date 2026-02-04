@@ -5,12 +5,12 @@
  * @description Comprehensive test suite for InvisibleWalletService
  */
 
-import { InvisibleWalletService } from '../services/invisible-wallet.service';
-import { KeyManagementService } from '../services/key-managment.service';
-import { StellarService } from '../../../stellar-sdk/src/services/stellar-service';
-import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils';
-import { WalletEventType } from '../types/wallet.types';
-import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types';
+import { InvisibleWalletService } from '../services/invisible-wallet.service.js';
+import { KeyManagementService } from '../services/key-managment.service.js';
+import { StellarService } from '../../../stellar-sdk/src/services/stellar-service.js';
+import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
+import { WalletEventType } from '../types/wallet.types.js';
+import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
 
 // Mock dependencies
 jest.mock('../services/key-managment.service');

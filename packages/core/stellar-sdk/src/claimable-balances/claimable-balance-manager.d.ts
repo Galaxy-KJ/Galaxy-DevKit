@@ -6,8 +6,8 @@
  * @since 2024-12-01
  */
 import { Asset, Horizon } from '@stellar/stellar-sdk';
-import { ClaimableBalance, CreateClaimableBalanceParams, ClaimBalanceParams, QueryClaimableBalancesParams, ClaimableBalanceResult } from './types';
-import { Wallet } from '../types/stellar-types';
+import { ClaimableBalance, CreateClaimableBalanceParams, ClaimBalanceParams, QueryClaimableBalancesParams, ClaimableBalanceResult } from './types.js';
+import { Wallet } from '../types/stellar-types.js';
 /**
  * Claimable Balance Manager class
  * @class ClaimableBalanceManager

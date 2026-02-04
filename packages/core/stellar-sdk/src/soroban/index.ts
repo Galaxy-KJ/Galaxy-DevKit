@@ -7,17 +7,17 @@
  */
 
 // Main classes
-export { SorobanContractManager } from './soroban-contract-manager';
-export { ContractEventMonitor } from './utils/event-monitor';
-export { TokenContractWrapper } from './helpers/token-contract-wrapper';
-export { ContractFactory } from './helpers/contract-factory';
+export { SorobanContractManager } from './soroban-contract-manager.js';
+export { ContractEventMonitor } from './utils/event-monitor.js';
+export { TokenContractWrapper } from './helpers/token-contract-wrapper.js';
+export { ContractFactory } from './helpers/contract-factory.js';
 
 // Utilities
-export { ScValConverter } from './utils/scval-converter';
-export { AbiParser } from './utils/abi-parser';
-export { ErrorParser, SorobanError } from './utils/error-parser';
-export { FunctionSignatureBuilder } from './utils/function-signature-builder';
-export { EventDecoder } from './utils/event-decoder';
+export { ScValConverter } from './utils/scval-converter.js';
+export { AbiParser } from './utils/abi-parser.js';
+export { ErrorParser, SorobanError } from './utils/error-parser.js';
+export { FunctionSignatureBuilder } from './utils/function-signature-builder.js';
+export { EventDecoder } from './utils/event-decoder.js';
 
 // Types
 export type {
@@ -43,6 +43,6 @@ export type {
   AbiArgument,
   AbiType,
   AbiField,
-} from './types/contract-types';
+} from './types/contract-types.js';
 
-export type { ScType } from './types/contract-types';
+export type { ScType } from './types/contract-types.js';

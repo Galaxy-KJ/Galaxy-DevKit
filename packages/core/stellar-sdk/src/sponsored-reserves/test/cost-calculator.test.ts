@@ -20,7 +20,7 @@ import {
   xlmToStroops,
   stroopsToXlm,
   formatCost,
-} from '../utils/cost-calculator';
+} from '../utils/cost-calculator.js';
 
 describe('Cost Calculator Utilities', () => {
   describe('Constants', () => {

@@ -7,7 +7,7 @@
  */
 
 import BigNumber from 'bignumber.js';
-import { LiquidityPool, PriceImpact, DepositEstimate, WithdrawEstimate } from './types';
+import { LiquidityPool, PriceImpact, DepositEstimate, WithdrawEstimate } from './types.js';
 
 // Configure BigNumber for Stellar's 7 decimal places precision
 BigNumber.config({ DECIMAL_PLACES: 7, ROUNDING_MODE: BigNumber.ROUND_DOWN });

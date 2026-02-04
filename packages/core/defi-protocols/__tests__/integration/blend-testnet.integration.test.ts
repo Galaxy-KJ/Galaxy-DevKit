@@ -4,8 +4,8 @@
  */
 
 import { Keypair } from '@stellar/stellar-sdk';
-import { BlendProtocol } from '../../src/protocols/blend/blend-protocol';
-import { ProtocolConfig } from '../../src/types/defi-types';
+import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
+import { ProtocolConfig } from '../../src/types/defi-types.js';
 
 // Real testnet contract addresses
 const BLEND_TESTNET_CONFIG: ProtocolConfig = {

@@ -2,6 +2,7 @@
   "name": "@galaxy-kj/core-automation",
   "version": "2.0.0",
   "description": "Galaxy Automation System - Automated trading and DeFi operations",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -48,5 +49,6 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "gitHead": "3d099be0450e49c0c0dfdde45728a2f33d4a132b"
 }

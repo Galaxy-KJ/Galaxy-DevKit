@@ -6,8 +6,8 @@
  * @since 2024-01-15
  */
 
-import { IDefiProtocol, IProtocolFactory } from '../types/protocol-interface';
-import { ProtocolConfig, ProtocolType } from '../types/defi-types';
+import { IDefiProtocol, IProtocolFactory } from '../types/protocol-interface.js';
+import { ProtocolConfig, ProtocolType } from '../types/defi-types.js';
 
 /**
  * Protocol constructor type

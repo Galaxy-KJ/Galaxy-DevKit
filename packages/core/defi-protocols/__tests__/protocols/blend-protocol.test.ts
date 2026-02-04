@@ -6,8 +6,8 @@
  * @since 2024-01-29
  */
 
-import { BlendProtocol } from '../../src/protocols/blend/blend-protocol';
-import { ProtocolConfig, ProtocolType, Asset } from '../../src/types/defi-types';
+import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
+import { ProtocolConfig, ProtocolType, Asset } from '../../src/types/defi-types.js';
 import { Keypair, rpc, Contract, TransactionBuilder, Address } from '@stellar/stellar-sdk';
 import { PoolContractV2 } from '@blend-capital/blend-sdk';
 

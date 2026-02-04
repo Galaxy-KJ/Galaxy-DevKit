@@ -12,8 +12,8 @@ import {
   EncryptedBackup,
   BackupMetadata,
   BACKUP_VERSION,
-} from '../types/backup-types';
-import { generateChecksum, generateShortChecksum } from '../validation/checksum.utils';
+} from '../types/backup-types.js';
+import { generateChecksum, generateShortChecksum } from '../validation/checksum.utils.js';
 
 const MIN_THRESHOLD = 2;
 const MAX_SHARES = 255;

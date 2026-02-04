@@ -8,8 +8,8 @@
 
 import BigNumber from 'bignumber.js';
 import { Asset } from '@stellar/stellar-sdk';
-import { LiquidityPool } from './types';
-import { calculateMinimumAmounts, calculatePriceBounds } from './calculations';
+import { LiquidityPool } from './types.js';
+import { calculateMinimumAmounts, calculatePriceBounds } from './calculations.js';
 
 /**
  * Calculates optimal deposit amounts maintaining pool ratio

@@ -1,59 +1,15 @@
 // @ts-nocheck
 /**
  * @fileoverview Oracle monitoring command
- * @description Streams real-time price updates from oracles using IOracleSource
+ * @description Streams real-time price updates from oracles (mainnet = CoinGecko, testnet = mocks)
  * @author Galaxy DevKit Team
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { TerminalUI } from '../../utils/terminal-ui.js';
-import { MockOracleSource } from '../../utils/oracle-registry.js';
-import { OracleAggregator, MedianStrategy } from '@galaxy-kj/core-oracles';
-
-const oracleWatchCommand = new Command('oracle');
-
-/**
- * Create a configured oracle aggregator with mock sources
- * In production, this would load real oracle sources from configuration
- */
-function createOracleAggregator(): OracleAggregator {
-  const aggregator = new OracleAggregator({ minSources: 1 });
-  aggregator.setStrategy(new MedianStrategy());
-
-  // Create mock sources with realistic price variations
-  // In production, replace with real oracle sources (Binance, CoinGecko, etc.)
-  const basePrices = new Map<string, number>([
-    ['XLM', 0.12],
-    ['BTC', 50230],
-    ['ETH', 2850],
-    ['USDC', 1.0],
-    ['USDT', 1.0],
-    ['EUR', 1.08],
-  ]);
-
-  // Source 1: Primary market data
-  const source1 = new MockOracleSource('MarketData-1', new Map(basePrices));
-  aggregator.addSource(source1, 1.0);
-
-  // Source 2: Secondary with slight variation
-  const source2Prices = new Map<string, number>();
-  basePrices.forEach((price, symbol) => {
-    source2Prices.set(symbol, price * (1 + (Math.random() - 0.5) * 0.002));
-  });
-  const source2 = new MockOracleSource('MarketData-2', source2Prices);
-  aggregator.addSource(source2, 0.8);
-
-  // Source 3: DEX aggregator with variation
-  const source3Prices = new Map<string, number>();
-  basePrices.forEach((price, symbol) => {
-    source3Prices.set(symbol, price * (1 + (Math.random() - 0.5) * 0.003));
-  });
-  const source3 = new MockOracleSource('DEX-Aggregator', source3Prices);
-  aggregator.addSource(source3, 0.6);
-
-  return aggregator;
-}
+import { createOracleAggregator } from '../../utils/oracle-registry.js';
+import { MedianStrategy } from '@galaxy-kj/core-oracles';
 
 oracleWatchCommand
   .description('Stream real-time price updates for a symbol')
@@ -64,7 +20,8 @@ oracleWatchCommand
   .action(async (symbol, options) => {
     const upperSymbol = symbol.toUpperCase();
     const intervalMs = parseInt(options.interval) * 1000;
-    const aggregator = createOracleAggregator();
+    const aggregator = await createOracleAggregator({ network: options.network });
+    aggregator.setStrategy(new MedianStrategy());
 
     if (options.json) {
       console.log(

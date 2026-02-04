@@ -18,10 +18,10 @@ export type {
   TimeLockedBalanceParams,
   VestingScheduleParams,
   EscrowParams,
-} from './types';
+} from './types.js';
 
 // Export manager
-export { ClaimableBalanceManager } from './claimable-balance-manager';
+export { ClaimableBalanceManager } from './claimable-balance-manager.js';
 
 // Export predicate builders
 export {
@@ -34,7 +34,7 @@ export {
   toStellarPredicate,
   validatePredicate,
   isPredicateClaimable,
-} from './predicate-builder';
+} from './predicate-builder.js';
 
 // Export helpers
 export {
@@ -44,4 +44,4 @@ export {
   createTwoPartyEscrow,
   createConditionalRelease,
   createRefundableBalance,
-} from './helpers';
+} from './helpers.js';

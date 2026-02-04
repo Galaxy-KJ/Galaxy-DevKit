@@ -14,7 +14,7 @@ import {
     HealthFactorError,
     isProtocolError,
     wrapError
-} from '../../src/errors/errors';
+} from '../../src/errors/errors.js';
 
 describe('ProtocolError', () => {
     describe('base class', () => {

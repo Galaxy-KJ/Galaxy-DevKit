@@ -11,8 +11,8 @@ import {
   isHealthyPosition,
   calculateMinimumAmount,
   compareAmounts
-} from '../../src/utils/validation';
-import { Asset, AssetType } from '../../src/types/defi-types';
+} from '../../src/utils/validation.js';
+import { Asset, AssetType } from '../../src/types/defi-types.js';
 
 describe('Validation Utils', () => {
   describe('validateAddress', () => {

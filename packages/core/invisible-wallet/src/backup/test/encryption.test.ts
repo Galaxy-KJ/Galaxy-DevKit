@@ -3,9 +3,9 @@
  * @description Tests for KDF providers and encryption functionality
  */
 
-import { PBKDF2Provider } from '../encryption/pbkdf2-provider';
-import { Argon2Provider } from '../encryption/argon2-provider';
-import { PBKDF2Params, Argon2Params } from '../types/backup-types';
+import { PBKDF2Provider } from '../encryption/pbkdf2-provider.js';
+import { Argon2Provider } from '../encryption/argon2-provider.js';
+import { PBKDF2Params, Argon2Params } from '../types/backup-types.js';
 
 describe('PBKDF2Provider', () => {
   let provider: PBKDF2Provider;

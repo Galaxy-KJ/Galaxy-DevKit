@@ -45,5 +45,6 @@
     "type": "git",
     "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/api/graphql"
-  }
+  },
+  "gitHead": "3d099be0450e49c0c0dfdde45728a2f33d4a132b"
 }

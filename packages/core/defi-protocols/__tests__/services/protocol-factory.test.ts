@@ -3,11 +3,11 @@
  * @description Unit tests for the protocol factory service
  */
 
-import { ProtocolFactory, getProtocolFactory } from '../../src/services/protocol-factory';
-import { BaseProtocol } from '../../src/protocols/base-protocol';
-import { ProtocolConfig, ProtocolType, ProtocolStats } from '../../src/types/defi-types';
-import { IDefiProtocol } from '../../src/types/protocol-interface';
-import { Asset, TransactionResult, Position, HealthFactor, APYInfo } from '../../src/types/defi-types';
+import { ProtocolFactory, getProtocolFactory } from '../../src/services/protocol-factory.js';
+import { BaseProtocol } from '../../src/protocols/base-protocol.js';
+import { ProtocolConfig, ProtocolType, ProtocolStats } from '../../src/types/defi-types.js';
+import { IDefiProtocol } from '../../src/types/protocol-interface.js';
+import { Asset, TransactionResult, Position, HealthFactor, APYInfo } from '../../src/types/defi-types.js';
 
 // Mock protocol implementation for testing
 class MockProtocol extends BaseProtocol {

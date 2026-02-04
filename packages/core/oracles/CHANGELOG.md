@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# 2.1.0 (2026-02-01)
+
+### Features
+
+* **oracles:** add real CoinGecko source for mainnet price feeds ([#oracles-real](https://github.com/Galaxy-KJ/Galaxy-DevKit/issues/oracles-real))
+  * Export `CoinGeckoSource` from `@galaxy-kj/core-oracles` for live CoinGecko API
+  * CLI `galaxy oracle price --network mainnet` and `galaxy watch oracle --network mainnet` use real prices
+  * CLI `galaxy watch dashboard --network mainnet` uses real CoinGecko prices for XLM, BTC, ETH, USDC, etc.
+  * Testnet continues to use mock sources; mainnet uses single real source (CoinGecko)
+
 # 2.0.0 (2026-01-30)
 
 

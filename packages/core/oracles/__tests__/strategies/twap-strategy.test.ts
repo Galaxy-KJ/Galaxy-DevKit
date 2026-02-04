@@ -3,9 +3,9 @@
  * @description Unit tests for time-weighted average price strategy
  */
 
-import { TWAPStrategy } from '../../src/aggregator/strategies/TWAPStrategy';
-import { PriceCache } from '../../src/cache/price-cache';
-import { PriceData } from '../../src/types/oracle-types';
+import { TWAPStrategy } from '../../src/aggregator/strategies/TWAPStrategy.js';
+import { PriceCache } from '../../src/cache/price-cache.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('TWAPStrategy', () => {
   let strategy: TWAPStrategy;

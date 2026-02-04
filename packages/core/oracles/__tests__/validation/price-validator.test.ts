@@ -10,8 +10,8 @@ import {
   checkDeviation,
   filterByDeviation,
   validatePrices,
-} from '../../src/validation/price-validator';
-import { PriceData } from '../../src/types/oracle-types';
+} from '../../src/validation/price-validator.js';
+import { PriceData } from '../../src/types/oracle-types.js';
 
 describe('price-validator', () => {
   const createPrice = (

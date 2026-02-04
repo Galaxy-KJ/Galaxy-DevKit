@@ -21,7 +21,7 @@ import * as bip39 from 'bip39';
 import {
   encryptPrivateKey,
   decryptPrivateKey,
-} from '../utils/encryption.utils';
+} from '../utils/encryption.utils.js';
 import {
   Wallet,
   WalletConfig,
@@ -31,20 +31,20 @@ import {
   PaymentParams,
   PaymentResult,
   TransactionInfo,
-} from '../types/stellar-types';
+} from '../types/stellar-types.js';
 import { derivePath } from 'ed25519-hd-key';
-import { supabaseClient } from '../utils/supabase-client';
-import { NetworkUtils } from '../utils/network-utils';
-import { validateMemo } from '../utils/stellar-utils';
-import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager';
+import { supabaseClient } from '../utils/supabase-client.js';
+import { NetworkUtils } from '../utils/network-utils.js';
+import { validateMemo } from '../utils/stellar-utils.js';
+import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager.js';
 import type {
   CreateClaimableBalanceParams,
   ClaimBalanceParams,
   QueryClaimableBalancesParams,
   ClaimableBalanceResult,
   ClaimableBalance,
-} from '../claimable-balances/types';
-import { LiquidityPoolManager } from '../liquidity-pools/liquidity-pool-manager';
+} from '../claimable-balances/types.js';
+import { LiquidityPoolManager } from '../liquidity-pools/liquidity-pool-manager.js';
 import type {
   LiquidityPool,
   LiquidityPoolDeposit,
@@ -55,7 +55,7 @@ import type {
   DepositEstimate,
   WithdrawEstimate,
   PoolShare,
-} from '../liquidity-pools/types';
+} from '../liquidity-pools/types.js';
 
 /**
  * Service class for Stellar operations

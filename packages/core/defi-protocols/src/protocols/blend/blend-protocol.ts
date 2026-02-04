@@ -23,7 +23,7 @@ import {
   RequestType
 } from '@blend-capital/blend-sdk';
 
-import { BaseProtocol } from '../base-protocol';
+import { BaseProtocol } from '../base-protocol.js';
 import {
   Asset,
   TransactionResult,
@@ -34,7 +34,7 @@ import {
   ProtocolConfig,
   ProtocolType,
   PositionBalance
-} from '../../types/defi-types';
+} from '../../types/defi-types.js';
 
 import {
   BlendPoolConfig,
@@ -44,7 +44,7 @@ import {
   LiquidationResult,
   BlendSupplyPosition,
   BlendBorrowPosition
-} from './blend-types';
+} from './blend-types.js';
 
 /**
  * Blend Protocol implementation

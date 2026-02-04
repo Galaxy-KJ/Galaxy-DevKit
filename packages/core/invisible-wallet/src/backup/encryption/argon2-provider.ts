@@ -7,7 +7,7 @@
 
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
-import { BaseKDFProvider } from './kdf-provider';
+import { BaseKDFProvider } from './kdf-provider.js';
 import {
   KDFType,
   Argon2Params,
@@ -15,7 +15,7 @@ import {
   DEFAULT_ARGON2_MEMORY_COST,
   DEFAULT_ARGON2_TIME_COST,
   DEFAULT_ARGON2_PARALLELISM,
-} from '../types/backup-types';
+} from '../types/backup-types.js';
 
 const DEFAULT_HASH_LENGTH = 32;
 const DEFAULT_SALT_LENGTH = 16;

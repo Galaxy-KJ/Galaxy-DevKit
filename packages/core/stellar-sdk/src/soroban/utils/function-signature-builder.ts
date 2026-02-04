@@ -9,8 +9,8 @@
  */
 
 import { xdr } from '@stellar/stellar-sdk';
-import { ScValConverter } from './scval-converter';
-import { ContractFunction, ScType } from '../types/contract-types';
+import { ScValConverter } from './scval-converter.js';
+import { ContractFunction, ScType } from '../types/contract-types.js';
 
 export class FunctionSignatureBuilder {
   /**

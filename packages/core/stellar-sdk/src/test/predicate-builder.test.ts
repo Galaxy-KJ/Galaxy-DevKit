@@ -33,7 +33,7 @@ import {
   toStellarPredicate,
   validatePredicate,
   isPredicateClaimable,
-} from '../claimable-balances/predicate-builder';
+} from '../claimable-balances/predicate-builder.js';
 
 describe('Predicate Builder', () => {
   describe('unconditional', () => {

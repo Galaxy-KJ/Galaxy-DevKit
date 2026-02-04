@@ -1,5 +1,5 @@
-import { StellarService } from '../services/stellar-service';
-import { WalletConfig, AccountInfo } from '../types/stellar-types';
+import { StellarService } from '../services/stellar-service.js';
+import { WalletConfig, AccountInfo } from '../types/stellar-types.js';
 import { Keypair } from '@stellar/stellar-sdk';
 import * as bip39 from 'bip39';
 

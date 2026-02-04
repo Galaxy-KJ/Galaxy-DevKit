@@ -3,9 +3,9 @@
  * @description Tests for Shamir secret sharing functionality
  */
 
-import { ShamirManager } from '../shamir/shamir-manager';
-import { BackupManager } from '../services/backup-manager';
-import { EncryptedBackup, WalletBackupData, ShamirShare } from '../types/backup-types';
+import { ShamirManager } from '../shamir/shamir-manager.js';
+import { BackupManager } from '../services/backup-manager.js';
+import { EncryptedBackup, WalletBackupData, ShamirShare } from '../types/backup-types.js';
 
 describe('ShamirManager', () => {
   let shamirManager: ShamirManager;

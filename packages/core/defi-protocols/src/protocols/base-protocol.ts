@@ -7,7 +7,7 @@
  */
 
 import { Horizon, Networks, Keypair } from '@stellar/stellar-sdk';
-import { IDefiProtocol } from '../types/protocol-interface';
+import { IDefiProtocol } from '../types/protocol-interface.js';
 import {
   Asset,
   TransactionResult,
@@ -19,7 +19,7 @@ import {
   ProtocolType,
   SwapQuote,
   LiquidityPool
-} from '../types/defi-types';
+} from '../types/defi-types.js';
 
 /**
  * Abstract base class for DeFi protocols

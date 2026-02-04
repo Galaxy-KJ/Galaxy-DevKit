@@ -6,7 +6,7 @@
 import {
   retryWithBackoff,
   isRetryableError,
-} from '../../src/utils/retry-utils';
+} from '../../src/utils/retry-utils.js';
 
 describe('retry-utils', () => {
   describe('isRetryableError', () => {

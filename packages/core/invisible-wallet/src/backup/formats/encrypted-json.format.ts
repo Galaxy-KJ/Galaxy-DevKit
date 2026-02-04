@@ -6,10 +6,10 @@
  */
 
 import * as crypto from 'crypto';
-import { BaseBackupFormat, FormatOptions } from './base-format';
-import { PBKDF2Provider } from '../encryption/pbkdf2-provider';
-import { Argon2Provider } from '../encryption/argon2-provider';
-import { IKDFProvider } from '../encryption/kdf-provider';
+import { BaseBackupFormat, FormatOptions } from './base-format.js';
+import { PBKDF2Provider } from '../encryption/pbkdf2-provider.js';
+import { Argon2Provider } from '../encryption/argon2-provider.js';
+import { IKDFProvider } from '../encryption/kdf-provider.js';
 import {
   BackupFormat,
   EncryptedBackup,
@@ -18,8 +18,8 @@ import {
   KDFParams,
   PBKDF2Params,
   Argon2Params,
-} from '../types/backup-types';
-import { generateChecksum } from '../validation/checksum.utils';
+} from '../types/backup-types.js';
+import { generateChecksum } from '../validation/checksum.utils.js';
 
 const ALGO = 'aes-256-gcm';
 const IV_LENGTH = 12;

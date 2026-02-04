@@ -6,8 +6,8 @@
  * @since 2024-01-15
  */
 
-import { IOracleSource } from '../../types/IOracleSource';
-import { PriceData, SourceInfo } from '../../types/oracle-types';
+import { IOracleSource } from '../../types/IOracleSource.js';
+import { PriceData, SourceInfo } from '../../types/oracle-types.js';
 
 /**
  * Mock oracle source for testing

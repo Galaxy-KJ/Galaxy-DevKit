@@ -9,7 +9,7 @@
  */
 
 import { xdr, ScInt, Address } from '@stellar/stellar-sdk';
-import { ScType } from '../types/contract-types';
+import { ScType } from '../types/contract-types.js';
 
 export class ScValConverter {
   /**

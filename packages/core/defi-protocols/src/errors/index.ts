@@ -3,4 +3,4 @@
  * @description Exports all error classes and utilities
  */
 
-export * from './errors';
+export * from './errors.js';

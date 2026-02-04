@@ -2,6 +2,7 @@
   "name": "@galaxy-kj/core-defi-protocols",
   "version": "2.0.0",
   "description": "Galaxy DeFi Protocols - Integration layer for Stellar DeFi protocols (Blend, Soroswap, etc.)",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -55,5 +56,6 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "gitHead": "3d099be0450e49c0c0dfdde45728a2f33d4a132b"
 }

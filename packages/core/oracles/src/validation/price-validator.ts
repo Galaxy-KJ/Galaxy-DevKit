@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { PriceData, AggregationConfig } from '../types/oracle-types';
+import { PriceData, AggregationConfig } from '../types/oracle-types.js';
 
 /**
  * Default aggregation config

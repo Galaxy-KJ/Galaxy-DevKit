@@ -3,9 +3,9 @@
  * @description Tests for backup creation functionality
  */
 
-import { BackupManager, CreateBackupOptions } from '../services/backup-manager';
-import { EncryptedBackup, WalletBackupData, BACKUP_VERSION } from '../types/backup-types';
-import { InvisibleWallet, BackupStatus } from '../../types/wallet.types';
+import { BackupManager, CreateBackupOptions } from '../services/backup-manager.js';
+import { EncryptedBackup, WalletBackupData, BACKUP_VERSION } from '../types/backup-types.js';
+import { InvisibleWallet, BackupStatus } from '../../types/wallet.types.js';
 
 describe('BackupManager', () => {
   let manager: BackupManager;

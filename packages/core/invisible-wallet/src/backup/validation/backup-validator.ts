@@ -11,8 +11,8 @@ import {
   LegacyBackupFormat,
   BackupFormat,
   BACKUP_VERSION,
-} from '../types/backup-types';
-import { verifyChecksum, generateChecksum } from './checksum.utils';
+} from '../types/backup-types.js';
+import { verifyChecksum, generateChecksum } from './checksum.utils.js';
 
 export class BackupValidator {
   validateEncryptedBackup(backup: unknown): BackupValidationResult {

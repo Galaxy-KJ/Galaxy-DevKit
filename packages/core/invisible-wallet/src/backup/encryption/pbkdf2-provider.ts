@@ -6,13 +6,13 @@
  */
 
 import * as crypto from 'crypto';
-import { BaseKDFProvider } from './kdf-provider';
+import { BaseKDFProvider } from './kdf-provider.js';
 import {
   KDFType,
   PBKDF2Params,
   KDFParams,
   DEFAULT_PBKDF2_ITERATIONS,
-} from '../types/backup-types';
+} from '../types/backup-types.js';
 
 const DEFAULT_KEY_LENGTH = 32;
 const DEFAULT_SALT_LENGTH = 16;

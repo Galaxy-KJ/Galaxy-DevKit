@@ -22,14 +22,14 @@ import {
   ClaimBalanceParams,
   QueryClaimableBalancesParams,
   ClaimableBalanceResult,
-} from './types';
+} from './types.js';
 import {
   toStellarPredicate,
   validatePredicate,
-} from './predicate-builder';
-import { Wallet } from '../types/stellar-types';
-import { decryptPrivateKey } from '../utils/encryption.utils';
-import { NetworkUtils } from '../utils/network-utils';
+} from './predicate-builder.js';
+import { Wallet } from '../types/stellar-types.js';
+import { decryptPrivateKey } from '../utils/encryption.utils.js';
+import { NetworkUtils } from '../utils/network-utils.js';
 
 /**
  * Claimable Balance Manager class

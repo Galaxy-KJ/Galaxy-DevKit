@@ -6,9 +6,9 @@
  * @since 2024-12-01
  */
 
-import { ScValConverter } from '../utils/scval-converter';
+import { ScValConverter } from '../utils/scval-converter.js';
 import { xdr } from '@stellar/stellar-sdk';
-import { ScType } from '../types/contract-types';
+import { ScType } from '../types/contract-types.js';
 
 describe('ScValConverter', () => {
   describe('toScVal', () => {

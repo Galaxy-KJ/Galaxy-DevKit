@@ -10,8 +10,8 @@ import {
   WalletBackupData,
   BackupMetadata,
   BACKUP_VERSION,
-} from '../types/backup-types';
-import { generateChecksum } from '../validation/checksum.utils';
+} from '../types/backup-types.js';
+import { generateChecksum } from '../validation/checksum.utils.js';
 
 export interface FormatOptions {
   [key: string]: unknown;

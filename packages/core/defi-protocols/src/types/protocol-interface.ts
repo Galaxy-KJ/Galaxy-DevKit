@@ -17,7 +17,7 @@ import {
   LiquidityPool,
   ProtocolConfig,
   ProtocolType
-} from './defi-types';
+} from './defi-types.js';
 
 /**
  * Base interface for all DeFi protocol implementations

@@ -16,14 +16,14 @@ import {
   QRCodeOptions,
   PaperWalletOptions,
   MnemonicBackup,
-} from '../types/backup-types';
-import { EncryptedJsonFormat } from '../formats/encrypted-json.format';
-import { QRCodeFormat, QRCodeBackup } from '../formats/qr-code.format';
-import { PaperWalletFormat, PaperWalletBackup } from '../formats/paper-wallet.format';
-import { MnemonicFormat } from '../formats/mnemonic.format';
-import { ShamirManager, ShamirSplitOptions } from '../shamir/shamir-manager';
-import { BackupValidator } from '../validation/backup-validator';
-import { InvisibleWallet } from '../../types/wallet.types';
+} from '../types/backup-types.js';
+import { EncryptedJsonFormat } from '../formats/encrypted-json.format.js';
+import { QRCodeFormat, QRCodeBackup } from '../formats/qr-code.format.js';
+import { PaperWalletFormat, PaperWalletBackup } from '../formats/paper-wallet.format.js';
+import { MnemonicFormat } from '../formats/mnemonic.format.js';
+import { ShamirManager, ShamirSplitOptions } from '../shamir/shamir-manager.js';
+import { BackupValidator } from '../validation/backup-validator.js';
+import { InvisibleWallet } from '../../types/wallet.types.js';
 
 export interface CreateBackupOptions extends BackupOptions {
   kdfParams?: Record<string, unknown>;

@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { PriceData } from '../types/oracle-types';
+import { PriceData } from '../types/oracle-types.js';
 
 /**
  * Outlier detection method

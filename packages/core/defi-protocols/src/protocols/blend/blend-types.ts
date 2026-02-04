@@ -6,7 +6,7 @@
  * @since 2024-01-29
  */
 
-import { Asset } from '../../types/defi-types';
+import { Asset } from '../../types/defi-types.js';
 
 /**
  * Blend pool configuration

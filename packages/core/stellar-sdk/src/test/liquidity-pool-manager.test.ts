@@ -3,10 +3,10 @@
  * @description Tests for pool deposits, withdrawals, queries, and analytics
  */
 
-import { LiquidityPoolManager } from '../liquidity-pools/liquidity-pool-manager';
+import { LiquidityPoolManager } from '../liquidity-pools/liquidity-pool-manager.js';
 import { Asset, Horizon } from '@stellar/stellar-sdk';
-import { Wallet } from '../types/stellar-types';
-import { LiquidityPoolDeposit, LiquidityPoolWithdraw } from '../liquidity-pools/types';
+import { Wallet } from '../types/stellar-types.js';
+import { LiquidityPoolDeposit, LiquidityPoolWithdraw } from '../liquidity-pools/types.js';
 
 // Mock dependencies
 jest.mock('../utils/encryption.utils', () => ({

@@ -17,8 +17,8 @@ import {
   toStellarPrecision,
   assetsEqual,
   sortAssets,
-} from '../liquidity-pools/helpers';
-import { LiquidityPool } from '../liquidity-pools/types';
+} from '../liquidity-pools/helpers.js';
+import { LiquidityPool } from '../liquidity-pools/types.js';
 
 describe('Liquidity Pool Helpers', () => {
   // Valid Stellar testnet public keys for issuers

@@ -7,7 +7,7 @@
  */
 
 // import { useState, useEffect, useCallback } from 'react';
-import { StellarService } from '../services/stellar-service';
+import { StellarService } from '../services/stellar-service.js';
 import {
   Wallet,
   WalletConfig,
@@ -17,14 +17,14 @@ import {
   PaymentParams,
   PaymentResult,
   TransactionInfo,
-} from '../types/stellar-types';
+} from '../types/stellar-types.js';
 import type {
   CreateClaimableBalanceParams,
   ClaimBalanceParams,
   QueryClaimableBalancesParams,
   ClaimableBalanceResult,
   ClaimableBalance,
-} from '../claimable-balances/types';
+} from '../claimable-balances/types.js';
 import type {
   LiquidityPool,
   LiquidityPoolDeposit,
@@ -34,7 +34,7 @@ import type {
   PoolShare,
   DepositEstimate,
   WithdrawEstimate,
-} from '../liquidity-pools/types';
+} from '../liquidity-pools/types.js';
 
 /**
  * Custom hook for Stellar operations
