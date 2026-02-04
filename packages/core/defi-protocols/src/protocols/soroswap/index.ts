@@ -6,18 +6,18 @@
  * @since 2024-01-30
  */
 
-export { SoroswapProtocol } from './soroswap-protocol';
+export { SoroswapProtocol } from './soroswap-protocol.js';
 export type {
   SoroswapPairInfo,
   SoroswapRouteInfo,
   SoroswapPoolStats,
   SoroswapEvent
-} from './soroswap-types';
-export { SoroswapEventType } from './soroswap-types';
-export { registerSoroswapProtocol } from './soroswap-registration';
+} from './soroswap-types.js';
+export { SoroswapEventType } from './soroswap-types.js';
+export { registerSoroswapProtocol } from './soroswap-registration.js';
 export {
   SOROSWAP_TESTNET_CONFIG,
   SOROSWAP_MAINNET_CONFIG,
   SOROSWAP_DEFAULT_FEE,
   getSoroswapConfig
-} from './soroswap-config';
+} from './soroswap-config.js';

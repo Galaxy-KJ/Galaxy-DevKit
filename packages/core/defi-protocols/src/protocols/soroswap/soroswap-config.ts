@@ -6,7 +6,7 @@
  * @since 2024-01-30
  */
 
-import { ProtocolConfig } from '../../types/defi-types';
+import { ProtocolConfig } from '../../types/defi-types.js';
 
 /**
  * Default swap fee for Soroswap (Uniswap V2 model: 0.3%)

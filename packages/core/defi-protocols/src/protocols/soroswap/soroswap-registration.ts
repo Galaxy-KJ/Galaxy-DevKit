@@ -6,8 +6,8 @@
  * @since 2024-01-30
  */
 
-import { getProtocolFactory } from '../../services/protocol-factory';
-import { SoroswapProtocol } from './soroswap-protocol';
+import { getProtocolFactory } from '../../services/protocol-factory.js';
+import { SoroswapProtocol } from './soroswap-protocol.js';
 
 /**
  * Register Soroswap protocol with the factory

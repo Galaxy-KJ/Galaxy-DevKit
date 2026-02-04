@@ -6,9 +6,9 @@
  * @since 2024-01-30
  */
 
-import { SoroswapProtocol } from '../soroswap-protocol';
-import { Asset, ProtocolConfig } from '../../../types/defi-types';
-import { SOROSWAP_TESTNET_CONFIG } from '../soroswap-config';
+import { SoroswapProtocol } from '../soroswap-protocol.js';
+import { Asset, ProtocolConfig } from '../../../types/defi-types.js';
+import { SOROSWAP_TESTNET_CONFIG } from '../soroswap-config.js';
 
 /**
  * Example: Initialize Soroswap Protocol
@@ -75,9 +75,9 @@ async function getAllPairsExample(): Promise<void> {
  */
 async function factoryExample(): Promise<void> {
   // Import registers Soroswap with the factory automatically
-  await import('../soroswap-registration');
+  await import('../soroswap-registration.js');
 
-  const { getProtocolFactory } = await import('../../../services/protocol-factory');
+  const { getProtocolFactory } = await import('../../../services/protocol-factory.js');
   const factory = getProtocolFactory();
 
   console.log('Supported protocols:', factory.getSupportedProtocols());

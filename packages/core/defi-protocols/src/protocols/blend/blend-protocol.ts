@@ -863,24 +863,6 @@ export class BlendProtocol extends BaseProtocol {
 
 
   /**
-   * Parse health factor data from simulation result
-   * @private
-   * @param {rpc.Api.SimulateTransactionResponse} simulatedTx - Simulated transaction response
-   * @returns {{ value: string; liquidationThreshold: string; maxLTV: string; isHealthy: boolean }}
-   */
-  private parseHealthFactorData(
-    simulatedTx: rpc.Api.SimulateTransactionResponse
-  ): { value: string; liquidationThreshold: string; maxLTV: string; isHealthy: boolean } {
-    // In a real implementation, parse actual health factor data from simulation result
-    return {
-      value: '0',
-      liquidationThreshold: '0.85',
-      maxLTV: '0.75',
-      isHealthy: true
-    };
-  }
-
-  /**
    * Parse liquidation result
    * @private
    * @param {rpc.Api.GetTransactionResponse} result - Transaction result

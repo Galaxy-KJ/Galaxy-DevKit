@@ -6,7 +6,7 @@
  * @since 2024-01-30
  */
 
-import { Asset } from '../../types/defi-types';
+import { Asset } from '../../types/defi-types.js';
 
 /**
  * Soroswap pair information

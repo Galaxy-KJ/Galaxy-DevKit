@@ -11,7 +11,7 @@ import {
   rpc
 } from '@stellar/stellar-sdk';
 
-import { BaseProtocol } from '../base-protocol';
+import { BaseProtocol } from '../base-protocol.js';
 import {
   Asset,
   TransactionResult,
@@ -23,11 +23,11 @@ import {
   ProtocolType,
   SwapQuote,
   LiquidityPool
-} from '../../types/defi-types';
-import { InvalidOperationError } from '../../errors';
+} from '../../types/defi-types.js';
+import { InvalidOperationError } from '../../errors/index.js';
 
-import { SoroswapPairInfo } from './soroswap-types';
-import { SOROSWAP_DEFAULT_FEE } from './soroswap-config';
+import { SoroswapPairInfo } from './soroswap-types.js';
+import { SOROSWAP_DEFAULT_FEE } from './soroswap-config.js';
 
 /**
  * Soroswap Protocol implementation
