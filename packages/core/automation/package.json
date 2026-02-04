@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/core-automation",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Galaxy Automation System - Automated trading and DeFi operations",
   "type": "module",
   "main": "dist/index.js",
@@ -15,8 +15,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@galaxy-kj/core-invisible-wallet": "^2.1.0",
-    "@galaxy-kj/core-stellar-sdk": "^2.1.0",
+    "@galaxy-kj/core-invisible-wallet": "^3.0.0",
+    "@galaxy-kj/core-stellar-sdk": "^3.0.0",
     "@supabase/supabase-js": "^2.38.0",
     "node-cron": "^3.0.3"
   },

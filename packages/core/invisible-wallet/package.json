@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/core-invisible-wallet",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Galaxy Invisible Wallet System - Seamless wallet management for users",
   "type": "module",
   "main": "dist/index.js",
