@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/core-oracles",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "Galaxy Oracles - Price oracle aggregation system for Stellar DeFi protocols",
   "type": "module",
   "main": "dist/index.js",

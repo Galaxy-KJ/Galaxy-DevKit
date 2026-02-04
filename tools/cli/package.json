@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/cli",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "Galaxy CLI - Command line tools for Galaxy DevKit",
   "type": "module",
   "main": "dist/tools/cli/src/index.js",
@@ -20,8 +20,8 @@
     "start:ts": "tsx src/index.ts"
   },
   "dependencies": {
-    "@galaxy-kj/core-defi-protocols": "^4.0.0",
-    "@galaxy-kj/core-oracles": "^4.0.0",
+    "@galaxy-kj/core-defi-protocols": "^5.0.0",
+    "@galaxy-kj/core-oracles": "^5.0.0",
     "@stellar/stellar-sdk": "^14.5.0",
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.11.0",
