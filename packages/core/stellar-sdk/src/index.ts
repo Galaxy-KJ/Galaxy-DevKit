@@ -17,7 +17,7 @@ export type {
   PaymentResult,
   TransactionInfo,
   Network,
-  Asset,
+  Asset as AssetCode,
   TransactionStatus,
 } from './types/stellar-types.js';
 
@@ -142,7 +142,25 @@ export {
   Networks,
   Operation,
   BASE_FEE,
+  Asset,
+  Horizon,
 } from '@stellar/stellar-sdk';
+
+// Export path payments (path finding, swap execution, slippage protection)
+export type {
+  PaymentPath,
+  SwapParams,
+  SwapResult,
+  SwapEstimate,
+  SwapType,
+  StrictSendPathParams,
+  StrictReceivePathParams,
+  SlippageProtection,
+  SwapAnalyticsRecord,
+  PathAnalytics,
+  PathCacheEntry,
+} from './path-payments/types';
+export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments';
 
 // Export sponsored reserves module
 export * from './sponsored-reserves/index.js';

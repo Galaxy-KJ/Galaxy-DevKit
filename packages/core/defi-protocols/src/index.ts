@@ -16,6 +16,7 @@ export { BaseProtocol } from './protocols/base-protocol.js';
 
 // Protocol Implementations
 export * from './protocols/blend/index.js';
+export * from './protocols/soroswap/index.js';
 
 // Services
 export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory.js';

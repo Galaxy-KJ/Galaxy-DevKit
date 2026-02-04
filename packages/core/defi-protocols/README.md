@@ -10,7 +10,7 @@
 
 `@galaxy/core-defi-protocols` provides a unified interface for interacting with DeFi protocols on the Stellar blockchain. It abstracts protocol-specific implementations behind a common interface, making it easy to integrate multiple protocols with consistent patterns.
 
-### Supported Protocols (Planned)
+### Supported Protocols
 
 - **Blend Protocol** - Lending and borrowing
 - **Soroswap** - Decentralized exchange
@@ -271,6 +271,63 @@ const health = await protocol.getHealthFactor('GBRPY...OX2H');
 console.log('Is Healthy:', health.isHealthy);
 console.log('Liquidation Threshold:', health.liquidationThreshold);
 ```
+
+## 🔄 Soroswap Protocol (DEX)
+
+Soroswap is a Uniswap V2-style decentralized exchange on Stellar. It supports token swaps and liquidity pool management.
+
+### Quick Start
+
+```typescript
+import {
+  SoroswapProtocol,
+  SOROSWAP_TESTNET_CONFIG,
+  getSoroswapConfig
+} from '@galaxy/core-defi-protocols';
+
+// Initialize Soroswap
+const soroswap = new SoroswapProtocol(SOROSWAP_TESTNET_CONFIG);
+await soroswap.initialize();
+
+// Get protocol stats
+const stats = await soroswap.getStats();
+console.log('TVL:', stats.tvl);
+
+// Get pair information
+const pairInfo = await soroswap.getPairInfo(tokenAAddress, tokenBAddress);
+console.log('Reserves:', pairInfo.reserve0, pairInfo.reserve1);
+
+// Get all registered pairs
+const pairs = await soroswap.getAllPairs();
+```
+
+### Factory Usage
+
+```typescript
+import { getProtocolFactory, SOROSWAP_TESTNET_CONFIG } from '@galaxy/core-defi-protocols';
+
+// Soroswap auto-registers with the factory on import
+const factory = getProtocolFactory();
+const soroswap = factory.createProtocol(SOROSWAP_TESTNET_CONFIG);
+await soroswap.initialize();
+```
+
+### DEX Operations (Coming Soon)
+
+The following operations are stubbed and will be implemented in upcoming issues:
+
+- `swap()` — Token swaps via the router contract (#27)
+- `getSwapQuote()` — Get swap quotes with price impact (#28)
+- `addLiquidity()` — Add liquidity to pools (#29)
+- `removeLiquidity()` — Remove liquidity from pools (#30)
+- `getLiquidityPool()` — Get pool information (#29)
+
+### Contract Addresses
+
+| Network | Router | Factory |
+|---------|--------|---------|
+| Testnet | `CCJUD55AG...ZE7BRD` | `CDP3HMUH6...RJTBY` |
+| Mainnet | `CAG5LRYQ5...AJDDH` | `CA4HEQTL2...7AW2` |
 
 ## 🛠️ Development
 
