@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/api-websocket",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Galaxy WebSocket API - Real-time WebSocket API for Galaxy DevKit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

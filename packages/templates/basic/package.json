@@ -1,6 +1,6 @@
 {
   "name": "@galaxy-kj/template-basic",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Basic Stellar DApp template for Galaxy DevKit",
   "main": "dist/index.js",
   "scripts": {
@@ -13,9 +13,9 @@
     "clean": "rm -rf .next dist"
   },
   "dependencies": {
-    "@galaxy-kj/core-invisible-wallet": "^3.0.0",
-    "@galaxy-kj/core-stellar-sdk": "^3.0.0",
-    "@galaxy-kj/sdk-typescript": "^3.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^4.0.0",
+    "@galaxy-kj/core-stellar-sdk": "^4.0.0",
+    "@galaxy-kj/sdk-typescript": "^4.0.0",
     "axios": "^1.6.2",
     "framer-motion": "^12.5.0",
     "next": "^15.3.1",
