@@ -24,7 +24,7 @@
     "@galaxy-kj/core-oracles": "^5.0.0",
     "@stellar/stellar-sdk": "^14.5.0",
     "blessed": "^0.1.81",
-    "blessed-contrib": "^4.11.0",
+    "blessed-contrib": "^1.0.11",
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.0.0",
@@ -72,5 +72,5 @@
     "README.md",
     "LICENSE"
   ],
-  "gitHead": "c271b6c1dc8df2e240d54da2211b4a720ccfec26"
+  "gitHead": "85e010448d26e31ad3724c51660a7e402c561cc2"
 }
