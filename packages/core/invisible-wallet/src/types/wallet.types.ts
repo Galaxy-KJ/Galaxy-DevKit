@@ -11,6 +11,30 @@
 import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
 
 
+/**
+ * Configuration for a supported asset (e.g., USDC)
+ */
+export interface AssetConfig {
+  code: string;
+  issuer: string;
+  /** Automatically add trustline on wallet creation */
+  autoTrustline?: boolean;
+  /** Amount of XLM to swap into this asset on setup (e.g., '10') */
+  initialSwapAmount?: string;
+}
+
+/** Pre-configured USDC issuers per network */
+export const USDC_CONFIG = {
+  testnet: {
+    code: 'USDC',
+    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+  },
+  mainnet: {
+    code: 'USDC',
+    issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+  },
+} as const;
+
 export interface InvisibleWalletConfig {
   userId: string;
   email?: string;
@@ -18,6 +42,8 @@ export interface InvisibleWalletConfig {
   autoBackup?: boolean;
   sessionTimeout?: number;
   biometricEnabled?: boolean;
+  /** Assets to enable on wallet creation (trustlines + optional initial swap) */
+  enabledAssets?: AssetConfig[];
 }
 
 
@@ -146,9 +172,63 @@ export enum WalletEventType {
   UNLOCKED = 'unlocked',
   LOCKED = 'locked',
   TRANSACTION_SENT = 'transaction_sent',
+  TRUSTLINE_ADDED = 'trustline_added',
+  SWAP_EXECUTED = 'swap_executed',
+  TRANSACTION_SIGNED = 'transaction_signed',
   BACKUP_CREATED = 'backup_created',
   PASSWORD_CHANGED = 'password_changed',
   RECOVERY_INITIATED = 'recovery_initiated',
+}
+
+/**
+ * Parameters for adding a trustline to an invisible wallet
+ */
+export interface TrustlineParams {
+  assetCode: string;
+  assetIssuer: string;
+  limit?: string;
+}
+
+/**
+ * Parameters for executing a swap from an invisible wallet
+ */
+export interface InvisibleSwapParams {
+  sendAssetCode: string;
+  sendAssetIssuer?: string;
+  destAssetCode: string;
+  destAssetIssuer?: string;
+  amount: string;
+  type: 'strict_send' | 'strict_receive';
+  maxSlippage?: number;
+}
+
+/**
+ * Result of a swap execution from the invisible wallet
+ */
+export interface InvisibleSwapResult {
+  inputAmount: string;
+  outputAmount: string;
+  price: string;
+  priceImpact: string;
+  transactionHash: string;
+  highImpactWarning?: boolean;
+}
+
+/**
+ * Result of signing an external transaction
+ */
+export interface SignTransactionResult {
+  signedXdr: string;
+  hash: string;
+}
+
+/**
+ * Result of setting up a wallet with USDC support
+ */
+export interface SetupWithUsdcResult {
+  wallet: WalletCreationResult;
+  trustlineHash: string;
+  swap?: InvisibleSwapResult;
 }
 
 

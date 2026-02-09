@@ -1,41 +1,172 @@
-# @galaxy/core-invisible-wallet
+# @galaxy-kj/core-invisible-wallet
 
-Invisible Wallet System for Galaxy DevKit - Seamless wallet management with enhanced backup/restore encryption.
+Invisible Wallet System for Galaxy DevKit - Seamless Stellar wallet management with USDC support, path payment swaps, and encrypted backup/restore.
 
 ## Overview
 
-The Invisible Wallet provides a user-friendly wallet management system that abstracts away the complexity of handling private keys. Keys are encrypted with industry-standard encryption and can be backed up in multiple formats.
+The Invisible Wallet provides a user-friendly wallet management system that abstracts away the complexity of handling private keys on the Stellar network. Users can create wallets, swap between XLM and USDC, sign external transactions (Trustless Work, Soroban dApps), and back up their keys with industry-standard encryption.
 
 ## Features
 
+- **Wallet Management**: Create, unlock, lock, and manage Stellar wallets
+- **XLM / USDC Swaps**: Built-in `swapXlmUsdc()` with pre-configured USDC issuers (testnet & mainnet)
+- **Trustline Management**: Add trustlines for any Stellar asset (USDC, EURC, etc.)
+- **External Transaction Signing**: Sign XDR transactions from Trustless Work, Soroban dApps, and other services
 - **AES-256-GCM Encryption**: Military-grade encryption for private keys
 - **Multiple KDF Support**: PBKDF2 and Argon2id for key derivation
 - **Multiple Backup Formats**: Encrypted JSON, QR Code, Paper Wallet, Mnemonic
 - **Shamir Secret Sharing**: Split backups across multiple parties
-- **Legacy Format Migration**: Automatic migration from older backup formats
-- **BIP39 Mnemonic Support**: Standard 12/24 word recovery phrases
+- **Session Management**: Time-limited sessions with automatic expiration
 
 ## Installation
 
 ```bash
-npm install @galaxy/core-invisible-wallet
+npm install @galaxy-kj/core-invisible-wallet
 ```
 
 ## Quick Start
 
+### Creating a Wallet
+
+```typescript
+import { InvisibleWalletService } from '@galaxy-kj/core-invisible-wallet';
+
+const networkConfig = {
+  network: 'testnet' as const,
+  horizonUrl: 'https://horizon-testnet.stellar.org',
+  passphrase: 'Test SDF Network ; September 2015',
+};
+
+const walletService = new InvisibleWalletService(networkConfig);
+
+const { wallet, session } = await walletService.createWallet(
+  {
+    userId: 'user_123',
+    email: 'user@example.com',
+    network: networkConfig,
+  },
+  'SecurePassword123!'
+);
+
+console.log('Public Key:', wallet.publicKey);
+console.log('Session Token:', session.sessionToken);
+```
+
+### Swapping XLM to USDC
+
+The `swapXlmUsdc` method uses pre-configured USDC issuers per network, no need to specify asset issuers:
+
+```typescript
+// XLM -> USDC
+const result = await walletService.swapXlmUsdc(
+  wallet.id,
+  session.sessionToken,
+  'xlm_to_usdc',
+  '50',                    // send 50 XLM
+  'SecurePassword123!'
+);
+
+console.log(`Swapped ${result.inputAmount} XLM -> ${result.outputAmount} USDC`);
+console.log(`Price: ${result.price}, Impact: ${result.priceImpact}%`);
+
+// USDC -> XLM
+const reverse = await walletService.swapXlmUsdc(
+  wallet.id,
+  session.sessionToken,
+  'usdc_to_xlm',
+  '10',                    // send 10 USDC
+  'SecurePassword123!',
+  2.5                      // optional: max slippage 2.5% (default 1%)
+);
+```
+
+### Generic Swap (any asset pair)
+
+For swapping between arbitrary assets, use the `swap` method:
+
+```typescript
+const result = await walletService.swap(
+  wallet.id,
+  session.sessionToken,
+  {
+    sendAssetCode: 'XLM',
+    destAssetCode: 'EURC',
+    destAssetIssuer: 'GDHU...', // issuer public key
+    amount: '100',
+    type: 'strict_send',       // or 'strict_receive'
+    maxSlippage: 1,            // 1%
+  },
+  'SecurePassword123!'
+);
+```
+
+### Adding a Trustline
+
+Before receiving any non-native asset (USDC, EURC, etc.), you need a trustline:
+
+```typescript
+await walletService.addTrustline(
+  wallet.id,
+  session.sessionToken,
+  {
+    assetCode: 'USDC',
+    assetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+    limit: '10000', // optional
+  },
+  'SecurePassword123!'
+);
+```
+
+### Signing External Transactions (Trustless Work, Soroban)
+
+Sign unsigned XDR transactions from external services:
+
+```typescript
+// Example: signing a Trustless Work escrow transaction
+const { signedXdr, hash } = await walletService.signTransaction(
+  wallet.id,
+  session.sessionToken,
+  unsignedXdr,     // XDR string from useFundEscrow, Soroban, etc.
+  'SecurePassword123!'
+);
+
+console.log('Signed XDR:', signedXdr);
+console.log('Tx Hash:', hash);
+```
+
+### Checking Balances
+
+```typescript
+const xlmBalance = await walletService.getBalance(wallet.id, 'XLM');
+const usdcBalance = await walletService.getBalance(wallet.id, 'USDC');
+
+console.log(`XLM: ${xlmBalance.balance}`);
+console.log(`USDC: ${usdcBalance.balance}`);
+```
+
+## USDC Configuration
+
+Pre-configured USDC issuers are available via `USDC_CONFIG`:
+
+```typescript
+import { USDC_CONFIG } from '@galaxy-kj/core-invisible-wallet';
+
+// Testnet
+USDC_CONFIG.testnet.issuer // GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+
+// Mainnet (Circle)
+USDC_CONFIG.mainnet.issuer // GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+```
+
+## Backup & Restore
+
 ### Creating a Wallet Backup
 
 ```typescript
-import {
-  InvisibleWalletService,
-  BackupManager,
-  CreateBackupOptions
-} from '@galaxy/core-invisible-wallet';
+import { BackupManager } from '@galaxy-kj/core-invisible-wallet';
 
-// Create backup manager
 const backupManager = new BackupManager();
 
-// Create encrypted JSON backup with Argon2
 const backup = await backupManager.createBackup(wallet, 'securePassword', {
   format: 'encrypted-json',
   kdf: 'Argon2',
@@ -48,11 +179,10 @@ console.log('Backup created:', backup.metadata.checksum);
 ### Restoring from Backup
 
 ```typescript
-import { RestoreManager } from '@galaxy/core-invisible-wallet';
+import { RestoreManager } from '@galaxy-kj/core-invisible-wallet';
 
 const restoreManager = new RestoreManager();
 
-// Restore from encrypted backup
 const result = await restoreManager.restoreFromEncryptedJson(
   backup,
   'securePassword',
@@ -69,18 +199,11 @@ if (result.success) {
 Split your backup across multiple trusted parties:
 
 ```typescript
-import { BackupManager, RestoreManager } from '@galaxy/core-invisible-wallet';
-
-const backupManager = new BackupManager();
-const restoreManager = new RestoreManager();
-
-// Create Shamir backup with 2-of-3 threshold
 const shamirBackup = await backupManager.createShamirBackup(wallet, 'password', {
   threshold: 2,
   totalShares: 3
 });
 
-// Distribute shares to different parties
 const shares = backupManager.distributeShares(shamirBackup);
 shares.forEach((item, i) => {
   console.log(`Share ${i + 1}:\n${item.instructions}`);
@@ -95,99 +218,14 @@ const restored = await restoreManager.restoreFromShamirShares(
 
 ## Backup Formats
 
-### Encrypted JSON (Default)
-
-The primary backup format with full metadata and checksums.
-
-```typescript
-const backup = await backupManager.createBackup(wallet, password, {
-  format: 'encrypted-json',
-  kdf: 'Argon2' // or 'PBKDF2'
-});
-
-// Backup structure
-interface EncryptedBackup {
-  version: string;
-  encryptionAlgorithm: 'AES-256-GCM';
-  kdf: 'PBKDF2' | 'Argon2';
-  kdfParams: { /* salt, iterations, etc */ };
-  iv: string;
-  authTag: string;
-  ciphertext: string;
-  metadata: {
-    created: string;
-    accounts: number;
-    checksum: string;
-  };
-}
-```
-
-### QR Code Backup
-
-Mobile-friendly format for easy scanning:
-
-```typescript
-const qrBackup = await backupManager.createBackup(wallet, password, {
-  format: 'qr-code',
-  kdf: 'Argon2',
-  qrOptions: {
-    size: 300,
-    errorCorrectionLevel: 'H'
-  }
-});
-
-// Use qrBackup.qrDataUrl in an <img> tag
-```
-
-### Paper Wallet
-
-Printable HTML format for cold storage:
-
-```typescript
-const paperBackup = await backupManager.createBackup(wallet, password, {
-  format: 'paper-wallet',
-  kdf: 'Argon2',
-  paperOptions: {
-    includeQR: true,
-    includeInstructions: true,
-    theme: 'light'
-  }
-});
-
-// Save paperBackup.html to a file and print
-```
-
-### Mnemonic Backup
-
-BIP39 standard recovery phrase:
-
-```typescript
-const mnemonicBackup = await backupManager.createBackup(wallet, password, {
-  format: 'mnemonic',
-  mnemonicStrength: 256 // 24 words
-});
-
-// Restore from mnemonic phrase
-const restored = await restoreManager.restoreFromMnemonicPhrase(
-  'abandon ability able about above absent absorb...',
-  0 // account index
-);
-```
+| Format | Description |
+|--------|-------------|
+| `encrypted-json` | Primary format with full metadata and checksums |
+| `qr-code` | Mobile-friendly format for easy scanning |
+| `paper-wallet` | Printable HTML format for cold storage |
+| `mnemonic` | BIP39 standard 12/24 word recovery phrase |
 
 ## KDF Options
-
-### PBKDF2 (Compatibility)
-
-```typescript
-{
-  kdf: 'PBKDF2',
-  kdfParams: {
-    iterations: 100000,
-    keyLength: 32,
-    digest: 'sha256'
-  }
-}
-```
 
 ### Argon2id (Recommended)
 
@@ -204,46 +242,39 @@ const restored = await restoreManager.restoreFromMnemonicPhrase(
 }
 ```
 
-## Legacy Migration
-
-Automatically migrate from the old `salt:iv:authTag:ciphertext` format:
+### PBKDF2 (Compatibility)
 
 ```typescript
-const restoreManager = new RestoreManager();
-
-// Old format string
-const legacyBackup = 'base64salt:base64iv:base64authTag:base64ciphertext';
-
-// Auto-restore with migration
-const result = await restoreManager.restoreFromLegacy(
-  legacyBackup,
-  'oldPassword',
-  { migrateFormat: true }
-);
-
-if (result.migrated) {
-  console.log('Backup migrated from legacy format');
+{
+  kdf: 'PBKDF2',
+  kdfParams: {
+    iterations: 100000,
+    keyLength: 32,
+    digest: 'sha256'
+  }
 }
-```
-
-## Validation
-
-```typescript
-import { BackupValidator } from '@galaxy/core-invisible-wallet';
-
-const validator = new BackupValidator();
-
-// Validate backup structure
-const validation = validator.validateEncryptedBackup(backup);
-if (!validation.valid) {
-  console.error('Validation errors:', validation.errors);
-}
-
-// Verify checksum
-const checksumValid = validator.validateChecksum(backup);
 ```
 
 ## API Reference
+
+### InvisibleWalletService
+
+| Method | Description |
+|--------|-------------|
+| `createWallet(config, password, deviceInfo?)` | Create a new invisible wallet |
+| `createWalletFromMnemonic(config, mnemonic, password, deviceInfo?)` | Import wallet from BIP39 mnemonic |
+| `unlockWallet(walletId, password, deviceInfo?)` | Unlock wallet and get session |
+| `lockWallet(walletId, sessionToken?)` | Lock wallet / revoke sessions |
+| `getBalance(walletId, asset?)` | Get balance for an asset |
+| `getAccountInfo(walletId)` | Get full Stellar account info |
+| `sendPayment(walletId, sessionToken, params, password)` | Send a payment |
+| `addTrustline(walletId, sessionToken, params, password)` | Add asset trustline |
+| `swapXlmUsdc(walletId, sessionToken, direction, amount, password, maxSlippage?)` | Swap between XLM and USDC |
+| `swap(walletId, sessionToken, params, password)` | Swap any asset pair via path payments |
+| `signTransaction(walletId, sessionToken, xdr, password)` | Sign external XDR transaction |
+| `getTransactionHistory(walletId, limit?)` | Get transaction history |
+| `changePassword(walletId, oldPassword, newPassword)` | Change wallet password |
+| `exportBackup(walletId, password)` | Export encrypted backup |
 
 ### BackupManager
 
@@ -251,9 +282,6 @@ const checksumValid = validator.validateChecksum(backup);
 |--------|-------------|
 | `createBackup(wallet, password, options)` | Create backup in any format |
 | `createEncryptedJsonBackup(data, password, options)` | Create encrypted JSON backup |
-| `createQRCodeBackup(data, password, options)` | Create QR code backup |
-| `createPaperWalletBackup(data, password, options)` | Create paper wallet |
-| `createMnemonicBackup(data, password, options)` | Create mnemonic backup |
 | `createShamirBackup(wallet, password, options)` | Create Shamir split backup |
 | `validateBackup(backup)` | Validate backup structure |
 | `getBackupInfo(backup)` | Get backup metadata |
@@ -265,13 +293,8 @@ const checksumValid = validator.validateChecksum(backup);
 | Method | Description |
 |--------|-------------|
 | `restoreFromEncryptedJson(backup, password, options)` | Restore from encrypted JSON |
-| `restoreFromQRCode(backup, password, options)` | Restore from QR backup |
-| `restoreFromPaperWallet(backup, password, options)` | Restore from paper wallet |
-| `restoreFromMnemonic(backup, password, options)` | Restore from mnemonic backup |
-| `restoreFromMnemonicPhrase(mnemonic, accountIndex)` | Restore from raw mnemonic |
 | `restoreFromShamirShares(shares, password, options)` | Restore from Shamir shares |
-| `restoreFromLegacy(data, password, options)` | Restore from legacy format |
-| `autoRestore(data, password, options)` | Auto-detect and restore |
+| `autoRestore(data, password, options)` | Auto-detect format and restore |
 
 ### ShamirManager
 
@@ -283,6 +306,13 @@ const checksumValid = validator.validateChecksum(backup);
 | `createShareCard(share)` | Create distributable card |
 | `parseShareCard(cardData)` | Parse share from card |
 
+## Environment Variables
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
+
 ## Security Considerations
 
 1. **Never store unencrypted private keys**
@@ -290,7 +320,7 @@ const checksumValid = validator.validateChecksum(backup);
 3. **Verify checksums** before restoring
 4. **Distribute Shamir shares** to geographically separate locations
 5. **Test restoration** before relying on a backup
-6. **Use strong passwords** (minimum 16 characters recommended)
+6. **Use strong passwords** (minimum 8 characters, uppercase, lowercase, numbers)
 
 ## License
 

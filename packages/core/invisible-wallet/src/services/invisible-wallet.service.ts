@@ -19,6 +19,11 @@ import {
   WalletUnlockResult,
   WalletEventType,
   DeviceInfo,
+  TrustlineParams,
+  InvisibleSwapParams,
+  InvisibleSwapResult,
+  SignTransactionResult,
+  USDC_CONFIG,
 } from '../types/wallet.types.js';
 import {
   PaymentParams,
@@ -30,17 +35,28 @@ import {
   Wallet,
 } from '../../../stellar-sdk/src/types/stellar-types.js';
 import { validatePassword } from '../utils/encryption.utils.js';
+import { PathPaymentManager } from '../../../stellar-sdk/src/path-payments/path-payment-manager.js';
+import { Asset as StellarAsset, Keypair, TransactionBuilder, Horizon } from '@stellar/stellar-sdk';
 
 export class InvisibleWalletService {
   private keyManagement: KeyManagementService;
   private stellarService: StellarService;
   private networkUtils: NetworkUtils;
   private supabase = supabaseClient;
+  private networkConfig: NetworkConfig;
+  private server: Horizon.Server;
+  private pathPaymentManager: PathPaymentManager;
 
   constructor(networkConfig: NetworkConfig, sessionTimeout?: number) {
     this.keyManagement = new KeyManagementService(sessionTimeout);
     this.stellarService = new StellarService(networkConfig);
     this.networkUtils = new NetworkUtils();
+    this.networkConfig = networkConfig;
+    this.server = new Horizon.Server(networkConfig.horizonUrl);
+    this.pathPaymentManager = new PathPaymentManager(
+      this.server,
+      networkConfig.passphrase
+    );
   }
 
   /**
@@ -498,6 +514,232 @@ export class InvisibleWalletService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', walletId);
+  }
+
+  /**
+   * Adds a trustline to the wallet (e.g., for USDC)
+   * @param walletId - Wallet ID
+   * @param sessionToken - Session token
+   * @param params - Trustline parameters (assetCode, assetIssuer, optional limit)
+   * @param password - Wallet password
+   * @returns Payment result with transaction hash
+   */
+  async addTrustline(
+    walletId: string,
+    sessionToken: string,
+    params: TrustlineParams,
+    password: string
+  ): Promise<PaymentResult> {
+    const validation = await this.keyManagement.validateSession(sessionToken);
+    if (!validation.valid) {
+      throw new Error('Invalid or expired session');
+    }
+
+    const wallet = await this.getWalletById(walletId);
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+
+    const stellarWallet: Wallet = {
+      id: wallet.id,
+      publicKey: wallet.publicKey,
+      privateKey: wallet.encryptedPrivateKey,
+      network: wallet.network,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+      metadata: wallet.metadata,
+    };
+
+    const result = await this.stellarService.addTrustline(
+      stellarWallet,
+      params.assetCode,
+      params.assetIssuer,
+      params.limit,
+      password
+    );
+
+    await this.logWalletEvent(
+      wallet.id,
+      wallet.userId,
+      WalletEventType.TRUSTLINE_ADDED,
+      { assetCode: params.assetCode, assetIssuer: params.assetIssuer, transactionHash: result.hash }
+    );
+
+    return result;
+  }
+
+  /**
+   * Swaps assets using Stellar path payments (e.g., XLM → USDC)
+   * @param walletId - Wallet ID
+   * @param sessionToken - Session token
+   * @param params - Swap parameters
+   * @param password - Wallet password
+   * @returns Swap result with amounts and transaction hash
+   */
+  async swap(
+    walletId: string,
+    sessionToken: string,
+    params: InvisibleSwapParams,
+    password: string
+  ): Promise<InvisibleSwapResult> {
+    const validation = await this.keyManagement.validateSession(sessionToken);
+    if (!validation.valid) {
+      throw new Error('Invalid or expired session');
+    }
+
+    const wallet = await this.getWalletById(walletId);
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+
+    const stellarWallet: Wallet = {
+      id: wallet.id,
+      publicKey: wallet.publicKey,
+      privateKey: wallet.encryptedPrivateKey,
+      network: wallet.network,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+      metadata: wallet.metadata,
+    };
+
+    const sendAsset = params.sendAssetIssuer
+      ? new StellarAsset(params.sendAssetCode, params.sendAssetIssuer)
+      : StellarAsset.native();
+
+    const destAsset = params.destAssetIssuer
+      ? new StellarAsset(params.destAssetCode, params.destAssetIssuer)
+      : StellarAsset.native();
+
+    const swapResult = await this.pathPaymentManager.executeSwap(
+      stellarWallet,
+      {
+        sendAsset,
+        destAsset,
+        amount: params.amount,
+        type: params.type,
+        maxSlippage: params.maxSlippage ?? 1,
+      },
+      password,
+      wallet.publicKey
+    );
+
+    await this.logWalletEvent(
+      wallet.id,
+      wallet.userId,
+      WalletEventType.SWAP_EXECUTED,
+      {
+        sendAsset: params.sendAssetCode,
+        destAsset: params.destAssetCode,
+        inputAmount: swapResult.inputAmount,
+        outputAmount: swapResult.outputAmount,
+        transactionHash: swapResult.transactionHash,
+      }
+    );
+
+    return {
+      inputAmount: swapResult.inputAmount,
+      outputAmount: swapResult.outputAmount,
+      price: swapResult.price,
+      priceImpact: swapResult.priceImpact,
+      transactionHash: swapResult.transactionHash,
+      highImpactWarning: swapResult.highImpactWarning,
+    };
+  }
+
+  /**
+   * Swaps between XLM and USDC using the pre-configured USDC issuer for the current network.
+   * Direction is determined by the `direction` parameter.
+   * @param walletId - Wallet ID
+   * @param sessionToken - Session token
+   * @param direction - 'xlm_to_usdc' or 'usdc_to_xlm'
+   * @param amount - Amount to send
+   * @param password - Wallet password
+   * @param maxSlippage - Max slippage percentage (default 1%)
+   * @returns Swap result
+   */
+  async swapXlmUsdc(
+    walletId: string,
+    sessionToken: string,
+    direction: 'xlm_to_usdc' | 'usdc_to_xlm',
+    amount: string,
+    password: string,
+    maxSlippage?: number
+  ): Promise<InvisibleSwapResult> {
+    const network = this.networkConfig.network as 'testnet' | 'mainnet';
+    const usdc = USDC_CONFIG[network];
+    if (!usdc) {
+      throw new Error(`USDC not configured for network: ${network}`);
+    }
+
+    const params: InvisibleSwapParams =
+      direction === 'xlm_to_usdc'
+        ? {
+            sendAssetCode: 'XLM',
+            destAssetCode: usdc.code,
+            destAssetIssuer: usdc.issuer,
+            amount,
+            type: 'strict_send',
+            maxSlippage,
+          }
+        : {
+            sendAssetCode: usdc.code,
+            sendAssetIssuer: usdc.issuer,
+            destAssetCode: 'XLM',
+            amount,
+            type: 'strict_send',
+            maxSlippage,
+          };
+
+    return this.swap(walletId, sessionToken, params, password);
+  }
+
+  /**
+   * Signs an external transaction XDR (e.g., from Trustless Work, Soroban dApps)
+   * @param walletId - Wallet ID
+   * @param sessionToken - Session token
+   * @param transactionXdr - The unsigned transaction XDR string
+   * @param password - Wallet password
+   * @returns Signed transaction XDR and hash
+   */
+  async signTransaction(
+    walletId: string,
+    sessionToken: string,
+    transactionXdr: string,
+    password: string
+  ): Promise<SignTransactionResult> {
+    const validation = await this.keyManagement.validateSession(sessionToken);
+    if (!validation.valid) {
+      throw new Error('Invalid or expired session');
+    }
+
+    const wallet = await this.getWalletById(walletId);
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+
+    const decryptedKey = this.keyManagement.retrievePrivateKey(
+      wallet.encryptedPrivateKey,
+      password
+    );
+    const keypair = Keypair.fromSecret(decryptedKey);
+
+    const transaction = TransactionBuilder.fromXDR(
+      transactionXdr,
+      this.networkConfig.passphrase
+    );
+    transaction.sign(keypair);
+
+    const signedXdr = transaction.toXDR();
+    const hash = transaction.hash().toString('hex');
+
+    await this.logWalletEvent(
+      wallet.id,
+      wallet.userId,
+      WalletEventType.TRANSACTION_SIGNED,
+      { transactionHash: hash }
+    );
+
+    return { signedXdr, hash };
   }
 
   /**

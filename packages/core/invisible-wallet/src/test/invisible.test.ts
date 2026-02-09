@@ -14,10 +14,22 @@ import type { WalletEventType as _WalletEventType } from '../types/wallet.types.
 import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
 
 // Mock dependencies
+jest.mock('../../../stellar-sdk/src/utils/supabase-client', () => ({
+  supabaseClient: {
+    from: jest.fn().mockReturnThis(),
+    insert: jest.fn().mockReturnThis(),
+    update: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    single: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+  },
+}));
 jest.mock('../services/key-managment.service');
 jest.mock('../../../stellar-sdk/src/services/stellar-service');
 jest.mock('../../../stellar-sdk/src/utils/network-utils');
 jest.mock('../utils/encryption.utils');
+jest.mock('../../../stellar-sdk/src/path-payments/path-payment-manager');
 
 describe('InvisibleWalletService', () => {
   let service: InvisibleWalletService;
@@ -535,6 +547,433 @@ describe('InvisibleWalletService', () => {
 
       await expect(
         service.exportBackup('nonexistent', 'Password123!')
+      ).rejects.toThrow('Wallet not found');
+    });
+  });
+
+  describe('addTrustline', () => {
+    it('should add a trustline successfully', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      mockStellarService.addTrustline = jest.fn().mockResolvedValue({
+        hash: 'trustline_tx_hash',
+        status: 'success',
+        ledger: '12345',
+        createdAt: new Date(),
+      });
+
+      const result = await service.addTrustline(
+        'iwallet_123_abc',
+        'session_token_123',
+        {
+          assetCode: 'USDC',
+          assetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        },
+        'Password123!'
+      );
+
+      expect(result.hash).toBe('trustline_tx_hash');
+      expect(result.status).toBe('success');
+      expect(mockStellarService.addTrustline).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicKey: mockKeypair.publicKey,
+          privateKey: 'encrypted_key_data',
+        }),
+        'USDC',
+        'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        undefined,
+        'Password123!'
+      );
+    });
+
+    it('should throw error for invalid session', async () => {
+      mockKeyManagement.validateSession.mockResolvedValue({ valid: false });
+
+      await expect(
+        service.addTrustline(
+          'iwallet_123_abc',
+          'invalid_token',
+          { assetCode: 'USDC', assetIssuer: 'GISSUER' },
+          'Password123!'
+        )
+      ).rejects.toThrow('Invalid or expired session');
+    });
+
+    it('should throw error if wallet not found', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: { message: 'Not found' },
+      });
+
+      await expect(
+        service.addTrustline(
+          'nonexistent',
+          'session_token_123',
+          { assetCode: 'USDC', assetIssuer: 'GISSUER' },
+          'Password123!'
+        )
+      ).rejects.toThrow('Wallet not found');
+    });
+
+    it('should add trustline with custom limit', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      mockStellarService.addTrustline = jest.fn().mockResolvedValue({
+        hash: 'trustline_tx_hash',
+        status: 'success',
+        ledger: '12345',
+        createdAt: new Date(),
+      });
+
+      await service.addTrustline(
+        'iwallet_123_abc',
+        'session_token_123',
+        {
+          assetCode: 'USDC',
+          assetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+          limit: '10000',
+        },
+        'Password123!'
+      );
+
+      expect(mockStellarService.addTrustline).toHaveBeenCalledWith(
+        expect.any(Object),
+        'USDC',
+        'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+        '10000',
+        'Password123!'
+      );
+    });
+  });
+
+  describe('swap', () => {
+    let mockPathPaymentManager: any;
+
+    beforeEach(() => {
+      mockPathPaymentManager = {
+        executeSwap: jest.fn().mockResolvedValue({
+          path: [],
+          inputAmount: '100',
+          outputAmount: '12.5',
+          price: '0.125',
+          priceImpact: '0.3',
+          transactionHash: 'swap_tx_hash',
+          highImpactWarning: false,
+        }),
+      };
+      (service as any).pathPaymentManager = mockPathPaymentManager;
+    });
+
+    it('should swap XLM to USDC successfully', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      const result = await service.swap(
+        'iwallet_123_abc',
+        'session_token_123',
+        {
+          sendAssetCode: 'XLM',
+          destAssetCode: 'USDC',
+          destAssetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+          amount: '100',
+          type: 'strict_send',
+        },
+        'Password123!'
+      );
+
+      expect(result.inputAmount).toBe('100');
+      expect(result.outputAmount).toBe('12.5');
+      expect(result.transactionHash).toBe('swap_tx_hash');
+      expect(result.highImpactWarning).toBe(false);
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalledWith(
+        expect.objectContaining({ publicKey: mockKeypair.publicKey }),
+        expect.objectContaining({
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 1,
+        }),
+        'Password123!',
+        mockKeypair.publicKey
+      );
+    });
+
+    it('should swap USDC to XLM (reverse)', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      await service.swap(
+        'iwallet_123_abc',
+        'session_token_123',
+        {
+          sendAssetCode: 'USDC',
+          sendAssetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+          destAssetCode: 'XLM',
+          amount: '50',
+          type: 'strict_send',
+        },
+        'Password123!'
+      );
+
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalled();
+    });
+
+    it('should use custom maxSlippage when provided', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      await service.swap(
+        'iwallet_123_abc',
+        'session_token_123',
+        {
+          sendAssetCode: 'XLM',
+          destAssetCode: 'USDC',
+          destAssetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 2.5,
+        },
+        'Password123!'
+      );
+
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ maxSlippage: 2.5 }),
+        'Password123!',
+        mockKeypair.publicKey
+      );
+    });
+
+    it('should throw error for invalid session', async () => {
+      mockKeyManagement.validateSession.mockResolvedValue({ valid: false });
+
+      await expect(
+        service.swap(
+          'iwallet_123_abc',
+          'invalid_token',
+          {
+            sendAssetCode: 'XLM',
+            destAssetCode: 'USDC',
+            destAssetIssuer: 'GISSUER',
+            amount: '100',
+            type: 'strict_send',
+          },
+          'Password123!'
+        )
+      ).rejects.toThrow('Invalid or expired session');
+    });
+
+    it('should throw error if wallet not found', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: { message: 'Not found' },
+      });
+
+      await expect(
+        service.swap(
+          'nonexistent',
+          'session_token_123',
+          {
+            sendAssetCode: 'XLM',
+            destAssetCode: 'USDC',
+            destAssetIssuer: 'GISSUER',
+            amount: '100',
+            type: 'strict_send',
+          },
+          'Password123!'
+        )
+      ).rejects.toThrow('Wallet not found');
+    });
+  });
+
+  describe('swapXlmUsdc', () => {
+    let mockPathPaymentManager: any;
+
+    beforeEach(() => {
+      mockPathPaymentManager = {
+        executeSwap: jest.fn().mockResolvedValue({
+          path: [],
+          inputAmount: '50',
+          outputAmount: '6.25',
+          price: '0.125',
+          priceImpact: '0.2',
+          transactionHash: 'xlm_usdc_swap_hash',
+          highImpactWarning: false,
+        }),
+      };
+      (service as any).pathPaymentManager = mockPathPaymentManager;
+    });
+
+    it('should swap XLM to USDC with pre-configured issuer', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      const result = await service.swapXlmUsdc(
+        'iwallet_123_abc',
+        'session_token_123',
+        'xlm_to_usdc',
+        '50',
+        'Password123!'
+      );
+
+      expect(result.inputAmount).toBe('50');
+      expect(result.outputAmount).toBe('6.25');
+      expect(result.transactionHash).toBe('xlm_usdc_swap_hash');
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          amount: '50',
+          type: 'strict_send',
+          maxSlippage: 1,
+        }),
+        'Password123!',
+        mockKeypair.publicKey
+      );
+    });
+
+    it('should swap USDC to XLM with pre-configured issuer', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      await service.swapXlmUsdc(
+        'iwallet_123_abc',
+        'session_token_123',
+        'usdc_to_xlm',
+        '10',
+        'Password123!'
+      );
+
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          amount: '10',
+          type: 'strict_send',
+        }),
+        'Password123!',
+        mockKeypair.publicKey
+      );
+    });
+
+    it('should accept custom maxSlippage', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      await service.swapXlmUsdc(
+        'iwallet_123_abc',
+        'session_token_123',
+        'xlm_to_usdc',
+        '50',
+        'Password123!',
+        3
+      );
+
+      expect(mockPathPaymentManager.executeSwap).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ maxSlippage: 3 }),
+        'Password123!',
+        mockKeypair.publicKey
+      );
+    });
+
+    it('should throw error for invalid session', async () => {
+      mockKeyManagement.validateSession.mockResolvedValue({ valid: false });
+
+      await expect(
+        service.swapXlmUsdc(
+          'iwallet_123_abc',
+          'invalid_token',
+          'xlm_to_usdc',
+          '50',
+          'Password123!'
+        )
+      ).rejects.toThrow('Invalid or expired session');
+    });
+  });
+
+  describe('signTransaction', () => {
+    it('should sign an external transaction XDR successfully', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: mockWalletData,
+        error: null,
+      });
+
+      mockKeyManagement.retrievePrivateKey = jest.fn().mockReturnValue(
+        'SCZANGBA5YHTNYVVV3C7CAZMCLXPJLPN2YCJRQH3JI7B5JXZ3V5MNKP'
+      );
+
+      const mockTransaction = {
+        sign: jest.fn(),
+        toXDR: jest.fn().mockReturnValue('signed_xdr_string'),
+        hash: jest.fn().mockReturnValue(Buffer.from('abc123def456', 'hex')),
+      };
+
+      const { Keypair: StellarKeypair, TransactionBuilder: StellarTxBuilder } = require('@stellar/stellar-sdk');
+      jest.spyOn(StellarKeypair, 'fromSecret').mockReturnValue({ publicKey: jest.fn() });
+      jest.spyOn(StellarTxBuilder, 'fromXDR').mockReturnValue(mockTransaction);
+
+      const result = await service.signTransaction(
+        'iwallet_123_abc',
+        'session_token_123',
+        'unsigned_xdr_string',
+        'Password123!'
+      );
+
+      expect(result).toHaveProperty('signedXdr', 'signed_xdr_string');
+      expect(result).toHaveProperty('hash');
+      expect(mockKeyManagement.retrievePrivateKey).toHaveBeenCalledWith(
+        'encrypted_key_data',
+        'Password123!'
+      );
+      expect(mockTransaction.sign).toHaveBeenCalled();
+
+      // Restore
+      StellarKeypair.fromSecret.mockRestore();
+      StellarTxBuilder.fromXDR.mockRestore();
+    });
+
+    it('should throw error for invalid session', async () => {
+      mockKeyManagement.validateSession.mockResolvedValue({ valid: false });
+
+      await expect(
+        service.signTransaction(
+          'iwallet_123_abc',
+          'invalid_token',
+          'some_xdr',
+          'Password123!'
+        )
+      ).rejects.toThrow('Invalid or expired session');
+    });
+
+    it('should throw error if wallet not found', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: { message: 'Not found' },
+      });
+
+      await expect(
+        service.signTransaction(
+          'nonexistent',
+          'session_token_123',
+          'some_xdr',
+          'Password123!'
+        )
       ).rejects.toThrow('Wallet not found');
     });
   });
