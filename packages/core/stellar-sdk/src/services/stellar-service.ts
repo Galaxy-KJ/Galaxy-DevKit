@@ -20,7 +20,8 @@ import {
 import * as bip39 from 'bip39';
 import {
   encryptPrivateKey,
-  decryptPrivateKey,
+  decryptPrivateKeyToString,
+  withDecryptedKey,
 } from '../utils/encryption.utils.js';
 import {
   Wallet,
@@ -96,7 +97,7 @@ export class StellarService {
     try {
       const keypair = Keypair.random();
 
-      const encryptedPrivateKey = encryptPrivateKey(keypair.secret(), password);
+      const encryptedPrivateKey = await encryptPrivateKey(keypair.secret(), password);
 
       const wallet: Wallet = {
         id: this.generateWalletId(),
@@ -148,7 +149,7 @@ export class StellarService {
       const seed = await bip39.mnemonicToSeed(mnemonic);
       const { key } = derivePath("m/44'/148'/0'", seed.toString('hex'));
       const keypair = Keypair.fromRawEd25519Seed(Buffer.from(key));
-      const encryptedPrivateKey = encryptPrivateKey(keypair.secret(), password);
+      const encryptedPrivateKey = await encryptPrivateKey(keypair.secret(), password);
 
       const wallet: Wallet = {
         id: this.generateWalletId(),
@@ -323,57 +324,53 @@ export class StellarService {
         validateMemo(params.memo);
       }
 
-      const decrypted_private_key = decryptPrivateKey(
-        wallet.privateKey,
-        password
-      );
+      return await withDecryptedKey(wallet.privateKey, password, async (keyBuffer) => {
+        const keypair = Keypair.fromSecret(keyBuffer.toString('utf8'));
 
-      const keypair = Keypair.fromSecret(decrypted_private_key);
-      const sourceAccount = await this.server.loadAccount(wallet.publicKey);
+        const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
-      const asset =
-        params.asset === 'XLM'
-          ? Asset.native()
-          : new Asset(params.asset, params.issuer as string);
+        const asset =
+          params.asset === 'XLM'
+            ? Asset.native()
+            : new Asset(params.asset, params.issuer as string);
 
-      if (params.asset !== 'XLM' && !params.issuer) {
-        throw new Error('Issuer is required for non-native assets');
-      }
+        if (params.asset !== 'XLM' && !params.issuer) {
+          throw new Error('Issuer is required for non-native assets');
+        }
 
-      const fee = await this.estimateFee();
+        const fee = await this.estimateFee();
 
-      const transactionBuilder = new TransactionBuilder(sourceAccount, {
-        fee: params.fee?.toString() || fee,
-        networkPassphrase: this.networkConfig.passphrase,
+        const transactionBuilder = new TransactionBuilder(sourceAccount, {
+          fee: params.fee?.toString() || fee,
+          networkPassphrase: this.networkConfig.passphrase,
+        });
+
+        transactionBuilder.addOperation(
+          Operation.payment({
+            destination: params.destination,
+            asset: asset,
+            amount: params.amount,
+          })
+        );
+
+        if (params.memo) {
+          transactionBuilder.addMemo(Memo.text(params.memo));
+        }
+
+        transactionBuilder.setTimeout(180);
+
+        const transaction = transactionBuilder.build();
+        transaction.sign(keypair);
+
+        const result = await this.submitTrxWithRetry(transaction);
+
+        return {
+          hash: result.hash,
+          status: result.successful ? 'success' : 'failed',
+          ledger: result.ledger.toString(),
+          createdAt: new Date(),
+        } as PaymentResult;
       });
-
-      transactionBuilder.addOperation(
-        Operation.payment({
-          destination: params.destination,
-          asset: asset,
-          amount: params.amount,
-        })
-      );
-
-      if (params.memo) {
-        transactionBuilder.addMemo(Memo.text(params.memo));
-      }
-
-      transactionBuilder.setTimeout(180);
-
-      const transaction = transactionBuilder.build();
-      transaction.sign(keypair);
-
-      const result = await this.submitTrxWithRetry(transaction);
-
-      const paymentResult: PaymentResult = {
-        hash: result.hash,
-        status: result.successful ? 'success' : 'failed',
-        ledger: result.ledger.toString(),
-        createdAt: new Date(),
-      };
-
-      return paymentResult;
     } catch (error) {
       throw new Error(
         `Failed to send payment: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -403,7 +400,7 @@ export class StellarService {
         throw new Error('Starting balance must be at least 1 XLM');
       }
 
-      const decrypted_private_key = decryptPrivateKey(
+      const decrypted_private_key = await decryptPrivateKeyToString(
         sourceWallet.privateKey,
         password
       );
@@ -612,7 +609,7 @@ export class StellarService {
     limit: string = '922337203685.4775807', // Max
     password: string
   ): Promise<PaymentResult> {
-    const decrypted = decryptPrivateKey(wallet.privateKey, password);
+    const decrypted = await decryptPrivateKeyToString(wallet.privateKey, password);
     const keypair = Keypair.fromSecret(decrypted);
     const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
@@ -645,7 +642,9 @@ export class StellarService {
    * @returns string
    */
   private generateWalletId(): string {
-    return `wallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const crypto = require('crypto');
+    const random = crypto.randomBytes(6).toString('hex');
+    return `wallet_${Date.now()}_${random}`;
   }
 
   /**

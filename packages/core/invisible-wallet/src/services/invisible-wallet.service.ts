@@ -8,6 +8,7 @@
  * @since 2024-12-01
  */
 
+import crypto from 'crypto';
 import { KeyManagementService } from './key-managment.service.js';
 import { StellarService } from '../../../stellar-sdk/src/services/stellar-service.js';
 import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
@@ -76,7 +77,7 @@ export class InvisibleWalletService {
 
       const keypair = this.keyManagement.generateKeypair();
 
-      const encryptedPrivateKey = this.keyManagement.storePrivateKey(
+      const encryptedPrivateKey = await this.keyManagement.storePrivateKey(
         keypair.secretKey,
         password
       );
@@ -162,11 +163,11 @@ export class InvisibleWalletService {
       const keypair =
         await this.keyManagement.deriveKeypairFromMnemonic(mnemonic);
 
-      const encryptedPrivateKey = this.keyManagement.storePrivateKey(
+      const encryptedPrivateKey = await this.keyManagement.storePrivateKey(
         keypair.secretKey,
         password
       );
-      const encryptedSeed = this.keyManagement.storePrivateKey(
+      const encryptedSeed = await this.keyManagement.storePrivateKey(
         mnemonic,
         password
       );
@@ -256,9 +257,10 @@ export class InvisibleWalletService {
         };
       }
 
-      const isValid = this.keyManagement.verifyPassword(
+      const isValid = await this.keyManagement.verifyPassword(
         wallet.encryptedPrivateKey,
-        password
+        password,
+        wallet.id
       );
 
       if (!isValid) {
@@ -717,7 +719,7 @@ export class InvisibleWalletService {
       throw new Error('Wallet not found');
     }
 
-    const decryptedKey = this.keyManagement.retrievePrivateKey(
+    const decryptedKey = await this.keyManagement.retrievePrivateKey(
       wallet.encryptedPrivateKey,
       password
     );
@@ -754,7 +756,7 @@ export class InvisibleWalletService {
       throw new Error('Wallet not found');
     }
 
-    const backup = this.keyManagement.exportWalletBackup(wallet, password);
+    const backup = await this.keyManagement.exportWalletBackup(wallet, password);
 
     let { error: update_error } = await this.supabase
       .from('invisible_wallets')
@@ -797,7 +799,7 @@ export class InvisibleWalletService {
     try {
       await this.supabase.from('wallet_events').insert([
         {
-          id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `event_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`,
           wallet_id: walletId,
           user_id: userId,
           event_type: eventType,
@@ -814,7 +816,8 @@ export class InvisibleWalletService {
    * Generates a unique wallet ID
    */
   private generateWalletId(): string {
-    return `iwallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const random = crypto.randomBytes(6).toString('hex');
+    return `iwallet_${Date.now()}_${random}`;
   }
 
   /**

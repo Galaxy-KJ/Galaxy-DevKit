@@ -89,15 +89,15 @@ describe('InvisibleWalletService', () => {
     // Setup KeyManagementService mock
     mockKeyManagement = {
       generateKeypair: jest.fn().mockReturnValue(mockKeypair),
-      storePrivateKey: jest.fn().mockReturnValue('encrypted_key_data'),
+      storePrivateKey: jest.fn().mockResolvedValue('encrypted_key_data'),
       createSession: jest.fn().mockResolvedValue(mockSession),
-      verifyPassword: jest.fn().mockReturnValue(true),
+      verifyPassword: jest.fn().mockResolvedValue(true),
       validateSession: jest.fn().mockResolvedValue({ valid: true }),
       revokeSession: jest.fn().mockResolvedValue(undefined),
       revokeAllWalletSessions: jest.fn().mockResolvedValue(undefined),
       deriveKeypairFromMnemonic: jest.fn().mockResolvedValue(mockKeypair),
       changePassword: jest.fn().mockResolvedValue(undefined),
-      exportWalletBackup: jest.fn().mockReturnValue('backup_data'),
+      exportWalletBackup: jest.fn().mockResolvedValue('backup_data'),
     } as any;
 
     (KeyManagementService as jest.Mock).mockImplementation(
@@ -914,7 +914,7 @@ describe('InvisibleWalletService', () => {
         error: null,
       });
 
-      mockKeyManagement.retrievePrivateKey = jest.fn().mockReturnValue(
+      mockKeyManagement.retrievePrivateKey = jest.fn().mockResolvedValue(
         'SCZANGBA5YHTNYVVV3C7CAZMCLXPJLPN2YCJRQH3JI7B5JXZ3V5MNKP'
       );
 

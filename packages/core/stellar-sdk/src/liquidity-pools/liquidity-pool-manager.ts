@@ -40,7 +40,7 @@ import {
   estimateWithdraw,
 } from './calculations.js';
 import { Wallet } from '../types/stellar-types.js';
-import { decryptPrivateKey } from '../utils/encryption.utils.js';
+import { decryptPrivateKeyToString } from '../utils/encryption.utils.js';
 
 /**
  * Liquidity Pool Manager class
@@ -84,7 +84,7 @@ export class LiquidityPoolManager {
       );
 
       // 4. Decrypt private key
-      const decryptedPrivateKey = decryptPrivateKey(wallet.privateKey, password);
+      const decryptedPrivateKey = await decryptPrivateKeyToString(wallet.privateKey, password);
       const keypair = Keypair.fromSecret(decryptedPrivateKey);
 
       // 5. Load source account
@@ -176,7 +176,7 @@ export class LiquidityPoolManager {
       }
 
       // 5. Decrypt private key
-      const decryptedPrivateKey = decryptPrivateKey(wallet.privateKey, password);
+      const decryptedPrivateKey = await decryptPrivateKeyToString(wallet.privateKey, password);
       const keypair = Keypair.fromSecret(decryptedPrivateKey);
 
       // 6. Load source account

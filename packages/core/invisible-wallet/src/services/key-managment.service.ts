@@ -15,6 +15,8 @@ import { derivePath } from 'ed25519-hd-key';
 import {
   encryptPrivateKey,
   decryptPrivateKey,
+  decryptPrivateKeyToString,
+  withDecryptedKey,
   generateSessionToken,
   validatePassword,
 } from '../utils/encryption.utils.js';
@@ -28,16 +30,66 @@ import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.j
 /**
  * Service class for key management operations
  */
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+
 export class KeyManagementService {
   private supabase = supabaseClient;
   private activeSessions: Map<string, WalletSession> = new Map();
   private sessionTimeout: number = 3600000;
+  private rateLimiter: Map<string, { attempts: number; lockedUntil: Date | null }> = new Map();
 
   constructor(sessionTimeout?: number) {
     if (sessionTimeout) {
       this.sessionTimeout = sessionTimeout;
     }
     this.startSessionCleanup();
+  }
+
+  /**
+   * Hashes a session token with SHA-256 for safe DB storage
+   */
+  private hashSessionToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Checks rate limit for a wallet. Throws if locked out.
+   */
+  private checkRateLimit(walletId: string): void {
+    const entry = this.rateLimiter.get(walletId);
+    if (!entry) return;
+
+    if (entry.lockedUntil && new Date() < entry.lockedUntil) {
+      const remaining = Math.ceil((entry.lockedUntil.getTime() - Date.now()) / 1000);
+      throw new Error(`Account locked. Try again in ${remaining} seconds.`);
+    }
+
+    // Lockout expired — reset
+    if (entry.lockedUntil && new Date() >= entry.lockedUntil) {
+      this.rateLimiter.delete(walletId);
+    }
+  }
+
+  /**
+   * Records a failed password attempt for rate limiting
+   */
+  private recordFailedAttempt(walletId: string): void {
+    const entry = this.rateLimiter.get(walletId) || { attempts: 0, lockedUntil: null };
+    entry.attempts++;
+
+    if (entry.attempts >= MAX_ATTEMPTS) {
+      entry.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION);
+    }
+
+    this.rateLimiter.set(walletId, entry);
+  }
+
+  /**
+   * Resets rate limiter on successful authentication
+   */
+  private resetRateLimit(walletId: string): void {
+    this.rateLimiter.delete(walletId);
   }
 
   /**
@@ -95,7 +147,7 @@ export class KeyManagementService {
    * @param password - Password for encryption
    * @returns Encrypted private key
    */
-  storePrivateKey(secretKey: string, password: string): string {
+  async storePrivateKey(secretKey: string, password: string): Promise<string> {
     validatePassword(password);
     return encryptPrivateKey(secretKey, password);
   }
@@ -106,9 +158,9 @@ export class KeyManagementService {
    * @param password - Password for decryption
    * @returns Decrypted private key
    */
-  retrievePrivateKey(encryptedKey: string, password: string): string {
+  async retrievePrivateKey(encryptedKey: string, password: string): Promise<string> {
     try {
-      return decryptPrivateKey(encryptedKey, password);
+      return await decryptPrivateKeyToString(encryptedKey, password);
     } catch {
       throw new Error('Invalid password or corrupted key data');
     }
@@ -139,12 +191,17 @@ export class KeyManagementService {
       deviceInfo,
     };
 
+    // Store in in-memory Map FIRST — this is the primary validation source
+    this.activeSessions.set(sessionToken, session);
+
+    // Persist to Supabase with hashed token (best-effort)
+    const hashedToken = this.hashSessionToken(sessionToken);
     try {
       const { error } = await this.supabase.from('wallet_sessions').insert([
         {
           wallet_id: walletId,
           user_id: userId,
-          session_token: sessionToken,
+          session_token: hashedToken,
           expires_at: expiresAt.toISOString(),
           created_at: session.createdAt.toISOString(),
           is_active: true,
@@ -153,7 +210,7 @@ export class KeyManagementService {
       ]);
 
       if (error) {
-        throw new Error(`Failed to store session in database: ${error.message}`);
+        console.warn('Failed to persist session to database:', error.message);
       }
     } catch (error) {
       console.warn('Database session storage error:', error);
@@ -206,10 +263,11 @@ export class KeyManagementService {
     validation.session.expiresAt = newExpiresAt;
 
     try {
+      const hashedToken = this.hashSessionToken(sessionToken);
       await this.supabase
         .from('wallet_sessions')
         .update({ expires_at: newExpiresAt.toISOString() })
-        .eq('session_token', sessionToken);
+        .eq('session_token', hashedToken);
     } catch (error) {
       console.warn('Failed to update session in database:', error);
     }
@@ -229,10 +287,11 @@ export class KeyManagementService {
       this.activeSessions.delete(sessionToken);
 
       try {
+        const hashedToken = this.hashSessionToken(sessionToken);
         await this.supabase
           .from('wallet_sessions')
           .update({ is_active: false })
-          .eq('session_token', sessionToken);
+          .eq('session_token', hashedToken);
       } catch (error) {
         console.warn('Failed to revoke session in database:', error);
       }
@@ -295,19 +354,19 @@ export class KeyManagementService {
   ): Promise<string> {
     validatePassword(newPassword);
 
-    const secretKey = this.retrievePrivateKey(
+    const secretKey = await this.retrievePrivateKey(
       wallet.encryptedPrivateKey,
       oldPassword
     );
 
-    const newEncryptedKey = this.storePrivateKey(secretKey, newPassword);
+    const newEncryptedKey = await this.storePrivateKey(secretKey, newPassword);
 
     try {
       const { error } = await this.supabase
-        .from('wallets')
+        .from('invisible_wallets')
         .update({
-          privateKey: newEncryptedKey,
-          updatedAt: new Date().toISOString(),
+          encrypted_private_key: newEncryptedKey,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', wallet.id);
 
@@ -331,11 +390,22 @@ export class KeyManagementService {
    * @param password - Password to verify
    * @returns Boolean indicating if password is correct
    */
-  verifyPassword(encryptedKey: string, password: string): boolean {
+  async verifyPassword(encryptedKey: string, password: string, walletId?: string): Promise<boolean> {
+    if (walletId) {
+      this.checkRateLimit(walletId);
+    }
+
     try {
-      decryptPrivateKey(encryptedKey, password);
+      const buf = await decryptPrivateKey(encryptedKey, password);
+      buf.fill(0);
+      if (walletId) {
+        this.resetRateLimit(walletId);
+      }
       return true;
     } catch {
+      if (walletId) {
+        this.recordFailedAttempt(walletId);
+      }
       return false;
     }
   }
@@ -373,6 +443,8 @@ export class KeyManagementService {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = undefined;
     }
+    this.rateLimiter.clear();
+    this.activeSessions.clear();
   }
 
   /**
@@ -381,7 +453,7 @@ export class KeyManagementService {
    * @param password - Password for encryption
    * @returns Encrypted backup data
    */
-  exportWalletBackup(wallet: InvisibleWallet, password: string): string {
+  async exportWalletBackup(wallet: InvisibleWallet, password: string): Promise<string> {
     const backupData = {
       id: wallet.id,
       publicKey: wallet.publicKey,
@@ -401,12 +473,14 @@ export class KeyManagementService {
    * @param password - Password for decryption
    * @returns Wallet data
    */
-  importWalletBackup(
+  async importWalletBackup(
     backupData: string,
     password: string
-  ): Partial<InvisibleWallet> {
+  ): Promise<Partial<InvisibleWallet>> {
     try {
-      const decrypted = decryptPrivateKey(backupData, password);
+      const buf = await decryptPrivateKey(backupData, password);
+      const decrypted = buf.toString('utf8');
+      buf.fill(0);
       return JSON.parse(decrypted);
     } catch {
       throw new Error('Invalid backup data or password');

@@ -653,6 +653,27 @@ See the [examples directory](../../docs/examples/stellar-sdk/) for complete work
 - `16-sponsor-trustline.ts` - Create sponsored trustlines
 - `17-onboarding-flow.ts` - Complete user onboarding flow
 
+## Security Notes
+
+### `privateKey` Field Convention
+
+The `Wallet` and `WalletConfig` interfaces expose a `privateKey: string` field. **This value is always AES-256-GCM encrypted ciphertext** (format: `salt:iv:authTag:ciphertext`), never a raw Stellar secret key. This is a legacy naming convention.
+
+To obtain the actual Stellar secret key for signing:
+
+```typescript
+import { decryptPrivateKey } from '@galaxy-kj/core-invisible-wallet';
+import { Keypair } from '@stellar/stellar-sdk';
+
+// wallet.privateKey is encrypted — decrypt before use
+const secret = decryptPrivateKey(wallet.privateKey, userPassword);
+const keypair = Keypair.fromSecret(secret);
+```
+
+### CSPRNG for Identifiers
+
+All generated identifiers (wallet IDs, subscription IDs) use `crypto.randomBytes()` for cryptographic randomness instead of `Math.random()`.
+
 ## Testing
 
 ```bash

@@ -19,7 +19,8 @@ function usdcAsset() {
 }
 
 jest.mock('../utils/encryption.utils', () => ({
-  decryptPrivateKey: jest.fn(() => TEST_KEYPAIR.secret()),
+  decryptPrivateKey: jest.fn(() => Promise.resolve(Buffer.from(TEST_KEYPAIR.secret()))),
+  decryptPrivateKeyToString: jest.fn(() => Promise.resolve(TEST_KEYPAIR.secret())),
 }));
 
 function createMockAccount(accountId: string) {

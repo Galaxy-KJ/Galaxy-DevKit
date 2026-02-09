@@ -10,7 +10,10 @@ import { Wallet } from '../types/stellar-types.js';
 // Mock dependencies
 jest.mock('../utils/encryption.utils', () => ({
   decryptPrivateKey: jest.fn((encrypted, pwd) =>
-    encrypted.replace('encrypted_', '').replace(`_with_${pwd}`, '')
+    Promise.resolve(Buffer.from(encrypted.replace('encrypted_', '').replace(`_with_${pwd}`, '')))
+  ),
+  decryptPrivateKeyToString: jest.fn((encrypted, pwd) =>
+    Promise.resolve(encrypted.replace('encrypted_', '').replace(`_with_${pwd}`, ''))
   ),
 }));
 

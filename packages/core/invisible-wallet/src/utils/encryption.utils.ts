@@ -19,26 +19,74 @@ const SALT_LENGTH = 16;
 const DEFAULT_ITERATIONS = 100000;
 const KEY_LENGTH = 32;
 
+// Argon2id parameters
+const ENCRYPTION_VERSION_PREFIX = 'v2:';
+const ARGON2_MEMORY_COST = 65536; // 64 MB
+const ARGON2_TIME_COST = 3;
+const ARGON2_PARALLELISM = 4;
+
+// Rollback flag — set ENCRYPTION_V2_ENABLED=false to revert new encryptions to PBKDF2
+const ENCRYPTION_V2_ENABLED = process.env.ENCRYPTION_V2_ENABLED !== 'false';
+
+// Argon2 graceful degradation
+let argon2Module: any = null;
+let argon2Available = false;
+
+(async () => {
+  try {
+    argon2Module = await import('argon2');
+    argon2Available = true;
+  } catch {
+    console.error(
+      'CRITICAL: argon2 native module failed to load. New encryptions will be rejected. Decryption of existing keys will use PBKDF2 fallback.'
+    );
+  }
+})();
+
 /**
- * Encrypts private key using AES-256-GCM with password
+ * Checks if Argon2 native module is available
+ */
+export function isArgon2Available(): boolean {
+  return argon2Available;
+}
+
+/**
+ * Encrypts private key using AES-256-GCM.
+ * When ENCRYPTION_V2_ENABLED=true (default) and Argon2 is available, uses Argon2id KDF
+ * and outputs v2 format: `v2:salt:iv:authTag:argon2Params:ciphertext`.
+ * Otherwise falls back to PBKDF2 with v1 format: `salt:iv:authTag:ciphertext`.
  * @param privateKey - Private key to encrypt
  * @param password - Password for encryption
  * @returns Encrypted string
  */
-export function encryptPrivateKey(
+export async function encryptPrivateKey(
   privateKey: string,
   password: string
-): string {
+): Promise<string> {
   const salt = crypto.randomBytes(SALT_LENGTH);
   const iv = crypto.randomBytes(IV_LENGTH);
 
-  const key = crypto.pbkdf2Sync(
-    password,
-    salt,
-    DEFAULT_ITERATIONS,
-    KEY_LENGTH,
-    'sha256'
-  );
+  let key: Buffer;
+
+  if (ENCRYPTION_V2_ENABLED) {
+    if (!argon2Available || !argon2Module) {
+      throw new Error(
+        'Argon2id unavailable — cannot create secure encryption. Install argon2 native module.'
+      );
+    }
+
+    key = await argon2Module.hash(password, {
+      type: argon2Module.argon2id,
+      memoryCost: ARGON2_MEMORY_COST,
+      timeCost: ARGON2_TIME_COST,
+      parallelism: ARGON2_PARALLELISM,
+      salt,
+      raw: true,
+      hashLength: KEY_LENGTH,
+    });
+  } else {
+    key = crypto.pbkdf2Sync(password, salt, DEFAULT_ITERATIONS, KEY_LENGTH, 'sha256');
+  }
 
   const cipher = crypto.createCipheriv(ALGO, key, iv);
   const encrypted = Buffer.concat([
@@ -46,6 +94,21 @@ export function encryptPrivateKey(
     cipher.final(),
   ]);
   const authTag = cipher.getAuthTag();
+
+  if (ENCRYPTION_V2_ENABLED) {
+    const argon2Params = Buffer.from(
+      JSON.stringify({ m: ARGON2_MEMORY_COST, t: ARGON2_TIME_COST, p: ARGON2_PARALLELISM })
+    ).toString('base64');
+
+    return [
+      'v2',
+      salt.toString('base64'),
+      iv.toString('base64'),
+      authTag.toString('base64'),
+      argon2Params,
+      encrypted.toString('base64'),
+    ].join(':');
+  }
 
   return [
     salt.toString('base64'),
@@ -56,19 +119,65 @@ export function encryptPrivateKey(
 }
 
 /**
- * Decrypts AES-256-GCM encrypted private key
+ * Decrypts AES-256-GCM encrypted private key.
+ * Auto-detects format: v2 (Argon2id) or v1 (PBKDF2).
+ * Returns Buffer to enable zeroization by the caller.
  * @param encryptedData - Encrypted data string
  * @param password - Password for decryption
- * @returns Decrypted private key
+ * @returns Decrypted private key as Buffer
  */
-export function decryptPrivateKey(
+export async function decryptPrivateKey(
   encryptedData: string,
   password: string
-): string {
+): Promise<Buffer> {
+  const isV2 = encryptedData.startsWith(ENCRYPTION_VERSION_PREFIX);
+
+  if (isV2) {
+    // v2 format: v2:salt:iv:authTag:argon2Params:ciphertext
+    const parts = encryptedData.split(':');
+    const [, saltB64, ivB64, authTagB64, argon2ParamsB64, encryptedB64] = parts;
+
+    if (!saltB64 || !ivB64 || !authTagB64 || !argon2ParamsB64 || !encryptedB64) {
+      throw new Error('Invalid password or corrupted key data');
+    }
+
+    const salt = Buffer.from(saltB64, 'base64');
+    const iv = Buffer.from(ivB64, 'base64');
+    const authTag = Buffer.from(authTagB64, 'base64');
+    const encrypted = Buffer.from(encryptedB64, 'base64');
+
+    let key: Buffer;
+
+    if (argon2Available && argon2Module) {
+      const params = JSON.parse(Buffer.from(argon2ParamsB64, 'base64').toString('utf8'));
+      key = await argon2Module.hash(password, {
+        type: argon2Module.argon2id,
+        memoryCost: params.m,
+        timeCost: params.t,
+        parallelism: params.p,
+        salt,
+        raw: true,
+        hashLength: KEY_LENGTH,
+      });
+    } else {
+      // Degraded fallback: PBKDF2 with high iterations when Argon2 unavailable
+      console.warn(
+        'WARNING: Argon2 unavailable, using PBKDF2 degraded fallback for v2 decryption. Key access preserved but KDF strength reduced.'
+      );
+      key = crypto.pbkdf2Sync(password, salt, DEFAULT_ITERATIONS, KEY_LENGTH, 'sha256');
+    }
+
+    const decipher = crypto.createDecipheriv(ALGO, key, iv);
+    decipher.setAuthTag(authTag);
+
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  }
+
+  // v1 format: salt:iv:authTag:ciphertext (PBKDF2)
   const [saltB64, ivB64, authTagB64, encryptedB64] = encryptedData.split(':');
 
-  if (!saltB64 || !ivB64 || !authTagB64 || !encryptedB64) {
-    throw new Error('Invalid encrypted data format');
+  if (!saltB64 || !ivB64 || !authTagB64 || encryptedB64 === undefined) {
+    throw new Error('Invalid password or corrupted key data');
   }
 
   const salt = Buffer.from(saltB64, 'base64');
@@ -76,22 +185,54 @@ export function decryptPrivateKey(
   const authTag = Buffer.from(authTagB64, 'base64');
   const encrypted = Buffer.from(encryptedB64, 'base64');
 
-  const key = crypto.pbkdf2Sync(
-    password,
-    salt,
-    DEFAULT_ITERATIONS,
-    KEY_LENGTH,
-    'sha256'
-  );
+  const key = crypto.pbkdf2Sync(password, salt, DEFAULT_ITERATIONS, KEY_LENGTH, 'sha256');
 
   const decipher = crypto.createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(authTag);
 
-  const decrypted = Buffer.concat([
-    decipher.update(encrypted),
-    decipher.final(),
-  ]);
-  return decrypted.toString('utf8');
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+}
+
+/**
+ * Decrypts private key and returns as string (legacy convenience wrapper).
+ * Prefer withDecryptedKey() for new code — it handles Buffer zeroization.
+ * @param encryptedData - Encrypted data string
+ * @param password - Password for decryption
+ * @returns Decrypted private key as string
+ */
+export async function decryptPrivateKeyToString(
+  encryptedData: string,
+  password: string
+): Promise<string> {
+  const raw = await decryptPrivateKey(encryptedData, password);
+  const buf = Buffer.from(raw);
+  const result = buf.toString('utf8');
+  buf.fill(0);
+  return result;
+}
+
+/**
+ * Safely decrypts a key, passes it to a callback, and zeroizes the buffer.
+ * All consumers should use this pattern for key operations.
+ * @param encryptedKey - Encrypted key data
+ * @param password - Decryption password
+ * @param callback - Function receiving the key Buffer
+ * @returns Result of the callback
+ */
+export async function withDecryptedKey<T>(
+  encryptedKey: string,
+  password: string,
+  callback: (keyBuffer: Buffer) => T | Promise<T>
+): Promise<T> {
+  const raw = await decryptPrivateKey(encryptedKey, password);
+  const keyBuffer = Buffer.from(raw);
+  try {
+    return await callback(keyBuffer);
+  } catch {
+    throw new Error('Invalid password or corrupted key data');
+  } finally {
+    keyBuffer.fill(0);
+  }
 }
 
 /**
@@ -101,11 +242,11 @@ export function decryptPrivateKey(
  * @param params - Key derivation parameters
  * @returns Encrypted data object
  */
-export function encryptData(
+export async function encryptData(
   data: string,
   password: string,
   params?: Partial<KeyDerivationParams>
-): EncryptedData {
+): Promise<EncryptedData> {
   const salt = params?.salt || crypto.randomBytes(SALT_LENGTH);
   const iv = crypto.randomBytes(IV_LENGTH);
   const iterations = params?.iterations || DEFAULT_ITERATIONS;
@@ -141,11 +282,11 @@ export function encryptData(
  * @param params - Key derivation parameters
  * @returns Decrypted data
  */
-export function decryptData(
+export async function decryptData(
   encryptedData: EncryptedData,
   password: string,
   params?: Partial<KeyDerivationParams>
-): string {
+): Promise<string> {
   const salt = Buffer.from(encryptedData.salt, 'base64');
   const iv = Buffer.from(encryptedData.iv, 'base64');
   const authTag = Buffer.from(encryptedData.authTag, 'base64');
@@ -300,19 +441,23 @@ export function generateRandomPassword(length: number = 16): string {
   const allChars = lowercase + uppercase + numbers + symbols;
 
   let password = '';
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-  password += symbols[Math.floor(Math.random() * symbols.length)];
+  // Guarantee at least one character from each category using CSPRNG
+  password += lowercase[crypto.randomInt(lowercase.length)];
+  password += uppercase[crypto.randomInt(uppercase.length)];
+  password += numbers[crypto.randomInt(numbers.length)];
+  password += symbols[crypto.randomInt(symbols.length)];
 
   for (let i = password.length; i < length; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)];
+    password += allChars[crypto.randomInt(allChars.length)];
   }
 
-  return password
-    .split('')
-    .sort(() => Math.random() - 0.5)
-    .join('');
+  // Durstenfeld shuffle using crypto.randomInt for unbiased randomness
+  const chars = password.split('');
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 /**

@@ -245,7 +245,7 @@ export class ContractEventMonitor {
    */
   private generateSubscriptionId(contractId: string): string {
     const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 9);
+    const random = require('crypto').randomBytes(6).toString('hex');
     return `${contractId.substr(0, 8)}_${timestamp}_${random}`;
   }
 

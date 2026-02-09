@@ -5,10 +5,17 @@ import * as bip39 from 'bip39';
 
 // Mock dependencies
 jest.mock('../utils/encryption.utils', () => ({
-  encryptPrivateKey: jest.fn((key, pwd) => `encrypted_${key}_with_${pwd}`),
+  encryptPrivateKey: jest.fn((key, pwd) => Promise.resolve(`encrypted_${key}_with_${pwd}`)),
   decryptPrivateKey: jest.fn((encrypted, pwd) =>
-    encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, '')
+    Promise.resolve(Buffer.from(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, '')))
   ),
+  decryptPrivateKeyToString: jest.fn((encrypted, pwd) =>
+    Promise.resolve(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, ''))
+  ),
+  withDecryptedKey: jest.fn(async (encrypted, pwd, cb) => {
+    const buf = Buffer.from(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, ''));
+    try { return await cb(buf); } finally { buf.fill(0); }
+  }),
 }));
 
 jest.mock('../utils/supabase-client', () => ({
