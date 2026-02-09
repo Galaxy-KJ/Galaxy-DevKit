@@ -9,7 +9,7 @@
 import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
 import { ProtocolConfig, ProtocolType, Asset } from '../../src/types/defi-types.js';
 import { Keypair, rpc, Contract, TransactionBuilder, Address } from '@stellar/stellar-sdk';
-import { PoolContractV2 } from '@blend-capital/blend-sdk';
+import { PoolContractV2, PoolV2, Positions } from '@blend-capital/blend-sdk';
 
 // ==========================================
 // MOCKS
@@ -21,6 +21,12 @@ jest.mock('@blend-capital/blend-sdk', () => ({
     spec: {
       funcArgsToScVals: jest.fn().mockReturnValue([]),
     },
+  },
+  PoolV2: {
+    load: jest.fn(),
+  },
+  Positions: {
+    load: jest.fn(),
   },
   RequestType: {
     SupplyCollateral: 0,
@@ -265,17 +271,26 @@ describe('BlendProtocol', () => {
           (blendProtocol as any)[op.method](testAddress, testPrivateKey, testAsset, '100')
         ).rejects.toThrow(/Simulation failed/);
       });
-      it('should handle simulation errors in liquidate', async () => {
-        (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
-        mockSorobanServer.simulateTransaction.mockResolvedValueOnce({
-          error: 'Liquidation simulation failed',
-          events: []
-        });
+    });
 
-        await expect(
-          blendProtocol.liquidate(testAddress, testPrivateKey, testAddress, testAsset, '100', testAsset)
-        ).rejects.toThrow(/Liquidation simulation failed/);
+    it('should handle simulation errors in liquidate', async () => {
+      // Mock unhealthy position so health check passes
+      jest.spyOn(blendProtocol, 'getHealthFactor').mockResolvedValue({
+        value: '0.5',
+        isHealthy: false,
+        liquidationThreshold: '0.8',
+        maxLTV: '0.7'
       });
+
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
+      mockSorobanServer.simulateTransaction.mockResolvedValueOnce({
+        error: 'Liquidation simulation failed',
+        events: []
+      });
+
+      await expect(
+        blendProtocol.liquidate(testAddress, testPrivateKey, testAddress, testAsset, '100', testAsset)
+      ).rejects.toThrow(/Liquidation simulation failed/);
     });
 
     // Coverage for defensive check
@@ -512,6 +527,321 @@ describe('BlendProtocol', () => {
     const badConfig = { ...mockConfig, contractAddresses: {} };
     const badProtocol = new BlendProtocol(badConfig);
     await expect(badProtocol.initialize()).rejects.toThrow('Contract addresses are required');
+  });
+
+  // ========================================
+  // SDK INTEGRATION PATH TESTS (Branch Coverage)
+  // ========================================
+
+  describe('Blend SDK Integration Paths', () => {
+    beforeEach(async () => {
+      await blendProtocol.initialize();
+    });
+
+    // --- getPosition SDK paths ---
+
+    it('should use blendPool.loadUser when blendPool is available', async () => {
+      const mockPoolUser = {
+        getCollateralFloat: jest.fn().mockReturnValue(100),
+        getSupplyFloat: jest.fn().mockReturnValue(50),
+        getLiabilitiesFloat: jest.fn().mockReturnValue(25),
+      };
+
+      const mockReserve = { id: 'reserve1' };
+      const mockReservesMap = new Map([
+        ['CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', mockReserve],
+      ]);
+
+      (blendProtocol as any).blendPool = {
+        loadUser: jest.fn().mockResolvedValue(mockPoolUser),
+        reserves: mockReservesMap,
+      };
+
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position.address).toBe(testAddress);
+      expect(position.supplied.length).toBe(2); // collateral + supply
+      expect(position.borrowed.length).toBe(1); // liability
+      expect(mockPoolUser.getCollateralFloat).toHaveBeenCalledWith(mockReserve);
+      expect(mockPoolUser.getSupplyFloat).toHaveBeenCalledWith(mockReserve);
+      expect(mockPoolUser.getLiabilitiesFloat).toHaveBeenCalledWith(mockReserve);
+    });
+
+    it('should fall back to Positions.load when blendPool.loadUser fails', async () => {
+      (blendProtocol as any).blendPool = {
+        loadUser: jest.fn().mockRejectedValue(new Error('loadUser failed')),
+        reserves: new Map(),
+      };
+
+      const mockPositions = {
+        collateral: new Map([[0, 1000n]]),
+        supply: new Map([[1, 500n]]),
+        liabilities: new Map([[2, 200n]]),
+      };
+      (Positions.load as jest.Mock).mockResolvedValue(mockPositions);
+
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position.address).toBe(testAddress);
+      expect(position.supplied.length).toBe(2); // collateral + supply
+      expect(position.borrowed.length).toBe(1); // liability
+      expect(position.healthFactor).toBe('0'); // has debt
+    });
+
+    it('should fall back to contract simulation when both SDK methods fail', async () => {
+      (blendProtocol as any).blendPool = {
+        loadUser: jest.fn().mockRejectedValue(new Error('loadUser failed')),
+        reserves: new Map(),
+      };
+      (Positions.load as jest.Mock).mockRejectedValue(new Error('Positions.load failed'));
+
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position.address).toBe(testAddress);
+      expect(mockSorobanServer.simulateTransaction).toHaveBeenCalled();
+    });
+
+    it('should handle zero amounts in convertPoolUserToPosition', async () => {
+      const mockPoolUser = {
+        getCollateralFloat: jest.fn().mockReturnValue(0),
+        getSupplyFloat: jest.fn().mockReturnValue(0),
+        getLiabilitiesFloat: jest.fn().mockReturnValue(0),
+      };
+
+      const mockReservesMap = new Map([
+        ['ASSET1', { id: 'reserve1' }],
+      ]);
+
+      (blendProtocol as any).blendPool = {
+        loadUser: jest.fn().mockResolvedValue(mockPoolUser),
+        reserves: mockReservesMap,
+      };
+
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position.supplied).toEqual([]);
+      expect(position.borrowed).toEqual([]);
+      expect(position.healthFactor).toBe('∞');
+    });
+
+    it('should handle zero amounts in convertPositionsToPosition', async () => {
+      (blendProtocol as any).blendPool = {
+        loadUser: jest.fn().mockRejectedValue(new Error('fail')),
+        reserves: new Map(),
+      };
+
+      const mockPositions = {
+        collateral: new Map([[0, 0n]]),
+        supply: new Map([[1, 0n]]),
+        liabilities: new Map([[2, 0n]]),
+      };
+      (Positions.load as jest.Mock).mockResolvedValue(mockPositions);
+
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position.supplied).toEqual([]);
+      expect(position.borrowed).toEqual([]);
+      expect(position.healthFactor).toBe('∞');
+    });
+
+    // --- getStats with blendPool ---
+
+    it('should return real stats when blendPool has reserves', async () => {
+      const mockReserve = {
+        totalSupplyFloat: jest.fn().mockReturnValue(1000),
+        totalLiabilitiesFloat: jest.fn().mockReturnValue(400),
+        getUtilizationFloat: jest.fn().mockReturnValue(0.4),
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['ASSET1', mockReserve],
+        ]),
+      };
+
+      const stats = await blendProtocol.getStats();
+
+      expect(stats.totalSupply).toBe('1000.00');
+      expect(stats.totalBorrow).toBe('400.00');
+      expect(stats.tvl).toBe('600.00');
+      expect(stats.utilizationRate).toBe(0.4);
+    });
+
+    // --- getSupplyAPY with reserve data ---
+
+    it('should return real APY when blendPool has matching reserve', async () => {
+      const mockReserve = {
+        estSupplyApy: 0.05,
+        estBorrowApy: 0.08,
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
+        ]),
+      };
+
+      const apy = await blendProtocol.getSupplyAPY(testAsset);
+
+      expect(apy.supplyAPY).toBe('5.00');
+      expect(apy.borrowAPY).toBe('8.00');
+    });
+
+    // --- getBorrowAPY with reserve data ---
+
+    it('should return real borrow APY when blendPool has matching reserve', async () => {
+      const mockReserve = {
+        estSupplyApy: 0.03,
+        estBorrowApy: 0.12,
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
+        ]),
+      };
+
+      const apy = await blendProtocol.getBorrowAPY(testAsset);
+
+      expect(apy.supplyAPY).toBe('3.00');
+      expect(apy.borrowAPY).toBe('12.00');
+    });
+
+    // --- getTotalSupply with reserve data ---
+
+    it('should return real total supply when blendPool has matching reserve', async () => {
+      const mockReserve = {
+        totalSupplyFloat: jest.fn().mockReturnValue(5000.1234567),
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
+        ]),
+      };
+
+      const supply = await blendProtocol.getTotalSupply(testAsset);
+
+      expect(supply).toBe('5000.1234567');
+    });
+
+    // --- getTotalBorrow with reserve data ---
+
+    it('should return real total borrow when blendPool has matching reserve', async () => {
+      const mockReserve = {
+        totalLiabilitiesFloat: jest.fn().mockReturnValue(2000.7654321),
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
+        ]),
+      };
+
+      const borrow = await blendProtocol.getTotalBorrow(testAsset);
+
+      expect(borrow).toBe('2000.7654321');
+    });
+
+    // --- getReserveData with reserve data ---
+
+    it('should return real reserve data when blendPool has matching reserve', async () => {
+      const mockReserve = {
+        totalSupplyFloat: jest.fn().mockReturnValue(10000),
+        totalLiabilitiesFloat: jest.fn().mockReturnValue(3000),
+        getUtilizationFloat: jest.fn().mockReturnValue(0.3),
+        estSupplyApy: 0.04,
+        estBorrowApy: 0.09,
+        data: { lastTime: 1700000000 },
+      };
+
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([
+          ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
+        ]),
+      };
+
+      const reserve = await blendProtocol.getReserveData(testAsset);
+
+      expect(reserve.totalSupply).toBe('10000.0000000');
+      expect(reserve.totalBorrows).toBe('3000.0000000');
+      expect(reserve.availableLiquidity).toBe('7000.0000000');
+      expect(reserve.utilizationRate).toBe('30.00');
+      expect(reserve.supplyAPY).toBe('4.00');
+      expect(reserve.borrowAPY).toBe('9.00');
+    });
+
+    // --- blendPool with no matching reserve falls back ---
+
+    it('should fall back when blendPool has no matching reserve for getSupplyAPY', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([['NOMATCH', {}]]),
+      };
+
+      const apy = await blendProtocol.getSupplyAPY(testAsset);
+      expect(apy.supplyAPY).toBe('0');
+    });
+
+    it('should fall back when blendPool has no matching reserve for getBorrowAPY', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([['NOMATCH', {}]]),
+      };
+
+      const apy = await blendProtocol.getBorrowAPY(testAsset);
+      expect(apy.borrowAPY).toBe('0');
+    });
+
+    it('should fall back when blendPool has no matching reserve for getTotalSupply', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([['NOMATCH', {}]]),
+      };
+
+      const supply = await blendProtocol.getTotalSupply(testAsset);
+      expect(supply).toBe('0');
+    });
+
+    it('should fall back when blendPool has no matching reserve for getTotalBorrow', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([['NOMATCH', {}]]),
+      };
+
+      const borrow = await blendProtocol.getTotalBorrow(testAsset);
+      expect(borrow).toBe('0');
+    });
+
+    it('should fall back when blendPool has no matching reserve for getReserveData', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map([['NOMATCH', {}]]),
+      };
+
+      const reserve = await blendProtocol.getReserveData(testAsset);
+      expect(reserve.availableLiquidity).toBe('0');
+    });
+
+    // --- getStats with empty reserves ---
+
+    it('should handle blendPool with empty reserves in getStats', async () => {
+      (blendProtocol as any).blendPool = {
+        reserves: new Map(),
+      };
+
+      const stats = await blendProtocol.getStats();
+
+      expect(stats.totalSupply).toBe('0.00');
+      expect(stats.utilizationRate).toBe(0);
+    });
+
+    // --- setupProtocol error path ---
+
+    it('should throw setup error when pool loading fails entirely', async () => {
+      // Use the already-initialized protocol and re-trigger setup
+      // by calling setupProtocol directly with a broken loadPoolConfig
+      (blendProtocol as any).loadPoolConfig = jest.fn().mockRejectedValue(new Error('Config load failed'));
+
+      await expect(
+        (blendProtocol as any).setupProtocol()
+      ).rejects.toThrow('Failed to setup Blend Protocol');
+    });
   });
 });
 

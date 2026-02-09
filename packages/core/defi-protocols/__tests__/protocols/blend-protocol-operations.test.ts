@@ -863,7 +863,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
     });
 
-    it('should throw error on simulation failure for getPosition', async () => {
+    it('should return default empty position on simulation failure for getPosition', async () => {
       const mockTx = { sign: jest.fn() };
       (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
         () =>
@@ -882,9 +882,15 @@ describe('BlendProtocol - Operations Tests', () => {
         .mockResolvedValue(mockSimulation);
       (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
 
-      await expect(blendProtocol.getPosition(testAddress)).rejects.toThrow(
-        'Failed to get position'
-      );
+      const position = await blendProtocol.getPosition(testAddress);
+
+      expect(position).toBeDefined();
+      expect(position.address).toBe(testAddress);
+      expect(position.supplied).toEqual([]);
+      expect(position.borrowed).toEqual([]);
+      expect(position.healthFactor).toBe('∞');
+      expect(position.collateralValue).toBe('0');
+      expect(position.debtValue).toBe('0');
     });
   });
 
