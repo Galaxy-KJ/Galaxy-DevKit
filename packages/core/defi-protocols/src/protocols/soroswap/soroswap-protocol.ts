@@ -8,6 +8,10 @@
 
 import {
   Contract,
+  TransactionBuilder,
+  Address,
+  nativeToScVal,
+  BASE_FEE,
   rpc
 } from '@stellar/stellar-sdk';
 
@@ -341,8 +345,11 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   // ========================================
-  // DEX OPERATIONS (Stubs for future issues #27-#30)
+  // DEX OPERATIONS
   // ========================================
+
+  /** Default slippage tolerance (5%) applied to min amounts */
+  private static readonly SLIPPAGE_TOLERANCE = 0.05;
 
   /**
    * Execute a token swap
@@ -388,9 +395,14 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   /**
-   * Add liquidity to a pool
-   * @stub Implementation planned for issue #29
-   * @throws {Error} Not yet implemented
+   * Add liquidity to a Soroswap pool
+   * @param {string} walletAddress - Wallet public key
+   * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @param {string} amountA - Desired amount of tokenA to add
+   * @param {string} amountB - Desired amount of tokenB to add
+   * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async addLiquidity(
     walletAddress: string,
@@ -407,14 +419,70 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAmount(amountA);
     this.validateAmount(amountB);
 
-    // TODO: Implement in issue #29
-    throw new Error('addLiquidity() is not yet implemented. See issue #29 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      // Compute min amounts with slippage protection
+      const amountAMin = (parseFloat(amountA) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+      const amountBMin = (parseFloat(amountB) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+
+      // Resolve token addresses
+      const tokenAAddress = tokenA.issuer ?? tokenA.code;
+      const tokenBAddress = tokenB.issuer ?? tokenB.code;
+
+      // Deadline: 30 minutes from now
+      const deadline = Math.floor(Date.now() / 1000) + 1800;
+
+      // Build the add_liquidity invocation
+      const addLiquidityOp = this.routerContract.call(
+        'add_liquidity',
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal(),
+        nativeToScVal(amountA, { type: 'i128' }),
+        nativeToScVal(amountB, { type: 'i128' }),
+        nativeToScVal(amountAMin, { type: 'i128' }),
+        nativeToScVal(amountBMin, { type: 'i128' }),
+        new Address(walletAddress).toScVal(),
+        nativeToScVal(deadline, { type: 'u64' })
+      );
+
+      // Load the source account and assemble the transaction
+      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(addLiquidityOp)
+        .setTimeout(180)
+        .build();
+
+      // Prepare (simulate + assemble) to get the final unsigned XDR
+      const preparedTx = await this.sorobanServer.prepareTransaction(transaction);
+      const xdr = preparedTx.toXDR();
+
+      return this.buildTransactionResult(xdr, 'pending', 0, {
+        operation: 'addLiquidity',
+        tokenA,
+        tokenB,
+        amountA,
+        amountB,
+        amountAMin,
+        amountBMin,
+      });
+    } catch (error) {
+      this.handleError(error, 'addLiquidity');
+    }
   }
 
   /**
-   * Remove liquidity from a pool
-   * @stub Implementation planned for issue #30
-   * @throws {Error} Not yet implemented
+   * Remove liquidity from a Soroswap pool
+   * @param {string} walletAddress - Wallet public key
+   * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
+   * @param {string} poolAddress - LP token / pool contract address
+   * @param {string} liquidity - Amount of LP tokens to burn
+   * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async removeLiquidity(
     walletAddress: string,
@@ -427,14 +495,58 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAddress(poolAddress);
     this.validateAmount(liquidity);
 
-    // TODO: Implement in issue #30
-    throw new Error('removeLiquidity() is not yet implemented. See issue #30 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      // Deadline: 30 minutes from now
+      const deadline = Math.floor(Date.now() / 1000) + 1800;
+
+      // Min amounts default to 0 — caller can tighten if reserves are known
+      const amountAMin = '0';
+      const amountBMin = '0';
+
+      // Build the remove_liquidity invocation
+      const removeLiquidityOp = this.routerContract.call(
+        'remove_liquidity',
+        new Address(poolAddress).toScVal(),
+        nativeToScVal(liquidity, { type: 'i128' }),
+        nativeToScVal(amountAMin, { type: 'i128' }),
+        nativeToScVal(amountBMin, { type: 'i128' }),
+        new Address(walletAddress).toScVal(),
+        nativeToScVal(deadline, { type: 'u64' })
+      );
+
+      // Load source account and build the transaction
+      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(removeLiquidityOp)
+        .setTimeout(180)
+        .build();
+
+      // Prepare to get the final unsigned XDR
+      const preparedTx = await this.sorobanServer.prepareTransaction(transaction);
+      const xdr = preparedTx.toXDR();
+
+      return this.buildTransactionResult(xdr, 'pending', 0, {
+        operation: 'removeLiquidity',
+        poolAddress,
+        liquidity,
+      });
+    } catch (error) {
+      this.handleError(error, 'removeLiquidity');
+    }
   }
 
   /**
-   * Get liquidity pool information
-   * @stub Implementation planned for issue #29
-   * @throws {Error} Not yet implemented
+   * Get liquidity pool information for a token pair
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @returns {Promise<LiquidityPool>} Pool information including reserves and fee
    */
   public async getLiquidityPool(
     tokenA: Asset,
@@ -444,7 +556,104 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAsset(tokenA);
     this.validateAsset(tokenB);
 
-    // TODO: Implement in issue #29
-    throw new Error('getLiquidityPool() is not yet implemented. See issue #29 for tracking.');
+    try {
+      if (!this.factoryContract) {
+        throw new Error('Factory contract not initialized');
+      }
+
+      // Resolve token addresses (use issuer for non-native assets, code for native)
+      const tokenAAddress = tokenA.issuer ?? tokenA.code;
+      const tokenBAddress = tokenB.issuer ?? tokenB.code;
+
+      // Build the get_pair call on the factory contract
+      const getPairOp = this.factoryContract.call(
+        'get_pair',
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal()
+      );
+
+      // Use a fixed placeholder address for simulation — no signing is needed
+      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => {
+        // If account not found on network, create a minimal object for simulation
+        return {
+          accountId: () => SIMULATION_PLACEHOLDER,
+          sequenceNumber: () => '0',
+          incrementSequenceNumber: () => {},
+          sequence: '0',
+        } as any;
+      });
+
+      const tx = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(getPairOp)
+        .setTimeout(30)
+        .build();
+
+      // Simulate to retrieve the pair address
+      const simulation = await this.sorobanServer.simulateTransaction(tx);
+
+      let pairAddress = '';
+      if (
+        simulation &&
+        !rpc.Api.isSimulationError(simulation) &&
+        'result' in simulation &&
+        simulation.result
+      ) {
+        // Extract string address from ScVal result
+        const resultVal = simulation.result.retval;
+        if (resultVal && 'address' in resultVal) {
+          pairAddress = (resultVal as any).address?.toString() ?? '';
+        }
+      }
+
+      // Query reserves from the pair contract if we have a valid address
+      let reserveA = '0';
+      let reserveB = '0';
+      let totalLiquidity = '0';
+
+      if (pairAddress) {
+        const pairContract = new Contract(pairAddress);
+        const getReservesOp = pairContract.call('get_reserves');
+
+        const reserveTx = new TransactionBuilder(sourceAccount, {
+          fee: BASE_FEE,
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(getReservesOp)
+          .setTimeout(30)
+          .build();
+
+        const reserveSim = await this.sorobanServer.simulateTransaction(reserveTx);
+
+        if (
+          reserveSim &&
+          !rpc.Api.isSimulationError(reserveSim) &&
+          'result' in reserveSim &&
+          reserveSim.result
+        ) {
+          const resultVal = reserveSim.result.retval as any;
+          if (resultVal && Array.isArray(resultVal.vec)) {
+            reserveA = resultVal.vec[0]?.toString() ?? '0';
+            reserveB = resultVal.vec[1]?.toString() ?? '0';
+            totalLiquidity = resultVal.vec[2]?.toString() ?? '0';
+          }
+        }
+      }
+
+      return {
+        address: pairAddress,
+        tokenA,
+        tokenB,
+        reserveA,
+        reserveB,
+        totalLiquidity,
+        fee: SOROSWAP_DEFAULT_FEE,
+      };
+    } catch (error) {
+      this.handleError(error, 'getLiquidityPool');
+    }
   }
 }
