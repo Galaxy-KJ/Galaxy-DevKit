@@ -41,15 +41,24 @@ jest.mock('@stellar/stellar-sdk', () => {
       fromPublicKey: jest.fn().mockReturnValue({ publicKey: () => 'test-public-key' }),
       random: jest.fn(),
     },
-    Address: jest.fn().mockImplementation((addr: string) => ({
-      toScVal: jest.fn().mockReturnValue({ type: 'address', value: addr }),
-    })),
+    Address: Object.assign(
+      jest.fn().mockImplementation((addr: string) => ({
+        toScVal: jest.fn().mockReturnValue({ type: 'address', value: addr }),
+        toString: jest.fn().mockReturnValue(addr),
+      })),
+      {
+        fromScVal: jest.fn().mockReturnValue({
+          toString: jest.fn().mockReturnValue('CPAIRADDRESS123456789'),
+        }),
+      }
+    ),
     nativeToScVal: jest.fn().mockReturnValue({ type: 'scval' }),
+    scValToNative: jest.fn().mockReturnValue([1000000n, 2000000n, 500000n]),
     BASE_FEE: '100',
     rpc: {
       Server: jest.fn(),
       Api: {
-        isSimulationError: jest.fn(),
+        isSimulationError: jest.fn().mockReturnValue(false),
       },
       assembleTransaction: jest.fn().mockReturnValue({
         build: jest.fn().mockReturnValue({
@@ -68,7 +77,14 @@ jest.mock('@stellar/stellar-sdk', () => {
       TESTNET: 'TESTNET',
       PUBLIC: 'PUBLIC',
     },
-    Asset: jest.fn(),
+    Asset: Object.assign(
+      jest.fn(),
+      {
+        native: jest.fn().mockReturnValue({
+          contractId: jest.fn().mockReturnValue('CNATIVE_CONTRACT_ADDRESS'),
+        }),
+      }
+    ),
   };
 });
 
@@ -555,6 +571,12 @@ describe('SoroswapProtocol', () => {
   // ==========================================
 
   describe('removeLiquidity()', () => {
+    const tokenA: Asset = { code: 'XLM', type: 'native' };
+    const tokenB: Asset = {
+      code: 'USDC',
+      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      type: 'credit_alphanum4'
+    };
     const poolAddress = 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD';
 
     beforeEach(async () => {
@@ -563,7 +585,7 @@ describe('SoroswapProtocol', () => {
 
     it('should return a TransactionResult with status pending', async () => {
       const result = await soroswapProtocol.removeLiquidity(
-        testAddress, testPrivateKey, poolAddress, '50'
+        testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '50'
       );
 
       expect(result).toBeDefined();
@@ -575,7 +597,7 @@ describe('SoroswapProtocol', () => {
 
     it('should include removeLiquidity metadata', async () => {
       const result = await soroswapProtocol.removeLiquidity(
-        testAddress, testPrivateKey, poolAddress, '50'
+        testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '50'
       );
 
       expect(result.metadata.operation).toBe('removeLiquidity');
@@ -583,36 +605,54 @@ describe('SoroswapProtocol', () => {
       expect(result.metadata.liquidity).toBe('50');
     });
 
+    it('should apply 5% slippage to default min amounts', async () => {
+      const result = await soroswapProtocol.removeLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '100'
+      );
+
+      expect(parseFloat(result.metadata.amountAMin as string)).toBeCloseTo(95, 4);
+      expect(parseFloat(result.metadata.amountBMin as string)).toBeCloseTo(95, 4);
+    });
+
+    it('should accept explicit min amounts', async () => {
+      const result = await soroswapProtocol.removeLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '100', '80', '90'
+      );
+
+      expect(result.metadata.amountAMin).toBe('80');
+      expect(result.metadata.amountBMin).toBe('90');
+    });
+
     it('should throw if router contract is null', async () => {
       (soroswapProtocol as any).routerContract = null;
 
       await expect(
-        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '50')
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '50')
       ).rejects.toThrow('Router contract not initialized');
     });
 
     it('should throw on invalid wallet address', async () => {
       await expect(
-        soroswapProtocol.removeLiquidity('', testPrivateKey, poolAddress, '50')
+        soroswapProtocol.removeLiquidity('', testPrivateKey, tokenA, tokenB, poolAddress, '50')
       ).rejects.toThrow(/Invalid wallet address/);
     });
 
-    it('should throw on invalid pool address', async () => {
+    it('should throw on empty pool address', async () => {
       await expect(
-        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, '', '50')
-      ).rejects.toThrow(/Invalid wallet address/);
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '', '50')
+      ).rejects.toThrow(/Invalid pool address/);
     });
 
     it('should throw on invalid liquidity amount', async () => {
       await expect(
-        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '-1')
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '-1')
       ).rejects.toThrow(/Amount must be a positive number/);
     });
 
     it('should throw if not initialized', async () => {
       const uninitProtocol = new SoroswapProtocol(mockConfig);
       await expect(
-        uninitProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '50')
+        uninitProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '50')
       ).rejects.toThrow(/not initialized/);
     });
   });

@@ -10,7 +10,9 @@ import {
   Contract,
   TransactionBuilder,
   Address,
+  Asset as StellarAsset,
   nativeToScVal,
+  scValToNative,
   BASE_FEE,
   rpc
 } from '@stellar/stellar-sdk';
@@ -351,6 +353,30 @@ export class SoroswapProtocol extends BaseProtocol {
   /** Default slippage tolerance (5%) applied to min amounts */
   private static readonly SLIPPAGE_TOLERANCE = 0.05;
 
+  /** Stroops per lumen — Stellar uses 7 decimal places */
+  private static readonly STROOPS_PER_UNIT = 10_000_000n;
+
+  /**
+   * Resolve a Galaxy Asset to its Soroban contract address.
+   * Native XLM uses the Stellar Asset Contract (SAC) address derived from the
+   * network passphrase. Non-native assets use the issuer address.
+   */
+  private resolveTokenAddress(asset: Asset): string {
+    if (asset.type === 'native') {
+      return StellarAsset.native().contractId(this.networkPassphrase);
+    }
+    return asset.issuer!;
+  }
+
+  /**
+   * Convert a decimal amount string (e.g. "100.5") to an i128 ScVal in stroops.
+   * Soroban token amounts are integers — 1 unit = 10_000_000 stroops.
+   */
+  private static amountToI128ScVal(amount: string): ReturnType<typeof nativeToScVal> {
+    const stroops = BigInt(Math.round(parseFloat(amount) * 1e7));
+    return nativeToScVal(stroops, { type: 'i128' });
+  }
+
   /**
    * Execute a token swap
    * @stub Implementation planned for issue #27
@@ -400,8 +426,8 @@ export class SoroswapProtocol extends BaseProtocol {
    * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
    * @param {Asset} tokenA - First token of the pair
    * @param {Asset} tokenB - Second token of the pair
-   * @param {string} amountA - Desired amount of tokenA to add
-   * @param {string} amountB - Desired amount of tokenB to add
+   * @param {string} amountA - Desired amount of tokenA to add (decimal, e.g. "100.5")
+   * @param {string} amountB - Desired amount of tokenB to add (decimal, e.g. "200")
    * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async addLiquidity(
@@ -424,26 +450,28 @@ export class SoroswapProtocol extends BaseProtocol {
         throw new Error('Router contract not initialized');
       }
 
-      // Compute min amounts with slippage protection
+      // Compute min amounts (decimal strings) with 5% slippage protection
       const amountAMin = (parseFloat(amountA) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
       const amountBMin = (parseFloat(amountB) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
 
-      // Resolve token addresses
-      const tokenAAddress = tokenA.issuer ?? tokenA.code;
-      const tokenBAddress = tokenB.issuer ?? tokenB.code;
+      // Resolve Soroban contract addresses (native XLM uses SAC address)
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
 
       // Deadline: 30 minutes from now
       const deadline = Math.floor(Date.now() / 1000) + 1800;
 
       // Build the add_liquidity invocation
+      // Router signature: add_liquidity(token_a, token_b, amount_a_desired, amount_b_desired,
+      //                                 amount_a_min, amount_b_min, to, deadline)
       const addLiquidityOp = this.routerContract.call(
         'add_liquidity',
         new Address(tokenAAddress).toScVal(),
         new Address(tokenBAddress).toScVal(),
-        nativeToScVal(amountA, { type: 'i128' }),
-        nativeToScVal(amountB, { type: 'i128' }),
-        nativeToScVal(amountAMin, { type: 'i128' }),
-        nativeToScVal(amountBMin, { type: 'i128' }),
+        SoroswapProtocol.amountToI128ScVal(amountA),
+        SoroswapProtocol.amountToI128ScVal(amountB),
+        SoroswapProtocol.amountToI128ScVal(amountAMin),
+        SoroswapProtocol.amountToI128ScVal(amountBMin),
         new Address(walletAddress).toScVal(),
         nativeToScVal(deadline, { type: 'u64' })
       );
@@ -480,19 +508,31 @@ export class SoroswapProtocol extends BaseProtocol {
    * Remove liquidity from a Soroswap pool
    * @param {string} walletAddress - Wallet public key
    * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
-   * @param {string} poolAddress - LP token / pool contract address
-   * @param {string} liquidity - Amount of LP tokens to burn
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @param {string} poolAddress - LP token / pair contract address
+   * @param {string} liquidity - Amount of LP tokens to burn (decimal)
+   * @param {string} [amountAMin] - Min tokenA to receive; defaults to 5% slippage on liquidity
+   * @param {string} [amountBMin] - Min tokenB to receive; defaults to 5% slippage on liquidity
    * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async removeLiquidity(
     walletAddress: string,
     privateKey: string,
+    tokenA: Asset,
+    tokenB: Asset,
     poolAddress: string,
-    liquidity: string
+    liquidity: string,
+    amountAMin?: string,
+    amountBMin?: string
   ): Promise<TransactionResult> {
     this.ensureInitialized();
     this.validateAddress(walletAddress);
-    this.validateAddress(poolAddress);
+    this.validateAsset(tokenA);
+    this.validateAsset(tokenB);
+    if (!poolAddress) {
+      throw new Error('Invalid pool address');
+    }
     this.validateAmount(liquidity);
 
     try {
@@ -500,20 +540,28 @@ export class SoroswapProtocol extends BaseProtocol {
         throw new Error('Router contract not initialized');
       }
 
+      // Default min amounts to 5% slippage of the liquidity amount if not provided
+      const slippageFactor = 1 - SoroswapProtocol.SLIPPAGE_TOLERANCE;
+      const resolvedAmountAMin = amountAMin ?? (parseFloat(liquidity) * slippageFactor).toFixed(7);
+      const resolvedAmountBMin = amountBMin ?? (parseFloat(liquidity) * slippageFactor).toFixed(7);
+
       // Deadline: 30 minutes from now
       const deadline = Math.floor(Date.now() / 1000) + 1800;
 
-      // Min amounts default to 0 — caller can tighten if reserves are known
-      const amountAMin = '0';
-      const amountBMin = '0';
+      // Resolve Soroban contract addresses
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
 
       // Build the remove_liquidity invocation
+      // Router signature: remove_liquidity(token_a, token_b, liquidity,
+      //                                    amount_a_min, amount_b_min, to, deadline)
       const removeLiquidityOp = this.routerContract.call(
         'remove_liquidity',
-        new Address(poolAddress).toScVal(),
-        nativeToScVal(liquidity, { type: 'i128' }),
-        nativeToScVal(amountAMin, { type: 'i128' }),
-        nativeToScVal(amountBMin, { type: 'i128' }),
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal(),
+        SoroswapProtocol.amountToI128ScVal(liquidity),
+        SoroswapProtocol.amountToI128ScVal(resolvedAmountAMin),
+        SoroswapProtocol.amountToI128ScVal(resolvedAmountBMin),
         new Address(walletAddress).toScVal(),
         nativeToScVal(deadline, { type: 'u64' })
       );
@@ -534,8 +582,12 @@ export class SoroswapProtocol extends BaseProtocol {
 
       return this.buildTransactionResult(xdr, 'pending', 0, {
         operation: 'removeLiquidity',
+        tokenA,
+        tokenB,
         poolAddress,
         liquidity,
+        amountAMin: resolvedAmountAMin,
+        amountBMin: resolvedAmountBMin,
       });
     } catch (error) {
       this.handleError(error, 'removeLiquidity');
@@ -561,9 +613,9 @@ export class SoroswapProtocol extends BaseProtocol {
         throw new Error('Factory contract not initialized');
       }
 
-      // Resolve token addresses (use issuer for non-native assets, code for native)
-      const tokenAAddress = tokenA.issuer ?? tokenA.code;
-      const tokenBAddress = tokenB.issuer ?? tokenB.code;
+      // Resolve Soroban contract addresses (native XLM uses SAC address)
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
 
       // Build the get_pair call on the factory contract
       const getPairOp = this.factoryContract.call(
@@ -600,12 +652,14 @@ export class SoroswapProtocol extends BaseProtocol {
         simulation &&
         !rpc.Api.isSimulationError(simulation) &&
         'result' in simulation &&
-        simulation.result
+        simulation.result?.retval
       ) {
-        // Extract string address from ScVal result
-        const resultVal = simulation.result.retval;
-        if (resultVal && 'address' in resultVal) {
-          pairAddress = (resultVal as any).address?.toString() ?? '';
+        try {
+          // Use Address.fromScVal() — the correct SDK API for ScVal address extraction
+          pairAddress = Address.fromScVal(simulation.result.retval).toString();
+        } catch {
+          // retval was not an address ScVal — pair may not exist yet
+          pairAddress = '';
         }
       }
 
@@ -632,13 +686,18 @@ export class SoroswapProtocol extends BaseProtocol {
           reserveSim &&
           !rpc.Api.isSimulationError(reserveSim) &&
           'result' in reserveSim &&
-          reserveSim.result
+          reserveSim.result?.retval
         ) {
-          const resultVal = reserveSim.result.retval as any;
-          if (resultVal && Array.isArray(resultVal.vec)) {
-            reserveA = resultVal.vec[0]?.toString() ?? '0';
-            reserveB = resultVal.vec[1]?.toString() ?? '0';
-            totalLiquidity = resultVal.vec[2]?.toString() ?? '0';
+          try {
+            // scValToNative converts i128 ScVal → bigint; stringify for the interface
+            const native = scValToNative(reserveSim.result.retval) as bigint[];
+            if (Array.isArray(native) && native.length >= 3) {
+              reserveA = native[0]?.toString() ?? '0';
+              reserveB = native[1]?.toString() ?? '0';
+              totalLiquidity = native[2]?.toString() ?? '0';
+            }
+          } catch {
+            // Unexpected ScVal shape — keep defaults
           }
         }
       }
