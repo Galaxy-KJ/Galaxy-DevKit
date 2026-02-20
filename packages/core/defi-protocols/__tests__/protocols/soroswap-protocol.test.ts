@@ -124,6 +124,19 @@ describe('SoroswapProtocol', () => {
       })
     };
     (soroswapProtocol as any).horizonServer = mockHorizonServer;
+
+    // Mock Soroban server
+    const mockSorobanServer = {
+      simulateTransaction: jest.fn().mockResolvedValue({
+        result: {
+          retval: { address: 'CPAIRADDRESS123456789' },
+        },
+      }),
+      prepareTransaction: jest.fn().mockResolvedValue({
+        toXDR: jest.fn().mockReturnValue('mock-xdr'),
+      }),
+    };
+    (soroswapProtocol as any).sorobanServer = mockSorobanServer;
   });
 
   // ==========================================
@@ -391,7 +404,7 @@ describe('SoroswapProtocol', () => {
   });
 
   // ==========================================
-  // DEX OPERATION STUBS
+  // DEX OPERATION STUBS (swap, getSwapQuote)
   // ==========================================
 
   describe('DEX Operation Stubs', () => {
@@ -418,25 +431,7 @@ describe('SoroswapProtocol', () => {
       ).rejects.toThrow(/not yet implemented/);
     });
 
-    it('should throw "not yet implemented" on addLiquidity()', async () => {
-      await expect(
-        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '100')
-      ).rejects.toThrow(/not yet implemented/);
-    });
-
-    it('should throw "not yet implemented" on removeLiquidity()', async () => {
-      await expect(
-        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, testAddress, '100')
-      ).rejects.toThrow(/not yet implemented/);
-    });
-
-    it('should throw "not yet implemented" on getLiquidityPool()', async () => {
-      await expect(
-        soroswapProtocol.getLiquidityPool(tokenIn, tokenOut)
-      ).rejects.toThrow(/not yet implemented/);
-    });
-
-    it('should reference issue numbers in stub error messages', async () => {
+    it('should reference issue numbers in swap/getSwapQuote stub error messages', async () => {
       await expect(
         soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
       ).rejects.toThrow(/#27/);
@@ -444,14 +439,6 @@ describe('SoroswapProtocol', () => {
       await expect(
         soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '100')
       ).rejects.toThrow(/#28/);
-
-      await expect(
-        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '100')
-      ).rejects.toThrow(/#29/);
-
-      await expect(
-        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, testAddress, '100')
-      ).rejects.toThrow(/#30/);
     });
 
     it('should validate inputs before throwing stub errors', async () => {
@@ -477,6 +464,155 @@ describe('SoroswapProtocol', () => {
 
       await expect(
         uninitProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
+      ).rejects.toThrow(/not initialized/);
+    });
+  });
+
+  // ==========================================
+  // ADD LIQUIDITY
+  // ==========================================
+
+  describe('addLiquidity()', () => {
+    const tokenA: Asset = { code: 'XLM', type: 'native' };
+    const tokenB: Asset = {
+      code: 'USDC',
+      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      type: 'credit_alphanum4'
+    };
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return a TransactionResult with status pending', async () => {
+      const result = await soroswapProtocol.addLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, '100', '200'
+      );
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe('pending');
+      expect(result.hash).toBe('mock-xdr');
+      expect(result.ledger).toBe(0);
+      expect(result.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should include addLiquidity metadata', async () => {
+      const result = await soroswapProtocol.addLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, '100', '200'
+      );
+
+      expect(result.metadata.operation).toBe('addLiquidity');
+      expect(result.metadata.amountA).toBe('100');
+      expect(result.metadata.amountB).toBe('200');
+    });
+
+    it('should apply 5% slippage tolerance to min amounts', async () => {
+      const result = await soroswapProtocol.addLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, '100', '200'
+      );
+
+      expect(parseFloat(result.metadata.amountAMin as string)).toBeCloseTo(95, 4);
+      expect(parseFloat(result.metadata.amountBMin as string)).toBeCloseTo(190, 4);
+    });
+
+    it('should throw if router contract is null', async () => {
+      (soroswapProtocol as any).routerContract = null;
+
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
+      ).rejects.toThrow('Router contract not initialized');
+    });
+
+    it('should throw on invalid wallet address', async () => {
+      await expect(
+        soroswapProtocol.addLiquidity('', testPrivateKey, tokenA, tokenB, '100', '200')
+      ).rejects.toThrow(/Invalid wallet address/);
+    });
+
+    it('should throw on invalid amount', async () => {
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '-5', '200')
+      ).rejects.toThrow(/Amount must be a positive number/);
+    });
+
+    it('should throw on invalid asset', async () => {
+      const badAsset: Asset = { code: '', type: 'native' };
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, badAsset, tokenB, '100', '200')
+      ).rejects.toThrow(/Invalid asset/);
+    });
+
+    it('should throw if not initialized', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+      await expect(
+        uninitProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
+      ).rejects.toThrow(/not initialized/);
+    });
+  });
+
+  // ==========================================
+  // REMOVE LIQUIDITY
+  // ==========================================
+
+  describe('removeLiquidity()', () => {
+    const poolAddress = 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD';
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return a TransactionResult with status pending', async () => {
+      const result = await soroswapProtocol.removeLiquidity(
+        testAddress, testPrivateKey, poolAddress, '50'
+      );
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe('pending');
+      expect(result.hash).toBe('mock-xdr');
+      expect(result.ledger).toBe(0);
+      expect(result.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should include removeLiquidity metadata', async () => {
+      const result = await soroswapProtocol.removeLiquidity(
+        testAddress, testPrivateKey, poolAddress, '50'
+      );
+
+      expect(result.metadata.operation).toBe('removeLiquidity');
+      expect(result.metadata.poolAddress).toBe(poolAddress);
+      expect(result.metadata.liquidity).toBe('50');
+    });
+
+    it('should throw if router contract is null', async () => {
+      (soroswapProtocol as any).routerContract = null;
+
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '50')
+      ).rejects.toThrow('Router contract not initialized');
+    });
+
+    it('should throw on invalid wallet address', async () => {
+      await expect(
+        soroswapProtocol.removeLiquidity('', testPrivateKey, poolAddress, '50')
+      ).rejects.toThrow(/Invalid wallet address/);
+    });
+
+    it('should throw on invalid pool address', async () => {
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, '', '50')
+      ).rejects.toThrow(/Invalid wallet address/);
+    });
+
+    it('should throw on invalid liquidity amount', async () => {
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '-1')
+      ).rejects.toThrow(/Amount must be a positive number/);
+    });
+
+    it('should throw if not initialized', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+      await expect(
+        uninitProtocol.removeLiquidity(testAddress, testPrivateKey, poolAddress, '50')
       ).rejects.toThrow(/not initialized/);
     });
   });
