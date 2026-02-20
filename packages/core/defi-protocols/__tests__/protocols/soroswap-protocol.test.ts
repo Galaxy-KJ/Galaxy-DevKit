@@ -618,6 +618,78 @@ describe('SoroswapProtocol', () => {
   });
 
   // ==========================================
+  // GET LIQUIDITY POOL
+  // ==========================================
+
+  describe('getLiquidityPool()', () => {
+    const tokenA: Asset = { code: 'XLM', type: 'native' };
+    const tokenB: Asset = {
+      code: 'USDC',
+      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      type: 'credit_alphanum4'
+    };
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return a LiquidityPool with correct shape', async () => {
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+
+      expect(pool).toBeDefined();
+      expect(pool).toHaveProperty('address');
+      expect(pool).toHaveProperty('tokenA');
+      expect(pool).toHaveProperty('tokenB');
+      expect(pool).toHaveProperty('reserveA');
+      expect(pool).toHaveProperty('reserveB');
+      expect(pool).toHaveProperty('totalLiquidity');
+      expect(pool).toHaveProperty('fee');
+    });
+
+    it('should return the correct tokens', async () => {
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+
+      expect(pool.tokenA).toEqual(tokenA);
+      expect(pool.tokenB).toEqual(tokenB);
+    });
+
+    it('should return the default fee', async () => {
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+
+      expect(pool.fee).toBe('0.003');
+    });
+
+    it('should throw if factory contract is null', async () => {
+      (soroswapProtocol as any).factoryContract = null;
+
+      await expect(
+        soroswapProtocol.getLiquidityPool(tokenA, tokenB)
+      ).rejects.toThrow('Factory contract not initialized');
+    });
+
+    it('should throw on invalid asset (empty code)', async () => {
+      const badAsset: Asset = { code: '', type: 'native' };
+      await expect(
+        soroswapProtocol.getLiquidityPool(badAsset, tokenB)
+      ).rejects.toThrow(/Invalid asset/);
+    });
+
+    it('should throw on non-native asset missing issuer', async () => {
+      const badAsset: Asset = { code: 'USDC', type: 'credit_alphanum4' };
+      await expect(
+        soroswapProtocol.getLiquidityPool(badAsset, tokenB)
+      ).rejects.toThrow(/Non-native assets must have an issuer/);
+    });
+
+    it('should throw if not initialized', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+      await expect(
+        uninitProtocol.getLiquidityPool(tokenA, tokenB)
+      ).rejects.toThrow(/not initialized/);
+    });
+  });
+
+  // ==========================================
   // UNINITIALIZED STATE
   // ==========================================
 
