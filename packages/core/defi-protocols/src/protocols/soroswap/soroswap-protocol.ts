@@ -8,6 +8,12 @@
 
 import {
   Contract,
+  TransactionBuilder,
+  Address,
+  Asset as StellarAsset,
+  nativeToScVal,
+  scValToNative,
+  BASE_FEE,
   rpc
 } from '@stellar/stellar-sdk';
 
@@ -341,8 +347,35 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   // ========================================
-  // DEX OPERATIONS (Stubs for future issues #27-#30)
+  // DEX OPERATIONS
   // ========================================
+
+  /** Default slippage tolerance (5%) applied to min amounts */
+  private static readonly SLIPPAGE_TOLERANCE = 0.05;
+
+  /** Stroops per lumen — Stellar uses 7 decimal places */
+  private static readonly STROOPS_PER_UNIT = 10_000_000n;
+
+  /**
+   * Resolve a Galaxy Asset to its Soroban contract address.
+   * Native XLM uses the Stellar Asset Contract (SAC) address derived from the
+   * network passphrase. Non-native assets use the issuer address.
+   */
+  private resolveTokenAddress(asset: Asset): string {
+    if (asset.type === 'native') {
+      return StellarAsset.native().contractId(this.networkPassphrase);
+    }
+    return asset.issuer!;
+  }
+
+  /**
+   * Convert a decimal amount string (e.g. "100.5") to an i128 ScVal in stroops.
+   * Soroban token amounts are integers — 1 unit = 10_000_000 stroops.
+   */
+  private static amountToI128ScVal(amount: string): ReturnType<typeof nativeToScVal> {
+    const stroops = BigInt(Math.round(parseFloat(amount) * 1e7));
+    return nativeToScVal(stroops, { type: 'i128' });
+  }
 
   /**
    * Execute a token swap
@@ -388,9 +421,14 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   /**
-   * Add liquidity to a pool
-   * @stub Implementation planned for issue #29
-   * @throws {Error} Not yet implemented
+   * Add liquidity to a Soroswap pool
+   * @param {string} walletAddress - Wallet public key
+   * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @param {string} amountA - Desired amount of tokenA to add (decimal, e.g. "100.5")
+   * @param {string} amountB - Desired amount of tokenB to add (decimal, e.g. "200")
+   * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async addLiquidity(
     walletAddress: string,
@@ -407,34 +445,160 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAmount(amountA);
     this.validateAmount(amountB);
 
-    // TODO: Implement in issue #29
-    throw new Error('addLiquidity() is not yet implemented. See issue #29 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      // Compute min amounts (decimal strings) with 5% slippage protection
+      const amountAMin = (parseFloat(amountA) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+      const amountBMin = (parseFloat(amountB) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+
+      // Resolve Soroban contract addresses (native XLM uses SAC address)
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
+
+      // Deadline: 30 minutes from now
+      const deadline = Math.floor(Date.now() / 1000) + 1800;
+
+      // Build the add_liquidity invocation
+      // Router signature: add_liquidity(token_a, token_b, amount_a_desired, amount_b_desired,
+      //                                 amount_a_min, amount_b_min, to, deadline)
+      const addLiquidityOp = this.routerContract.call(
+        'add_liquidity',
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal(),
+        SoroswapProtocol.amountToI128ScVal(amountA),
+        SoroswapProtocol.amountToI128ScVal(amountB),
+        SoroswapProtocol.amountToI128ScVal(amountAMin),
+        SoroswapProtocol.amountToI128ScVal(amountBMin),
+        new Address(walletAddress).toScVal(),
+        nativeToScVal(deadline, { type: 'u64' })
+      );
+
+      // Load the source account and assemble the transaction
+      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(addLiquidityOp)
+        .setTimeout(180)
+        .build();
+
+      // Prepare (simulate + assemble) to get the final unsigned XDR
+      const preparedTx = await this.sorobanServer.prepareTransaction(transaction);
+      const xdr = preparedTx.toXDR();
+
+      return this.buildTransactionResult(xdr, 'pending', 0, {
+        operation: 'addLiquidity',
+        tokenA,
+        tokenB,
+        amountA,
+        amountB,
+        amountAMin,
+        amountBMin,
+      });
+    } catch (error) {
+      this.handleError(error, 'addLiquidity');
+    }
   }
 
   /**
-   * Remove liquidity from a pool
-   * @stub Implementation planned for issue #30
-   * @throws {Error} Not yet implemented
+   * Remove liquidity from a Soroswap pool
+   * @param {string} walletAddress - Wallet public key
+   * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @param {string} poolAddress - LP token / pair contract address
+   * @param {string} liquidity - Amount of LP tokens to burn (decimal)
+   * @param {string} [amountAMin] - Min tokenA to receive; defaults to 5% slippage on liquidity
+   * @param {string} [amountBMin] - Min tokenB to receive; defaults to 5% slippage on liquidity
+   * @returns {Promise<TransactionResult>} Unsigned XDR transaction (status: pending)
    */
   public async removeLiquidity(
     walletAddress: string,
     privateKey: string,
+    tokenA: Asset,
+    tokenB: Asset,
     poolAddress: string,
-    liquidity: string
+    liquidity: string,
+    amountAMin?: string,
+    amountBMin?: string
   ): Promise<TransactionResult> {
     this.ensureInitialized();
     this.validateAddress(walletAddress);
-    this.validateAddress(poolAddress);
+    this.validateAsset(tokenA);
+    this.validateAsset(tokenB);
+    if (!poolAddress) {
+      throw new Error('Invalid pool address');
+    }
     this.validateAmount(liquidity);
 
-    // TODO: Implement in issue #30
-    throw new Error('removeLiquidity() is not yet implemented. See issue #30 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      // Default min amounts to 5% slippage of the liquidity amount if not provided
+      const slippageFactor = 1 - SoroswapProtocol.SLIPPAGE_TOLERANCE;
+      const resolvedAmountAMin = amountAMin ?? (parseFloat(liquidity) * slippageFactor).toFixed(7);
+      const resolvedAmountBMin = amountBMin ?? (parseFloat(liquidity) * slippageFactor).toFixed(7);
+
+      // Deadline: 30 minutes from now
+      const deadline = Math.floor(Date.now() / 1000) + 1800;
+
+      // Resolve Soroban contract addresses
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
+
+      // Build the remove_liquidity invocation
+      // Router signature: remove_liquidity(token_a, token_b, liquidity,
+      //                                    amount_a_min, amount_b_min, to, deadline)
+      const removeLiquidityOp = this.routerContract.call(
+        'remove_liquidity',
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal(),
+        SoroswapProtocol.amountToI128ScVal(liquidity),
+        SoroswapProtocol.amountToI128ScVal(resolvedAmountAMin),
+        SoroswapProtocol.amountToI128ScVal(resolvedAmountBMin),
+        new Address(walletAddress).toScVal(),
+        nativeToScVal(deadline, { type: 'u64' })
+      );
+
+      // Load source account and build the transaction
+      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(removeLiquidityOp)
+        .setTimeout(180)
+        .build();
+
+      // Prepare to get the final unsigned XDR
+      const preparedTx = await this.sorobanServer.prepareTransaction(transaction);
+      const xdr = preparedTx.toXDR();
+
+      return this.buildTransactionResult(xdr, 'pending', 0, {
+        operation: 'removeLiquidity',
+        tokenA,
+        tokenB,
+        poolAddress,
+        liquidity,
+        amountAMin: resolvedAmountAMin,
+        amountBMin: resolvedAmountBMin,
+      });
+    } catch (error) {
+      this.handleError(error, 'removeLiquidity');
+    }
   }
 
   /**
-   * Get liquidity pool information
-   * @stub Implementation planned for issue #29
-   * @throws {Error} Not yet implemented
+   * Get liquidity pool information for a token pair
+   * @param {Asset} tokenA - First token of the pair
+   * @param {Asset} tokenB - Second token of the pair
+   * @returns {Promise<LiquidityPool>} Pool information including reserves and fee
    */
   public async getLiquidityPool(
     tokenA: Asset,
@@ -444,7 +608,111 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAsset(tokenA);
     this.validateAsset(tokenB);
 
-    // TODO: Implement in issue #29
-    throw new Error('getLiquidityPool() is not yet implemented. See issue #29 for tracking.');
+    try {
+      if (!this.factoryContract) {
+        throw new Error('Factory contract not initialized');
+      }
+
+      // Resolve Soroban contract addresses (native XLM uses SAC address)
+      const tokenAAddress = this.resolveTokenAddress(tokenA);
+      const tokenBAddress = this.resolveTokenAddress(tokenB);
+
+      // Build the get_pair call on the factory contract
+      const getPairOp = this.factoryContract.call(
+        'get_pair',
+        new Address(tokenAAddress).toScVal(),
+        new Address(tokenBAddress).toScVal()
+      );
+
+      // Use a fixed placeholder address for simulation — no signing is needed
+      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => {
+        // If account not found on network, create a minimal object for simulation
+        return {
+          accountId: () => SIMULATION_PLACEHOLDER,
+          sequenceNumber: () => '0',
+          incrementSequenceNumber: () => {},
+          sequence: '0',
+        } as any;
+      });
+
+      const tx = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(getPairOp)
+        .setTimeout(30)
+        .build();
+
+      // Simulate to retrieve the pair address
+      const simulation = await this.sorobanServer.simulateTransaction(tx);
+
+      let pairAddress = '';
+      if (
+        simulation &&
+        !rpc.Api.isSimulationError(simulation) &&
+        'result' in simulation &&
+        simulation.result?.retval
+      ) {
+        try {
+          // Use Address.fromScVal() — the correct SDK API for ScVal address extraction
+          pairAddress = Address.fromScVal(simulation.result.retval).toString();
+        } catch {
+          // retval was not an address ScVal — pair may not exist yet
+          pairAddress = '';
+        }
+      }
+
+      // Query reserves from the pair contract if we have a valid address
+      let reserveA = '0';
+      let reserveB = '0';
+      let totalLiquidity = '0';
+
+      if (pairAddress) {
+        const pairContract = new Contract(pairAddress);
+        const getReservesOp = pairContract.call('get_reserves');
+
+        const reserveTx = new TransactionBuilder(sourceAccount, {
+          fee: BASE_FEE,
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(getReservesOp)
+          .setTimeout(30)
+          .build();
+
+        const reserveSim = await this.sorobanServer.simulateTransaction(reserveTx);
+
+        if (
+          reserveSim &&
+          !rpc.Api.isSimulationError(reserveSim) &&
+          'result' in reserveSim &&
+          reserveSim.result?.retval
+        ) {
+          try {
+            // scValToNative converts i128 ScVal → bigint; stringify for the interface
+            const native = scValToNative(reserveSim.result.retval) as bigint[];
+            if (Array.isArray(native) && native.length >= 3) {
+              reserveA = native[0]?.toString() ?? '0';
+              reserveB = native[1]?.toString() ?? '0';
+              totalLiquidity = native[2]?.toString() ?? '0';
+            }
+          } catch {
+            // Unexpected ScVal shape — keep defaults
+          }
+        }
+      }
+
+      return {
+        address: pairAddress,
+        tokenA,
+        tokenB,
+        reserveA,
+        reserveB,
+        totalLiquidity,
+        fee: SOROSWAP_DEFAULT_FEE,
+      };
+    } catch (error) {
+      this.handleError(error, 'getLiquidityPool');
+    }
   }
 }
