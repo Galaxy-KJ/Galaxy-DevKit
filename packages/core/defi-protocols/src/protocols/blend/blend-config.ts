@@ -54,8 +54,8 @@ export const BLEND_TESTNET_CONFIG: ProtocolConfig = {
 
 /**
  * Blend Protocol Mainnet Configuration
- * @description Official Blend Protocol contracts on Stellar Mainnet
- * @note Mainnet addresses to be updated when available
+ * @description Blend V1 mainnet defaults for a specific Reward Zone pool (Fixed XLM-USDC)
+ * @note This mainnet config is V1 pool-instance based (not a generic V2 deployment map)
  * @see https://blend.capital/
  */
 export const BLEND_MAINNET_CONFIG: ProtocolConfig = {
@@ -68,10 +68,14 @@ export const BLEND_MAINNET_CONFIG: ProtocolConfig = {
     passphrase: 'Public Global Stellar Network ; September 2015'
   },
   contractAddresses: {
-    pool: 'TODO_MAINNET_POOL_ADDRESS',
-    oracle: 'TODO_MAINNET_ORACLE_ADDRESS',
-    backstop: 'TODO_MAINNET_BACKSTOP_ADDRESS',
-    emitter: 'TODO_MAINNET_EMITTER_ADDRESS'
+    // Fixed XLM-USDC Reward Zone Pool (V1) - specific pool instance.
+    // For generic pool discovery use the V1 Pool Factory: CCZD6ESMOGMPWH2KRO4O7RGTAPGTUPFWFQBELQSS7ZUK63V3TZWETGAG.
+    pool: 'CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP', // Source: https://docs-v1.blend.capital/mainnet-deployments
+    // Pool-specific oracle snapshot for the fixed V1 pool above.
+    // Prefer runtime derivation from the on-chain pool (Pool.loadOracle()/PoolMetadata.load()).
+    oracle: 'CATKK5ZNJCKQQWTUWIUFZMY6V6MOQUGSTFSXMNQZHVJHYF7GVV36FB3Y', // Source: https://stellar.expert/explorer/public/contract/CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP and https://stellar.expert/explorer/public/contract/CATKK5ZNJCKQQWTUWIUFZMY6V6MOQUGSTFSXMNQZHVJHYF7GVV36FB3Y
+    backstop: 'CAO3AGAMZVRMHITL36EJ2VZQWKYRPWMQAPDQD5YEOF3GIF7T44U4JAL3', // Source: https://docs-v1.blend.capital/mainnet-deployments (Backstop Smart Contract, V1)
+    emitter: 'CCOQM6S7ICIUWA225O5PSJWUBEMXGFSSW2PQFO6FP4DQEKMS5DASRGRR' // Source: https://docs-v1.blend.capital/mainnet-deployments (Emitter Smart Contract)
   },
   metadata: {
     environment: 'mainnet',
