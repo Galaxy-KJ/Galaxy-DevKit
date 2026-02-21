@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@galaxy-kj/core-invisible-wallet": "^5.0.0",
+    "@galaxy-kj/core-oracles": "*",
     "@galaxy-kj/core-stellar-sdk": "^5.0.0",
     "@supabase/supabase-js": "^2.38.0",
     "node-cron": "^3.0.3"
