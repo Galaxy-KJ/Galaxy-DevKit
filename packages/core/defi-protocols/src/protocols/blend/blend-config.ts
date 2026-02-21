@@ -55,7 +55,7 @@ export const BLEND_TESTNET_CONFIG: ProtocolConfig = {
 /**
  * Blend Protocol Mainnet Configuration
  * @description Official Blend Protocol contracts on Stellar Mainnet
- * @note Mainnet addresses to be updated when available
+ * @note Official mainnet contract addresses
  * @see https://blend.capital/
  */
 export const BLEND_MAINNET_CONFIG: ProtocolConfig = {
@@ -68,10 +68,10 @@ export const BLEND_MAINNET_CONFIG: ProtocolConfig = {
     passphrase: 'Public Global Stellar Network ; September 2015'
   },
   contractAddresses: {
-    pool: 'TODO_MAINNET_POOL_ADDRESS',
-    oracle: 'TODO_MAINNET_ORACLE_ADDRESS',
-    backstop: 'TODO_MAINNET_BACKSTOP_ADDRESS',
-    emitter: 'TODO_MAINNET_EMITTER_ADDRESS'
+    pool: 'CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP', // Source: https://docs-v1.blend.capital/mainnet-deployments (Fixed XLM-USDC Pool)
+    oracle: 'CATKK5ZNJCKQQWTUWIUFZMY6V6MOQUGSTFSXMNQZHVJHYF7GVV36FB3Y', // Source: https://mainnet.sorobanrpc.com (queried via PoolMetadata.load for the mainnet pool)
+    backstop: 'CAO3AGAMZVRMHITL36EJ2VZQWKYRPWMQAPDQD5YEOF3GIF7T44U4JAL3', // Source: https://docs-v1.blend.capital/mainnet-deployments (Backstop Smart Contract)
+    emitter: 'CCOQM6S7ICIUWA225O5PSJWUBEMXGFSSW2PQFO6FP4DQEKMS5DASRGRR' // Source: https://docs-v1.blend.capital/mainnet-deployments (Emitter Smart Contract)
   },
   metadata: {
     environment: 'mainnet',
