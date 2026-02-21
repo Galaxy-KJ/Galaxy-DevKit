@@ -15,6 +15,7 @@ import {
 import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
+import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;
@@ -22,6 +23,7 @@ export interface AutomationServiceConfig {
   maxConcurrentExecutions?: number;
   executionTimeout?: number;
   enableMetrics?: boolean;
+  oracle?: OracleAggregator;
 }
 
 export class AutomationService extends EventEmitter {
@@ -53,7 +55,7 @@ export class AutomationService extends EventEmitter {
     };
 
     this.cronManager = new CronManager();
-    this.conditionEvaluator = new ConditionEvaluator();
+    this.conditionEvaluator = new ConditionEvaluator(config.oracle);
     this.executionEngine = new ExecutionEngine(
       this.network,
       this.config.sourceSecret
@@ -153,7 +155,7 @@ export class AutomationService extends EventEmitter {
       };
 
       // Evaluate conditions
-      const conditionsMet = this.conditionEvaluator.evaluateConditionGroup(
+      const conditionsMet = await this.conditionEvaluator.evaluateConditionGroup(
         rule.conditionGroup,
         context
       );
@@ -330,7 +332,7 @@ export class AutomationService extends EventEmitter {
   /**
    * Test rule conditions
    */
-  testRuleConditions(ruleId: string, context: ExecutionContext): boolean {
+  async testRuleConditions(ruleId: string, context: ExecutionContext): Promise<boolean> {
     const rule = this.rules.get(ruleId);
 
     if (!rule) {
