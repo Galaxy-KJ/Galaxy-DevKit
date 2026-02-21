@@ -33,6 +33,7 @@ The package provides implementations for popular price data providers:
 
 - **CoinGecko** - Native integration for real-time price feeds on Stellar mainnet (XLM, BTC, ETH, USDC, etc.).
 - **Custom API Sources** - Easy implementation of additional sources via `IOracleSource`.
+- **CoinMarketCap** - Secondary price feed for redundancy and cross-validation (XLM, BTC, ETH, USDC, USDT). Set `CMC_API_KEY` env var.
 
 ### Mock Sources (for testing)
 
@@ -56,6 +57,7 @@ import {
   OracleAggregator,
   MedianStrategy,
   CoinGeckoSource,
+  CoinMarketCapSource,
   PriceData,
 } from '@galaxy-kj/core-oracles';
 
@@ -72,7 +74,11 @@ const aggregator = new OracleAggregator({
 const coingecko = new CoinGeckoSource();
 aggregator.addSource(coingecko);
 
-// 3. Get aggregated price
+// 3. Add CoinMarketCap as a secondary source for redundancy (v2.2.0)
+const cmc = new CoinMarketCapSource(process.env.CMC_API_KEY);
+aggregator.addSource(cmc, 0.8);
+
+// 4. Get aggregated price
 const aggregated = await aggregator.getAggregatedPrice('XLM');
 
 console.log(`Price: ${aggregated.price} USD`);
