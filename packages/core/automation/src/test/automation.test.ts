@@ -96,7 +96,7 @@ describe('AutomationService', () => {
 
     mockConditionEvaluator.evaluateConditionGroup = jest
       .fn()
-      .mockResolvedValue(true);
+      .mockReturnValue(true);
     mockConditionEvaluator.validateConditionGroup = jest
       .fn()
       .mockReturnValue({ valid: true });
@@ -274,7 +274,7 @@ describe('AutomationService', () => {
     });
 
     it('should return error if conditions not met', async () => {
-      mockConditionEvaluator.evaluateConditionGroup.mockResolvedValue(false);
+      mockConditionEvaluator.evaluateConditionGroup.mockReturnValue(false);
 
       const result = await automationService.executeRule('test-rule-1');
 
@@ -436,7 +436,7 @@ describe('AutomationService', () => {
       const listener = jest.fn();
       automationService.on('rule:conditions_not_met', listener);
 
-      mockConditionEvaluator.evaluateConditionGroup.mockResolvedValue(false);
+      mockConditionEvaluator.evaluateConditionGroup.mockReturnValue(false);
 
       await automationService.executeRule('test-rule-1');
 
@@ -692,7 +692,7 @@ describe('AutomationService', () => {
       await automationService.registerRule(rule);
     });
 
-    it('should test rule conditions', async () => {
+    it('should test rule conditions', () => {
       const context = {
         ruleId: 'test-rule-1',
         userId: 'user123',
@@ -700,9 +700,9 @@ describe('AutomationService', () => {
         marketData: { XLM: { priceUSD: 0.09 } },
       };
 
-      mockConditionEvaluator.evaluateConditionGroup.mockResolvedValue(true);
+      mockConditionEvaluator.evaluateConditionGroup.mockReturnValue(true);
 
-      const result = await automationService.testRuleConditions(
+      const result = automationService.testRuleConditions(
         'test-rule-1',
         context
       );
@@ -710,16 +710,16 @@ describe('AutomationService', () => {
       expect(mockConditionEvaluator.evaluateConditionGroup).toHaveBeenCalled();
     });
 
-    it('should throw error if rule not found', async () => {
+    it('should throw error if rule not found', () => {
       const context = {
         ruleId: 'non-existent',
         userId: 'user123',
         timestamp: new Date(),
       };
 
-      await expect(
+      expect(() =>
         automationService.testRuleConditions('non-existent', context)
-      ).rejects.toThrow('Rule not found');
+      ).toThrow('Rule not found');
     });
   });
 

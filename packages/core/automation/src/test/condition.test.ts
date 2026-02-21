@@ -1,14 +1,11 @@
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import {
-  AnyCondition,
   Condition,
   ConditionGroup,
-  ConditionLogic,
   ConditionOperator,
+  ConditionLogic,
   ExecutionContext,
-  PriceTriggerCondition,
 } from '../types/automation-types.js';
-import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 describe('ConditionEvaluator', () => {
   let evaluator: ConditionEvaluator;
@@ -36,7 +33,7 @@ describe('ConditionEvaluator', () => {
   });
 
   describe('evaluateCondition', () => {
-    it('should evaluate EQUAL operator correctly', async () => {
+    it('should evaluate EQUAL operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -44,24 +41,24 @@ describe('ConditionEvaluator', () => {
         value: 0.1,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate NOT_EQUAL operator correctly', async () => {
+    it('should evaluate NOT_EQUAL operator correctly', () => {
       const condition: Condition = {
-
+          
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
         operator: ConditionOperator.NOT_EQUAL,
         value: 0.15,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate GREATER_THAN operator correctly', async () => {
+    it('should evaluate GREATER_THAN operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -69,11 +66,11 @@ describe('ConditionEvaluator', () => {
         value: 0.05,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate LESS_THAN operator correctly', async () => {
+    it('should evaluate LESS_THAN operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -81,11 +78,11 @@ describe('ConditionEvaluator', () => {
         value: 0.15,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate GREATER_THAN_OR_EQUAL operator correctly', async () => {
+    it('should evaluate GREATER_THAN_OR_EQUAL operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -93,11 +90,11 @@ describe('ConditionEvaluator', () => {
         value: 0.1,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate LESS_THAN_OR_EQUAL operator correctly', async () => {
+    it('should evaluate LESS_THAN_OR_EQUAL operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -105,11 +102,11 @@ describe('ConditionEvaluator', () => {
         value: 0.1,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate BETWEEN operator correctly', async () => {
+    it('should evaluate BETWEEN operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -118,11 +115,11 @@ describe('ConditionEvaluator', () => {
         value2: 0.15,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate NOT_BETWEEN operator correctly', async () => {
+    it('should evaluate NOT_BETWEEN operator correctly', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.priceUSD',
@@ -131,11 +128,11 @@ describe('ConditionEvaluator', () => {
         value2: 0.2,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should handle nested object paths', async () => {
+    it('should handle nested object paths', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'marketData.XLM.volume24h',
@@ -143,11 +140,11 @@ describe('ConditionEvaluator', () => {
         value: 1000000,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(true);
     });
 
-    it('should handle string comparisons', async () => {
+    it('should handle string comparisons', () => {
       const context = createContext({
         customData: { status: 'active' },
       });
@@ -159,11 +156,11 @@ describe('ConditionEvaluator', () => {
         value: 'active',
       };
 
-      const result = await evaluator.evaluateCondition(condition, context);
+      const result = evaluator.evaluateCondition(condition, context);
       expect(result).toBe(true);
     });
 
-    it('should handle numeric strings', async () => {
+    it('should handle numeric strings', () => {
       const context = createContext({
         accountData: { xlmBalance: '1000' },
       });
@@ -175,11 +172,11 @@ describe('ConditionEvaluator', () => {
         value: 500,
       };
 
-      const result = await evaluator.evaluateCondition(condition, context);
+      const result = evaluator.evaluateCondition(condition, context);
       expect(result).toBe(true);
     });
 
-    it('should return false for undefined fields', async () => {
+    it('should return false for undefined fields', () => {
       const condition: Condition = {
         id: 'cond-1',
         field: 'nonExistent.field',
@@ -187,11 +184,11 @@ describe('ConditionEvaluator', () => {
         value: 100,
       };
 
-      const result = await evaluator.evaluateCondition(condition, createContext());
+      const result = evaluator.evaluateCondition(condition, createContext());
       expect(result).toBe(false);
     });
 
-    it('should throw error for GT with non-numeric values', async () => {
+    it('should throw error for GT with non-numeric values', () => {
       const context = createContext({
         customData: { name: 'test' },
       });
@@ -203,12 +200,12 @@ describe('ConditionEvaluator', () => {
         value: 'other',
       };
 
-      await expect(evaluator.evaluateCondition(condition, context)).rejects.toThrow();
+      expect(() => evaluator.evaluateCondition(condition, context)).toThrow();
     });
   });
 
   describe('evaluateConditionGroup', () => {
-    it('should evaluate AND logic correctly - all true', async () => {
+    it('should evaluate AND logic correctly - all true', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -227,11 +224,11 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate AND logic correctly - one false', async () => {
+    it('should evaluate AND logic correctly - one false', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -250,11 +247,11 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(false);
     });
 
-    it('should evaluate OR logic correctly - one true', async () => {
+    it('should evaluate OR logic correctly - one true', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.OR,
         conditions: [
@@ -273,11 +270,11 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate OR logic correctly - all false', async () => {
+    it('should evaluate OR logic correctly - all false', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.OR,
         conditions: [
@@ -296,11 +293,11 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(false);
     });
 
-    it('should evaluate nested groups with AND logic', async () => {
+    it('should evaluate nested groups with AND logic', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -332,11 +329,11 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(true);
     });
 
-    it('should evaluate nested groups with OR logic', async () => {
+    it('should evaluate nested groups with OR logic', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.OR,
         conditions: [
@@ -368,7 +365,7 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.evaluateConditionGroup(group, createContext());
+      const result = evaluator.evaluateConditionGroup(group, createContext());
       expect(result).toBe(true);
     });
   });
@@ -529,7 +526,7 @@ describe('ConditionEvaluator', () => {
   });
 
   describe('testConditions', () => {
-    it('should test conditions and return details', async () => {
+    it('should test conditions and return details', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -548,7 +545,7 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.testConditions(group, createContext());
+      const result = evaluator.testConditions(group, createContext());
 
       expect(result.result).toBe(true);
       expect(result.details).toHaveLength(2);
@@ -558,7 +555,7 @@ describe('ConditionEvaluator', () => {
       expect(result.details[1].actualValue).toBe(5000000);
     });
 
-    it('should show failed condition details', async () => {
+    it('should show failed condition details', () => {
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -571,170 +568,10 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await evaluator.testConditions(group, createContext());
+      const result = evaluator.testConditions(group, createContext());
 
       expect(result.result).toBe(false);
       expect(result.details[0].result).toBe(false);
-    });
-  });
-
-  describe('price trigger conditions', () => {
-    let mockOracle: jest.Mocked<Pick<OracleAggregator, 'getAggregatedPrice'>>;
-    let priceEvaluator: ConditionEvaluator;
-
-    beforeEach(() => {
-      mockOracle = {
-        getAggregatedPrice: jest.fn(),
-      };
-      priceEvaluator = new ConditionEvaluator(
-        mockOracle as unknown as OracleAggregator
-      );
-    });
-
-    const makePriceCond = (
-      operator: ConditionOperator,
-      threshold: number
-    ): PriceTriggerCondition => ({
-      type: 'price',
-      id: 'price-cond-1',
-      asset: 'XLM',
-      operator,
-      threshold,
-    });
-
-    const mockPrice = (price: number) => {
-      mockOracle.getAggregatedPrice.mockResolvedValue({
-        symbol: 'XLM',
-        price,
-        timestamp: new Date(),
-        confidence: 0.95,
-        sourcesUsed: ['coingecko'],
-        outliersFiltered: [],
-        sourceCount: 1,
-      });
-    };
-
-    it('GT: price above threshold returns true', async () => {
-      mockPrice(0.20);
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(true);
-    });
-
-    it('GT: price below threshold returns false', async () => {
-      mockPrice(0.10);
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(false);
-    });
-
-    it('LT: price below threshold returns true', async () => {
-      mockPrice(0.10);
-      const cond = makePriceCond(ConditionOperator.LESS_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(true);
-    });
-
-    it('LT: price above threshold returns false', async () => {
-      mockPrice(0.20);
-      const cond = makePriceCond(ConditionOperator.LESS_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(false);
-    });
-
-    it('GTE: price equal to threshold returns true (boundary)', async () => {
-      mockPrice(0.15);
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN_OR_EQUAL, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(true);
-    });
-
-    it('LTE: price equal to threshold returns true (boundary)', async () => {
-      mockPrice(0.15);
-      const cond = makePriceCond(ConditionOperator.LESS_THAN_OR_EQUAL, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
-      expect(result).toBe(true);
-    });
-
-    it('throws when no oracle is configured', async () => {
-      const noOracleEvaluator = new ConditionEvaluator();
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      await expect(
-        noOracleEvaluator.evaluateCondition(cond, createContext())
-      ).rejects.toThrow('Oracle not configured');
-    });
-
-    it('propagates oracle fetch errors', async () => {
-      mockOracle.getAggregatedPrice.mockRejectedValue(
-        new Error('Oracle unavailable')
-      );
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      await expect(
-        priceEvaluator.evaluateCondition(cond, createContext())
-      ).rejects.toThrow('Oracle unavailable');
-    });
-
-    it('price condition in AND group with regular condition — both must pass', async () => {
-      mockPrice(0.20);
-      const group: ConditionGroup = {
-        logic: ConditionLogic.AND,
-        conditions: [
-          makePriceCond(ConditionOperator.GREATER_THAN, 0.15),
-          {
-            id: 'cond-regular',
-            field: 'marketData.XLM.volume24h',
-            operator: ConditionOperator.GREATER_THAN,
-            value: 1000000,
-          },
-        ],
-      };
-
-      const result = await priceEvaluator.evaluateConditionGroup(
-        group,
-        createContext()
-      );
-      expect(result).toBe(true);
-    });
-
-    it('AND group fails when price condition is false even if regular condition passes', async () => {
-      mockPrice(0.10);
-      const group: ConditionGroup = {
-        logic: ConditionLogic.AND,
-        conditions: [
-          makePriceCond(ConditionOperator.GREATER_THAN, 0.15),
-          {
-            id: 'cond-regular',
-            field: 'marketData.XLM.volume24h',
-            operator: ConditionOperator.GREATER_THAN,
-            value: 1000000,
-          },
-        ],
-      };
-
-      const result = await priceEvaluator.evaluateConditionGroup(
-        group,
-        createContext()
-      );
-      expect(result).toBe(false);
-    });
-
-    it('validates a well-formed PriceTriggerCondition', () => {
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = priceEvaluator.validateCondition(cond);
-      expect(result.valid).toBe(true);
-    });
-
-    it('rejects PriceTriggerCondition missing asset', () => {
-      const cond: any = {
-        type: 'price',
-        id: 'pc',
-        asset: '',
-        operator: ConditionOperator.GREATER_THAN,
-        threshold: 0.15,
-      };
-      const result = priceEvaluator.validateCondition(cond);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('asset');
     });
   });
 });

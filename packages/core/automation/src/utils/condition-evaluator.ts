@@ -1,35 +1,23 @@
 import {
-  AnyCondition,
   Condition,
   ConditionGroup,
-  ConditionLogic,
   ConditionOperator,
+  ConditionLogic,
   ExecutionContext,
-  PriceTriggerCondition,
 } from '../types/automation-types.js';
-import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 export class ConditionEvaluator {
-  private oracle?: OracleAggregator;
 
-  constructor(oracle?: OracleAggregator) {
-    this.oracle = oracle;
-  }
-
-  async evaluateConditionGroup(
+  evaluateConditionGroup(
     group: ConditionGroup,
     context: ExecutionContext
-  ): Promise<boolean> {
-    const conditionResults = await Promise.all(
-      group.conditions.map(condition =>
-        this.evaluateCondition(condition, context)
-      )
+  ): boolean {
+    const conditionResults = group.conditions.map(condition =>
+      this.evaluateCondition(condition, context)
     );
 
-    const nestedResults = await Promise.all(
-      (group.groups || []).map(nestedGroup =>
-        this.evaluateConditionGroup(nestedGroup, context)
-      )
+    const nestedResults = (group.groups || []).map(nestedGroup =>
+      this.evaluateConditionGroup(nestedGroup, context)
     );
 
     const allResults = [...conditionResults, ...nestedResults];
@@ -42,16 +30,9 @@ export class ConditionEvaluator {
   }
 
   /**
-   * Evaluate a single condition (Condition or PriceTriggerCondition)
+   * Evaluate a single condition
    */
-  async evaluateCondition(
-    condition: AnyCondition,
-    context: ExecutionContext
-  ): Promise<boolean> {
-    if (this.isPriceCondition(condition)) {
-      return this.evaluatePriceCondition(condition);
-    }
-
+  evaluateCondition(condition: Condition, context: ExecutionContext): boolean {
     const actualValue = this.resolveValue(condition.field, context);
 
     if (actualValue === undefined || actualValue === null) {
@@ -65,42 +46,6 @@ export class ConditionEvaluator {
       condition.value,
       condition.value2
     );
-  }
-
-  /**
-   * Type guard for PriceTriggerCondition
-   */
-  private isPriceCondition(c: AnyCondition): c is PriceTriggerCondition {
-    return (c as PriceTriggerCondition).type === 'price';
-  }
-
-  /**
-   * Evaluate a price trigger condition via the oracle
-   */
-  private async evaluatePriceCondition(
-    condition: PriceTriggerCondition
-  ): Promise<boolean> {
-    if (!this.oracle) {
-      throw new Error('Oracle not configured for price trigger conditions');
-    }
-
-    const aggregated = await this.oracle.getAggregatedPrice(condition.asset);
-    const price = aggregated.price;
-
-    switch (condition.operator) {
-      case ConditionOperator.GREATER_THAN:
-        return price > condition.threshold;
-      case ConditionOperator.LESS_THAN:
-        return price < condition.threshold;
-      case ConditionOperator.GREATER_THAN_OR_EQUAL:
-        return price >= condition.threshold;
-      case ConditionOperator.LESS_THAN_OR_EQUAL:
-        return price <= condition.threshold;
-      default:
-        throw new Error(
-          `Operator ${condition.operator} is not supported for price trigger conditions`
-        );
-    }
   }
 
   /**
@@ -130,7 +75,7 @@ export class ConditionEvaluator {
     expectedValue: any,
     expectedValue2?: any
   ): boolean {
-
+ 
     const numActual = this.toNumber(actualValue);
     const numExpected = this.toNumber(expectedValue);
     const numExpected2 = expectedValue2
@@ -210,20 +155,7 @@ export class ConditionEvaluator {
   /**
    * Validate condition structure
    */
-  validateCondition(condition: AnyCondition): { valid: boolean; error?: string } {
-    if (this.isPriceCondition(condition)) {
-      if (!condition.asset || typeof condition.asset !== 'string') {
-        return { valid: false, error: 'Price condition must have a valid asset' };
-      }
-      if (!condition.operator) {
-        return { valid: false, error: 'Condition must have an operator' };
-      }
-      if (condition.threshold === undefined || condition.threshold === null) {
-        return { valid: false, error: 'Price condition must have a threshold value' };
-      }
-      return { valid: true };
-    }
-
+  validateCondition(condition: Condition): { valid: boolean; error?: string } {
     if (!condition.field || typeof condition.field !== 'string') {
       return { valid: false, error: 'Condition must have a valid field' };
     }
@@ -296,28 +228,26 @@ export class ConditionEvaluator {
   /**
    * Test conditions with sample data
    */
-  async testConditions(
+  testConditions(
     group: ConditionGroup,
     sampleContext: ExecutionContext
-  ): Promise<{
+  ): {
     result: boolean;
     details: Array<{
-      condition: AnyCondition;
+      condition: Condition;
       result: boolean;
       actualValue: any;
     }>;
-  }> {
+  } {
     const details: Array<{
-      condition: AnyCondition;
+      condition: Condition;
       result: boolean;
       actualValue: any;
     }> = [];
 
-    const evaluateWithDetails = async (cond: AnyCondition): Promise<boolean> => {
-      const actualValue = this.isPriceCondition(cond)
-        ? undefined
-        : this.resolveValue((cond as Condition).field, sampleContext);
-      const result = await this.evaluateCondition(cond, sampleContext);
+    const evaluateWithDetails = (cond: Condition): boolean => {
+      const actualValue = this.resolveValue(cond.field, sampleContext);
+      const result = this.evaluateCondition(cond, sampleContext);
 
       details.push({
         condition: cond,
@@ -328,9 +258,9 @@ export class ConditionEvaluator {
       return result;
     };
 
-    await Promise.all(group.conditions.map(evaluateWithDetails));
+    group.conditions.forEach(evaluateWithDetails);
 
-    const result = await this.evaluateConditionGroup(group, sampleContext);
+    const result = this.evaluateConditionGroup(group, sampleContext);
 
     return { result, details };
   }
