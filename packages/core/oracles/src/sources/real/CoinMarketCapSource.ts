@@ -42,7 +42,7 @@ export class CoinMarketCapSource implements IOracleSource {
      private readonly baseUrl = 'https://pro-api.coinmarketcap.com/v1';
 
      constructor(apiKey?: string) {
-          this.apiKey = apiKey || "";
+          this.apiKey = apiKey ?? process.env.CMC_API_KEY ?? '';
           if (!this.apiKey) {
                throw new Error('CoinMarketCap API key is required. Pass it or set CMC_API_KEY env var.');
           }
@@ -90,7 +90,11 @@ export class CoinMarketCapSource implements IOracleSource {
 
      async getPrices(symbols: string[]): Promise<PriceData[]> {
           const bases = symbols.map((s) => this.normalizeSymbol(s));
-          const url = `${this.baseUrl}/cryptocurrency/quotes/latest?symbol=${bases.join(',')}&convert=USD`;
+          const filtered = bases.filter((b) => Boolean(SYMBOL_TO_CMC_ID[b]));
+
+          if (filtered.length === 0) return [];
+
+          const url = `${this.baseUrl}/cryptocurrency/quotes/latest?symbol=${filtered.join(',')}&convert=USD`;
           const response = await fetch(url, {
                headers: {
                     'X-CMC_PRO_API_KEY': this.apiKey,
@@ -107,7 +111,7 @@ export class CoinMarketCapSource implements IOracleSource {
           };
 
           const results: PriceData[] = [];
-          for (const base of bases) {
+          for (const base of filtered) {
                const price = data.data[base]?.quote?.USD?.price;
                if (price != null && typeof price === 'number' && Number.isFinite(price)) {
                     results.push({
