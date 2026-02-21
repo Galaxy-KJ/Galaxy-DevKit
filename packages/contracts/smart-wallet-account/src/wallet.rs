@@ -65,6 +65,11 @@ impl SmartWallet {
             .instance()
             .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
 
+        // Initialize admin signer count.
+        env.storage()
+            .instance()
+            .set(&WalletDataKey::AdminSignerCount, &1u32);
+
         Ok(())
     }
 
@@ -83,7 +88,7 @@ impl SmartWallet {
         validate_public_key(&public_key)?;
 
         let key = WalletDataKey::Signer(credential_id.clone());
-        if env.storage().persistent().has(&key) {
+        if env.storage().persistent().has(&key) || env.storage().temporary().has(&key) {
             return Err(WalletError::SignerAlreadyExists);
         }
 
@@ -95,6 +100,16 @@ impl SmartWallet {
         env.storage()
             .persistent()
             .extend_ttl(&key, ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
+
+        // Increment admin signer count.
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&WalletDataKey::AdminSignerCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&WalletDataKey::AdminSignerCount, &(count + 1));
 
         Ok(())
     }
@@ -128,12 +143,30 @@ impl SmartWallet {
     }
 
     /// Remove a signer by credential ID. Requires wallet self-auth.
+    ///
+    /// Prevents removing the last admin signer to avoid permanently
+    /// locking the wallet.
     pub fn remove_signer(env: Env, credential_id: Bytes) -> Result<(), WalletError> {
         env.current_contract_address().require_auth();
 
         let key = WalletDataKey::Signer(credential_id);
 
         if env.storage().persistent().has(&key) {
+            // Check if this is an admin signer.
+            let signer: Signer = env.storage().persistent().get(&key).unwrap();
+            if matches!(signer.kind, SignerKind::Admin) {
+                let count: u32 = env
+                    .storage()
+                    .instance()
+                    .get(&WalletDataKey::AdminSignerCount)
+                    .unwrap_or(1);
+                if count <= 1 {
+                    return Err(WalletError::LastAdminSigner);
+                }
+                env.storage()
+                    .instance()
+                    .set(&WalletDataKey::AdminSignerCount, &(count - 1));
+            }
             env.storage().persistent().remove(&key);
             return Ok(());
         }

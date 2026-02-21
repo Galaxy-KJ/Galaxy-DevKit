@@ -43,6 +43,8 @@ pub enum WalletDataKey {
     Signer(Bytes),
     /// The address of the wallet contract itself (set once during init).
     WalletAddress,
+    /// Number of admin signers (u32). Used to prevent removing the last one.
+    AdminSignerCount,
 }
 
 /// Storage keys used by the factory contract.
@@ -63,8 +65,8 @@ pub enum WalletError {
     SignerNotFound = 1,
     /// The signer already exists.
     SignerAlreadyExists = 2,
-    /// The secp256r1 signature verification failed.
-    InvalidSignature = 3,
+    /// Cannot remove the last admin signer — wallet would be permanently locked.
+    LastAdminSigner = 3,
     /// The challenge inside `clientDataJSON` does not match `signature_payload`.
     ChallengeMismatch = 4,
     /// The wallet has already been initialized.

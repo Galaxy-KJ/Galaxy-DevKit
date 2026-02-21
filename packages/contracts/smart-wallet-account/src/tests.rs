@@ -201,6 +201,19 @@ fn test_remove_nonexistent_signer_fails() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #3)")]
+fn test_remove_last_admin_signer_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, initial_cred, _) = setup_wallet(&env);
+
+    // Attempting to remove the only admin signer should fail
+    // with LastAdminSigner (error code 3).
+    client.remove_signer(&initial_cred);
+}
+
+#[test]
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_remove_already_removed_signer_fails() {
     let env = Env::default();

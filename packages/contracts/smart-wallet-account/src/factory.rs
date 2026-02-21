@@ -4,6 +4,10 @@ use soroban_sdk::{
 
 use crate::types::FactoryDataKey;
 
+/// TTL for the Deployed credential→wallet mapping (persistent storage).
+const DEPLOYED_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const DEPLOYED_TTL_EXTEND: u32 = 120_960; // ~7 days
+
 #[contract]
 pub struct Factory;
 
@@ -69,19 +73,29 @@ impl Factory {
         );
 
         // Track the deployment.
+        let deployed_key = FactoryDataKey::Deployed(credential_id);
         env.storage().persistent().set(
-            &FactoryDataKey::Deployed(credential_id),
+            &deployed_key,
             &wallet_address,
         );
+        env.storage()
+            .persistent()
+            .extend_ttl(&deployed_key, DEPLOYED_TTL_THRESHOLD, DEPLOYED_TTL_EXTEND);
 
         wallet_address
     }
 
     /// Look up the wallet address for a given credential ID.
     /// Returns `None` if no wallet was deployed for that credential.
+    /// Extends the TTL on read to prevent archival of active mappings.
     pub fn get_wallet(env: Env, credential_id: Bytes) -> Option<Address> {
-        env.storage()
-            .persistent()
-            .get(&FactoryDataKey::Deployed(credential_id))
+        let key = FactoryDataKey::Deployed(credential_id);
+        let result: Option<Address> = env.storage().persistent().get(&key);
+        if result.is_some() {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, DEPLOYED_TTL_THRESHOLD, DEPLOYED_TTL_EXTEND);
+        }
+        result
     }
 }
