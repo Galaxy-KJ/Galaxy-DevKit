@@ -420,10 +420,10 @@ describe('SoroswapProtocol', () => {
   });
 
   // ==========================================
-  // DEX OPERATION STUBS (swap, getSwapQuote)
+  // GET SWAP QUOTE
   // ==========================================
 
-  describe('DEX Operation Stubs', () => {
+  describe('getSwapQuote()', () => {
     const tokenIn: Asset = { code: 'XLM', type: 'native' };
     const tokenOut: Asset = {
       code: 'USDC',
@@ -435,52 +435,94 @@ describe('SoroswapProtocol', () => {
       await soroswapProtocol.initialize();
     });
 
-    it('should throw "not yet implemented" on swap()', async () => {
-      await expect(
-        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
-      ).rejects.toThrow(/not yet implemented/);
+    it('should return a valid SwapQuote', async () => {
+      const quote = await soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10');
+
+      expect(quote).toBeDefined();
+      expect(quote.amountIn).toBe('10');
+      expect(quote.tokenIn).toEqual(tokenIn);
+      expect(quote.tokenOut).toEqual(tokenOut);
+      expect(parseFloat(quote.amountOut)).toBeGreaterThan(0);
+      expect(quote.path).toHaveLength(2);
+      expect(quote.validUntil).toBeInstanceOf(Date);
     });
 
-    it('should throw "not yet implemented" on getSwapQuote()', async () => {
-      await expect(
-        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '100')
-      ).rejects.toThrow(/not yet implemented/);
+    it('should apply 5% slippage to minimumReceived', async () => {
+      const quote = await soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10');
+
+      const expectedMin = (parseFloat(quote.amountOut) * 0.95).toFixed(7);
+      expect(quote.minimumReceived).toBe(expectedMin);
     });
 
-    it('should reference issue numbers in swap/getSwapQuote stub error messages', async () => {
-      await expect(
-        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
-      ).rejects.toThrow(/#27/);
+    it('should throw if router contract is null', async () => {
+      (soroswapProtocol as any).routerContract = null;
 
       await expect(
-        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '100')
-      ).rejects.toThrow(/#28/);
+        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10')
+      ).rejects.toThrow('Router contract not initialized');
     });
 
-    it('should validate inputs before throwing stub errors', async () => {
-      // Invalid address should fail validation before reaching stub
+    it('should throw if simulation fails', async () => {
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      mockSorobanServer.simulateTransaction.mockResolvedValue({
+        error: 'Simulation failed'
+      });
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+
       await expect(
-        soroswapProtocol.swap('', testPrivateKey, tokenIn, tokenOut, '100', '95')
+        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10')
+      ).rejects.toThrow(/Swap quote simulation failed/);
+    });
+  });
+
+  // ==========================================
+  // SWAP
+  // ==========================================
+
+  describe('swap()', () => {
+    const tokenIn: Asset = { code: 'XLM', type: 'native' };
+    const tokenOut: Asset = {
+      code: 'USDC',
+      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      type: 'credit_alphanum4'
+    };
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return a TransactionResult with status pending', async () => {
+      const result = await soroswapProtocol.swap(
+        testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9'
+      );
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe('pending');
+      expect(result.hash).toBe('mock-xdr');
+    });
+
+    it('should include swap metadata', async () => {
+      const result = await soroswapProtocol.swap(
+        testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9'
+      );
+
+      expect(result.metadata.operation).toBe('swap');
+      expect(result.metadata.amountIn).toBe('10');
+      expect(result.metadata.minAmountOut).toBe('9');
+    });
+
+    it('should throw if router contract is null', async () => {
+      (soroswapProtocol as any).routerContract = null;
+
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9')
+      ).rejects.toThrow('Router contract not initialized');
+    });
+
+    it('should throw on invalid wallet address', async () => {
+      await expect(
+        soroswapProtocol.swap('', testPrivateKey, tokenIn, tokenOut, '10', '9')
       ).rejects.toThrow(/Invalid wallet address/);
-
-      // Invalid amount should fail validation
-      await expect(
-        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '-1', '95')
-      ).rejects.toThrow(/Amount must be a positive number/);
-
-      // Invalid asset should fail validation
-      const badAsset: Asset = { code: '', type: 'native' };
-      await expect(
-        soroswapProtocol.getSwapQuote(badAsset, tokenOut, '100')
-      ).rejects.toThrow(/Invalid asset/);
-    });
-
-    it('should require initialization for stub methods', async () => {
-      const uninitProtocol = new SoroswapProtocol(mockConfig);
-
-      await expect(
-        uninitProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '100', '95')
-      ).rejects.toThrow(/not initialized/);
     });
   });
 
