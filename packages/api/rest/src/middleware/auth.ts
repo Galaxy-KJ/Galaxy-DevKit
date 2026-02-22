@@ -14,11 +14,13 @@ import {
   AuthErrorCode,
 } from '../types/auth-types';
 import { extractApiKey } from './api-key';
+import { AuditLogger } from '../services/audit-logger';
 
 /**
  * Auth service instance
  */
 const authService = new AuthService();
+const auditLogger = new AuditLogger();
 
 /**
  * Extract JWT token from request
@@ -61,6 +63,18 @@ export function authenticate() {
         if (validation.valid && validation.apiKey && validation.user) {
           // Check if API key is active and not expired
           if (!validation.apiKey.isActive) {
+            void auditLogger.log({
+              user_id: validation.user?.userId || null,
+              action: 'auth.authenticate',
+              resource: req.originalUrl,
+              ip_address: req.ip || null,
+              success: false,
+              error_code: AuthErrorCode.REVOKED_API_KEY,
+              metadata: {
+                authMethod: 'api_key',
+                reason: 'revoked_api_key',
+              },
+            });
             res.status(401).json({
               error: {
                 code: AuthErrorCode.REVOKED_API_KEY,
@@ -72,6 +86,18 @@ export function authenticate() {
           }
 
           if (validation.apiKey.expiresAt && validation.apiKey.expiresAt < new Date()) {
+            void auditLogger.log({
+              user_id: validation.user?.userId || null,
+              action: 'auth.authenticate',
+              resource: req.originalUrl,
+              ip_address: req.ip || null,
+              success: false,
+              error_code: AuthErrorCode.EXPIRED_API_KEY,
+              metadata: {
+                authMethod: 'api_key',
+                reason: 'expired_api_key',
+              },
+            });
             res.status(401).json({
               error: {
                 code: AuthErrorCode.EXPIRED_API_KEY,
@@ -97,6 +123,18 @@ export function authenticate() {
       await authenticateWithJWT(req, res, next);
     } catch (error) {
       console.error('Authentication middleware error:', error);
+      void auditLogger.log({
+        user_id: null,
+        action: 'auth.authenticate',
+        resource: req.originalUrl,
+        ip_address: req.ip || null,
+        success: false,
+        error_code: AuthErrorCode.INVALID_TOKEN,
+        metadata: {
+          authMethod: req.authMethod || 'unknown',
+          reason: 'middleware_error',
+        },
+      });
       res.status(500).json({
         error: {
           code: AuthErrorCode.INVALID_TOKEN,
@@ -123,6 +161,18 @@ async function authenticateWithJWT(
     const token = extractJWTToken(req);
 
     if (!token) {
+      void auditLogger.log({
+        user_id: null,
+        action: 'auth.authenticate',
+        resource: req.originalUrl,
+        ip_address: req.ip || null,
+        success: false,
+        error_code: AuthErrorCode.MISSING_TOKEN,
+        metadata: {
+          authMethod: 'jwt',
+          reason: 'missing_token',
+        },
+      });
       res.status(401).json({
         error: {
           code: AuthErrorCode.MISSING_TOKEN,
@@ -137,6 +187,18 @@ async function authenticateWithJWT(
     const validation = await authService.validateAuthToken(token);
 
     if (!validation.valid || !validation.user) {
+      void auditLogger.log({
+        user_id: null,
+        action: 'auth.authenticate',
+        resource: req.originalUrl,
+        ip_address: req.ip || null,
+        success: false,
+        error_code: AuthErrorCode.INVALID_TOKEN,
+        metadata: {
+          authMethod: 'jwt',
+          reason: validation.error || 'invalid_token',
+        },
+      });
       res.status(401).json({
         error: {
           code: AuthErrorCode.INVALID_TOKEN,
@@ -155,6 +217,18 @@ async function authenticateWithJWT(
     next();
   } catch (error) {
     if (error instanceof AuthenticationError) {
+      void auditLogger.log({
+        user_id: null,
+        action: 'auth.authenticate',
+        resource: req.originalUrl,
+        ip_address: req.ip || null,
+        success: false,
+        error_code: error.code,
+        metadata: {
+          authMethod: 'jwt',
+          reason: error.message,
+        },
+      });
       res.status(error.statusCode).json({
         error: {
           code: error.code,
@@ -166,6 +240,18 @@ async function authenticateWithJWT(
     }
 
     console.error('JWT authentication error:', error);
+    void auditLogger.log({
+      user_id: null,
+      action: 'auth.authenticate',
+      resource: req.originalUrl,
+      ip_address: req.ip || null,
+      success: false,
+      error_code: AuthErrorCode.INVALID_TOKEN,
+      metadata: {
+        authMethod: 'jwt',
+        reason: 'jwt_error',
+      },
+    });
     res.status(500).json({
       error: {
         code: AuthErrorCode.INVALID_TOKEN,
@@ -449,4 +535,3 @@ export function requireAllPermissions(permissions: string[]) {
 export function requireAdmin() {
   return requirePermission('admin');
 }
-

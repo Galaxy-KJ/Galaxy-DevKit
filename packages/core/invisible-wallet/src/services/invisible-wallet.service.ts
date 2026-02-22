@@ -130,6 +130,17 @@ export class InvisibleWalletService {
         WalletEventType.CREATED
       );
 
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.create',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          network: wallet.network,
+        },
+      });
+
       return {
         wallet,
         session,
@@ -137,6 +148,13 @@ export class InvisibleWalletService {
           'Please backup your wallet using the backup feature.',
       };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: config.userId,
+        action: 'wallet.create',
+        resource: null,
+        success: false,
+        errorCode: 'wallet_create_failed',
+      });
       throw new Error(
         `Failed to create wallet: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -223,12 +241,30 @@ export class InvisibleWalletService {
         WalletEventType.CREATED
       );
 
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.import',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          network: wallet.network,
+        },
+      });
+
       return {
         wallet,
         session,
         backupRecommendation: 'Wallet imported successfully with backup.',
       };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: config.userId,
+        action: 'wallet.import',
+        resource: null,
+        success: false,
+        errorCode: 'wallet_import_failed',
+      });
       throw new Error(
         `Failed to create wallet from mnemonic: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -251,6 +287,13 @@ export class InvisibleWalletService {
       const wallet = await this.getWalletById(walletId);
 
       if (!wallet) {
+        void this.logAuditEvent({
+          userId: null,
+          action: 'wallet.unlock',
+          resource: walletId,
+          success: false,
+          errorCode: 'wallet_not_found',
+        });
         return {
           success: false,
           error: 'Wallet not found',
@@ -264,6 +307,13 @@ export class InvisibleWalletService {
       );
 
       if (!isValid) {
+        void this.logAuditEvent({
+          userId: wallet.userId,
+          action: 'wallet.unlock',
+          resource: wallet.publicKey,
+          success: false,
+          errorCode: 'invalid_password',
+        });
         return {
           success: false,
           error: 'Invalid password',
@@ -289,11 +339,28 @@ export class InvisibleWalletService {
         WalletEventType.UNLOCKED
       );
 
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.unlock',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+        },
+      });
+
       return {
         success: true,
         session,
       };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.unlock',
+        resource: walletId,
+        success: false,
+        errorCode: 'wallet_unlock_failed',
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -414,40 +481,65 @@ export class InvisibleWalletService {
     params: PaymentParams,
     password: string
   ): Promise<PaymentResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) {
+        throw new Error('Invalid or expired session');
+      }
+
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+
+      const stellarWallet = {
+        id: wallet.id,
+        publicKey: wallet.publicKey,
+        privateKey: wallet.encryptedPrivateKey,
+        network: wallet.network,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt,
+        metadata: wallet.metadata,
+      };
+
+      const result = await this.stellarService.sendPayment(
+        stellarWallet,
+        params,
+        password
+      );
+
+      await this.logWalletEvent(
+        wallet.id,
+        wallet.userId,
+        WalletEventType.TRANSACTION_SENT,
+        { transactionHash: result.hash }
+      );
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.send_payment',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          destination: params.destination,
+          amount: params.amount,
+          asset: params.asset,
+          transactionHash: result.hash,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.send_payment',
+        resource: walletId,
+        success: false,
+        errorCode: 'payment_failed',
+      });
+      throw error;
     }
-
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    const stellarWallet = {
-      id: wallet.id,
-      publicKey: wallet.publicKey,
-      privateKey: wallet.encryptedPrivateKey,
-      network: wallet.network,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-      metadata: wallet.metadata,
-    };
-
-    const result = await this.stellarService.sendPayment(
-      stellarWallet,
-      params,
-      password
-    );
-
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.TRANSACTION_SENT,
-      { transactionHash: result.hash }
-    );
-
-    return result;
   }
 
   /**
@@ -584,68 +676,93 @@ export class InvisibleWalletService {
     params: InvisibleSwapParams,
     password: string
   ): Promise<InvisibleSwapResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
-    }
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) {
+        throw new Error('Invalid or expired session');
+      }
 
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
 
-    const stellarWallet: Wallet = {
-      id: wallet.id,
-      publicKey: wallet.publicKey,
-      privateKey: wallet.encryptedPrivateKey,
-      network: wallet.network,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-      metadata: wallet.metadata,
-    };
+      const stellarWallet: Wallet = {
+        id: wallet.id,
+        publicKey: wallet.publicKey,
+        privateKey: wallet.encryptedPrivateKey,
+        network: wallet.network,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt,
+        metadata: wallet.metadata,
+      };
 
-    const sendAsset = params.sendAssetIssuer
-      ? new StellarAsset(params.sendAssetCode, params.sendAssetIssuer)
-      : StellarAsset.native();
+      const sendAsset = params.sendAssetIssuer
+        ? new StellarAsset(params.sendAssetCode, params.sendAssetIssuer)
+        : StellarAsset.native();
 
-    const destAsset = params.destAssetIssuer
-      ? new StellarAsset(params.destAssetCode, params.destAssetIssuer)
-      : StellarAsset.native();
+      const destAsset = params.destAssetIssuer
+        ? new StellarAsset(params.destAssetCode, params.destAssetIssuer)
+        : StellarAsset.native();
 
-    const swapResult = await this.pathPaymentManager.executeSwap(
-      stellarWallet,
-      {
-        sendAsset,
-        destAsset,
-        amount: params.amount,
-        type: params.type,
-        maxSlippage: params.maxSlippage ?? 1,
-      },
-      password,
-      wallet.publicKey
-    );
+      const swapResult = await this.pathPaymentManager.executeSwap(
+        stellarWallet,
+        {
+          sendAsset,
+          destAsset,
+          amount: params.amount,
+          type: params.type,
+          maxSlippage: params.maxSlippage ?? 1,
+        },
+        password,
+        wallet.publicKey
+      );
 
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.SWAP_EXECUTED,
-      {
-        sendAsset: params.sendAssetCode,
-        destAsset: params.destAssetCode,
+      await this.logWalletEvent(
+        wallet.id,
+        wallet.userId,
+        WalletEventType.SWAP_EXECUTED,
+        {
+          sendAsset: params.sendAssetCode,
+          destAsset: params.destAssetCode,
+          inputAmount: swapResult.inputAmount,
+          outputAmount: swapResult.outputAmount,
+          transactionHash: swapResult.transactionHash,
+        }
+      );
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'defi.swap',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          sendAsset: params.sendAssetCode,
+          destAsset: params.destAssetCode,
+          amount: params.amount,
+          transactionHash: swapResult.transactionHash,
+        },
+      });
+
+      return {
         inputAmount: swapResult.inputAmount,
         outputAmount: swapResult.outputAmount,
+        price: swapResult.price,
+        priceImpact: swapResult.priceImpact,
         transactionHash: swapResult.transactionHash,
-      }
-    );
-
-    return {
-      inputAmount: swapResult.inputAmount,
-      outputAmount: swapResult.outputAmount,
-      price: swapResult.price,
-      priceImpact: swapResult.priceImpact,
-      transactionHash: swapResult.transactionHash,
-      highImpactWarning: swapResult.highImpactWarning,
-    };
+        highImpactWarning: swapResult.highImpactWarning,
+      };
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'defi.swap',
+        resource: walletId,
+        success: false,
+        errorCode: 'swap_failed',
+      });
+      throw error;
+    }
   }
 
   /**
@@ -709,39 +826,61 @@ export class InvisibleWalletService {
     transactionXdr: string,
     password: string
   ): Promise<SignTransactionResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) {
+        throw new Error('Invalid or expired session');
+      }
+
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+
+      const decryptedKey = await this.keyManagement.retrievePrivateKey(
+        wallet.encryptedPrivateKey,
+        password
+      );
+      const keypair = Keypair.fromSecret(decryptedKey);
+
+      const transaction = TransactionBuilder.fromXDR(
+        transactionXdr,
+        this.networkConfig.passphrase
+      );
+      transaction.sign(keypair);
+
+      const signedXdr = transaction.toXDR();
+      const hash = transaction.hash().toString('hex');
+
+      await this.logWalletEvent(
+        wallet.id,
+        wallet.userId,
+        WalletEventType.TRANSACTION_SIGNED,
+        { transactionHash: hash }
+      );
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.sign_transaction',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          transactionHash: hash,
+        },
+      });
+
+      return { signedXdr, hash };
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.sign_transaction',
+        resource: walletId,
+        success: false,
+        errorCode: 'sign_transaction_failed',
+      });
+      throw error;
     }
-
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    const decryptedKey = await this.keyManagement.retrievePrivateKey(
-      wallet.encryptedPrivateKey,
-      password
-    );
-    const keypair = Keypair.fromSecret(decryptedKey);
-
-    const transaction = TransactionBuilder.fromXDR(
-      transactionXdr,
-      this.networkConfig.passphrase
-    );
-    transaction.sign(keypair);
-
-    const signedXdr = transaction.toXDR();
-    const hash = transaction.hash().toString('hex');
-
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.TRANSACTION_SIGNED,
-      { transactionHash: hash }
-    );
-
-    return { signedXdr, hash };
   }
 
   /**
@@ -780,6 +919,16 @@ export class InvisibleWalletService {
       WalletEventType.BACKUP_CREATED
     );
 
+    void this.logAuditEvent({
+      userId: wallet.userId,
+      action: 'wallet.backup',
+      resource: wallet.publicKey,
+      success: true,
+      metadata: {
+        walletId: wallet.id,
+      },
+    });
+
     return backup;
   }
 
@@ -809,6 +958,70 @@ export class InvisibleWalletService {
       ]);
     } catch (error) {
       console.warn('Failed to log wallet event:', error);
+    }
+  }
+
+  private sanitizeAuditMetadata(
+    metadata?: Record<string, unknown>
+  ): Record<string, unknown> | undefined {
+    if (!metadata) return undefined;
+
+    const sensitiveKeys = new Set([
+      'password',
+      'token',
+      'privatekey',
+      'encrypted_private_key',
+      'secret',
+      'sessiontoken',
+    ]);
+
+    const sanitizeValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map(sanitizeValue);
+      }
+
+      if (value && typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const sanitized: Record<string, unknown> = {};
+        for (const [key, nestedValue] of Object.entries(obj)) {
+          if (sensitiveKeys.has(key.toLowerCase())) {
+            continue;
+          }
+          sanitized[key] = sanitizeValue(nestedValue);
+        }
+        return sanitized;
+      }
+
+      return value;
+    };
+
+    return sanitizeValue(metadata) as Record<string, unknown>;
+  }
+
+  private async logAuditEvent(params: {
+    userId?: string | null;
+    action: string;
+    resource?: string | null;
+    success: boolean;
+    errorCode?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const metadata = this.sanitizeAuditMetadata(params.metadata);
+
+      await this.supabase.from('audit_logs').insert([
+        {
+          user_id: params.userId || null,
+          action: params.action,
+          resource: params.resource || null,
+          ip_address: null,
+          success: params.success,
+          error_code: params.errorCode,
+          metadata,
+        },
+      ]);
+    } catch (error) {
+      console.warn('Failed to write audit log:', error);
     }
   }
 
