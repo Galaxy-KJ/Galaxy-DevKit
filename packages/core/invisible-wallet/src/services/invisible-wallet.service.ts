@@ -105,7 +105,7 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          encrypted_private_key: wallet.encryptedPrivateKey,
+          _deprecated_encrypted_private_key: wallet.encryptedPrivateKey,
           network: wallet.network,
           created_at: wallet.createdAt.toISOString(),
           updated_at: wallet.updatedAt.toISOString(),
@@ -197,7 +197,7 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          encrypted_private_key: wallet.encryptedPrivateKey,
+          _deprecated_encrypted_private_key: wallet.encryptedPrivateKey,
           encrypted_seed: wallet.encryptedSeed,
           network: wallet.network,
           created_at: wallet.createdAt.toISOString(),
@@ -676,21 +676,21 @@ export class InvisibleWalletService {
     const params: InvisibleSwapParams =
       direction === 'xlm_to_usdc'
         ? {
-            sendAssetCode: 'XLM',
-            destAssetCode: usdc.code,
-            destAssetIssuer: usdc.issuer,
-            amount,
-            type: 'strict_send',
-            maxSlippage,
-          }
+          sendAssetCode: 'XLM',
+          destAssetCode: usdc.code,
+          destAssetIssuer: usdc.issuer,
+          amount,
+          type: 'strict_send',
+          maxSlippage,
+        }
         : {
-            sendAssetCode: usdc.code,
-            sendAssetIssuer: usdc.issuer,
-            destAssetCode: 'XLM',
-            amount,
-            type: 'strict_send',
-            maxSlippage,
-          };
+          sendAssetCode: usdc.code,
+          sendAssetIssuer: usdc.issuer,
+          destAssetCode: 'XLM',
+          amount,
+          type: 'strict_send',
+          maxSlippage,
+        };
 
     return this.swap(walletId, sessionToken, params, password);
   }
@@ -828,7 +828,7 @@ export class InvisibleWalletService {
       id: data.id,
       userId: data.user_id,
       publicKey: data.public_key,
-      encryptedPrivateKey: data.encrypted_private_key,
+      encryptedPrivateKey: data._deprecated_encrypted_private_key,
       encryptedSeed: data.encrypted_seed,
       network: data.network,
       createdAt: new Date(data.created_at),

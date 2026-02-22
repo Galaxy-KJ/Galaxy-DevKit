@@ -365,7 +365,7 @@ export class KeyManagementService {
       const { error } = await this.supabase
         .from('invisible_wallets')
         .update({
-          encrypted_private_key: newEncryptedKey,
+          _deprecated_encrypted_private_key: newEncryptedKey,
           updated_at: new Date().toISOString(),
         })
         .eq('id', wallet.id);
