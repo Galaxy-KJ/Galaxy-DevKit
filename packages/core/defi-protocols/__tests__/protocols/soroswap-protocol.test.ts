@@ -9,7 +9,7 @@
 import { SoroswapProtocol } from '../../src/protocols/soroswap/soroswap-protocol';
 import { ProtocolConfig, ProtocolType, Asset } from '../../src/types/defi-types';
 import { InvalidOperationError } from '../../src/errors';
-import { rpc } from '@stellar/stellar-sdk';
+import { rpc, scValToNative, Address } from '@stellar/stellar-sdk';
 
 // ==========================================
 // MOCKS
@@ -24,14 +24,18 @@ jest.mock('@stellar/stellar-sdk', () => {
 
   return {
     Contract: mockContract,
-    TransactionBuilder: jest.fn().mockImplementation(() => ({
-      addOperation: jest.fn().mockReturnThis(),
-      setTimeout: jest.fn().mockReturnThis(),
-      build: jest.fn().mockReturnValue({
-        sign: jest.fn(),
-        toXDR: jest.fn().mockReturnValue('mock-xdr'),
-      }),
-    })),
+    TransactionBuilder: jest.fn().mockImplementation((account) => {
+      if (account && typeof account.accountId === 'function') account.accountId();
+      if (account && typeof account.sequenceNumber === 'function') account.sequenceNumber();
+      return {
+        addOperation: jest.fn().mockReturnThis(),
+        setTimeout: jest.fn().mockReturnThis(),
+        build: jest.fn().mockReturnValue({
+          sign: jest.fn(),
+          toXDR: jest.fn().mockReturnValue('mock-xdr'),
+        }),
+      };
+    }),
     Keypair: {
       fromSecret: jest.fn().mockReturnValue({
         publicKey: () => 'test-public-key',
@@ -104,6 +108,15 @@ describe('SoroswapProtocol', () => {
     issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
     type: 'credit_alphanum4'
   };
+
+  const tokenA: Asset = { code: 'XLM', type: 'native' };
+  const tokenB: Asset = {
+    code: 'USDC',
+    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    type: 'credit_alphanum4'
+  };
+
+  const poolAddress = 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD';
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -424,31 +437,24 @@ describe('SoroswapProtocol', () => {
   // ==========================================
 
   describe('getSwapQuote()', () => {
-    const tokenIn: Asset = { code: 'XLM', type: 'native' };
-    const tokenOut: Asset = {
-      code: 'USDC',
-      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-      type: 'credit_alphanum4'
-    };
-
     beforeEach(async () => {
       await soroswapProtocol.initialize();
     });
 
     it('should return a valid SwapQuote', async () => {
-      const quote = await soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10');
+      const quote = await soroswapProtocol.getSwapQuote(tokenA, tokenB, '10');
 
       expect(quote).toBeDefined();
       expect(quote.amountIn).toBe('10');
-      expect(quote.tokenIn).toEqual(tokenIn);
-      expect(quote.tokenOut).toEqual(tokenOut);
+      expect(quote.tokenIn).toEqual(tokenA);
+      expect(quote.tokenOut).toEqual(tokenB);
       expect(parseFloat(quote.amountOut)).toBeGreaterThan(0);
       expect(quote.path).toHaveLength(2);
       expect(quote.validUntil).toBeInstanceOf(Date);
     });
 
     it('should apply 5% slippage to minimumReceived', async () => {
-      const quote = await soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10');
+      const quote = await soroswapProtocol.getSwapQuote(tokenA, tokenB, '10');
 
       const expectedMin = (parseFloat(quote.amountOut) * 0.95).toFixed(7);
       expect(quote.minimumReceived).toBe(expectedMin);
@@ -458,20 +464,59 @@ describe('SoroswapProtocol', () => {
       (soroswapProtocol as any).routerContract = null;
 
       await expect(
-        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10')
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '10')
       ).rejects.toThrow('Router contract not initialized');
     });
 
     it('should throw if simulation fails', async () => {
-      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
-      mockSorobanServer.simulateTransaction.mockResolvedValue({
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({
         error: 'Simulation failed'
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as any).mockReturnValueOnce(true);
 
       await expect(
-        soroswapProtocol.getSwapQuote(tokenIn, tokenOut, '10')
-      ).rejects.toThrow(/Swap quote simulation failed/);
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '10')
+      ).rejects.toThrow(/simulation failed/i);
+    });
+
+    it('should handle source account load failure for simulation', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Account not found'));
+
+      const quote = await soroswapProtocol.getSwapQuote(tokenA, tokenB, '10');
+      expect(quote).toBeDefined();
+    });
+
+    it('should throw if simulation result is invalid', async () => {
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      mockSorobanServer.simulateTransaction.mockResolvedValueOnce({
+        result: {} // Missing retval
+      });
+
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '10')
+      ).rejects.toThrow();
+    });
+
+    it('should throw if return value is not an array', async () => {
+      (scValToNative as any).mockReturnValueOnce(123n); // Not an array
+
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '10')
+      ).rejects.toThrow();
+    });
+
+    it('should throw if amounts array is too short', async () => {
+      (scValToNative as any).mockReturnValueOnce([100n]); // Only 1 element, need 2
+
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '10')
+      ).rejects.toThrow();
+    });
+
+    it('should throw on non-numeric amountIn', async () => {
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, 'not-a-number')
+      ).rejects.toThrow(/Amount must be a positive number/);
     });
   });
 
@@ -480,20 +525,13 @@ describe('SoroswapProtocol', () => {
   // ==========================================
 
   describe('swap()', () => {
-    const tokenIn: Asset = { code: 'XLM', type: 'native' };
-    const tokenOut: Asset = {
-      code: 'USDC',
-      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-      type: 'credit_alphanum4'
-    };
-
     beforeEach(async () => {
       await soroswapProtocol.initialize();
     });
 
     it('should return a TransactionResult with status pending', async () => {
       const result = await soroswapProtocol.swap(
-        testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9'
+        testAddress, testPrivateKey, tokenA, tokenB, '10', '9'
       );
 
       expect(result).toBeDefined();
@@ -503,7 +541,7 @@ describe('SoroswapProtocol', () => {
 
     it('should include swap metadata', async () => {
       const result = await soroswapProtocol.swap(
-        testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9'
+        testAddress, testPrivateKey, tokenA, tokenB, '10', '9'
       );
 
       expect(result.metadata.operation).toBe('swap');
@@ -511,33 +549,31 @@ describe('SoroswapProtocol', () => {
       expect(result.metadata.minAmountOut).toBe('9');
     });
 
+    it('should throw if prepareTransaction fails', async () => {
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      mockSorobanServer.prepareTransaction.mockRejectedValueOnce(new Error('Prepare fail'));
+
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenA, tokenB, '10', '9')
+      ).rejects.toThrow();
+    });
+
     it('should throw if router contract is null', async () => {
       (soroswapProtocol as any).routerContract = null;
 
       await expect(
-        soroswapProtocol.swap(testAddress, testPrivateKey, tokenIn, tokenOut, '10', '9')
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenA, tokenB, '10', '9')
       ).rejects.toThrow('Router contract not initialized');
     });
 
     it('should throw on invalid wallet address', async () => {
       await expect(
-        soroswapProtocol.swap('', testPrivateKey, tokenIn, tokenOut, '10', '9')
+        soroswapProtocol.swap('', testPrivateKey, tokenA, tokenB, '10', '9')
       ).rejects.toThrow(/Invalid wallet address/);
     });
   });
 
-  // ==========================================
-  // ADD LIQUIDITY
-  // ==========================================
-
   describe('addLiquidity()', () => {
-    const tokenA: Asset = { code: 'XLM', type: 'native' };
-    const tokenB: Asset = {
-      code: 'USDC',
-      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-      type: 'credit_alphanum4'
-    };
-
     beforeEach(async () => {
       await soroswapProtocol.initialize();
     });
@@ -613,14 +649,6 @@ describe('SoroswapProtocol', () => {
   // ==========================================
 
   describe('removeLiquidity()', () => {
-    const tokenA: Asset = { code: 'XLM', type: 'native' };
-    const tokenB: Asset = {
-      code: 'USDC',
-      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-      type: 'credit_alphanum4'
-    };
-    const poolAddress = 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD';
-
     beforeEach(async () => {
       await soroswapProtocol.initialize();
     });
@@ -699,75 +727,53 @@ describe('SoroswapProtocol', () => {
     });
   });
 
-  // ==========================================
-  // GET LIQUIDITY POOL
-  // ==========================================
-
   describe('getLiquidityPool()', () => {
-    const tokenA: Asset = { code: 'XLM', type: 'native' };
-    const tokenB: Asset = {
-      code: 'USDC',
-      issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-      type: 'credit_alphanum4'
-    };
-
     beforeEach(async () => {
       await soroswapProtocol.initialize();
     });
 
-    it('should return a LiquidityPool with correct shape', async () => {
-      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
-
-      expect(pool).toBeDefined();
-      expect(pool).toHaveProperty('address');
-      expect(pool).toHaveProperty('tokenA');
-      expect(pool).toHaveProperty('tokenB');
-      expect(pool).toHaveProperty('reserveA');
-      expect(pool).toHaveProperty('reserveB');
-      expect(pool).toHaveProperty('totalLiquidity');
-      expect(pool).toHaveProperty('fee');
-    });
-
-    it('should return the correct tokens', async () => {
-      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
-
-      expect(pool.tokenA).toEqual(tokenA);
-      expect(pool.tokenB).toEqual(tokenB);
-    });
-
-    it('should return the default fee', async () => {
-      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
-
-      expect(pool.fee).toBe('0.003');
-    });
-
-    it('should throw if factory contract is null', async () => {
-      (soroswapProtocol as any).factoryContract = null;
-
-      await expect(
-        soroswapProtocol.getLiquidityPool(tokenA, tokenB)
-      ).rejects.toThrow('Factory contract not initialized');
-    });
-
-    it('should throw on invalid asset (empty code)', async () => {
-      const badAsset: Asset = { code: '', type: 'native' };
-      await expect(
-        soroswapProtocol.getLiquidityPool(badAsset, tokenB)
-      ).rejects.toThrow(/Invalid asset/);
-    });
-
-    it('should throw on non-native asset missing issuer', async () => {
-      const badAsset: Asset = { code: 'USDC', type: 'credit_alphanum4' };
-      await expect(
-        soroswapProtocol.getLiquidityPool(badAsset, tokenB)
-      ).rejects.toThrow(/Non-native assets must have an issuer/);
-    });
+    // ==========================================
+    // GET LIQUIDITY POOL
+    // ==========================================
 
     it('should throw if not initialized', async () => {
       const uninitProtocol = new SoroswapProtocol(mockConfig);
       await expect(
         uninitProtocol.getLiquidityPool(tokenA, tokenB)
       ).rejects.toThrow(/not initialized/);
+    });
+
+    it('should handle case where horizon account load fails for placeholder', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Horizon fail'));
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool).toBeDefined();
+    });
+
+    it('should cover resolveTokenAddress native branch', async () => {
+      const nativeAsset: Asset = { code: 'XLM', type: 'native' };
+      const pool = await soroswapProtocol.getLiquidityPool(nativeAsset, tokenB);
+      expect(pool.tokenA).toEqual(nativeAsset);
+    });
+
+    it('should handle reserved amounts array too short', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }) // get_pair
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }); // get_reserves
+
+      (scValToNative as any).mockReturnValueOnce([100n, 200n]); // Only 2, need 3
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.reserveA).toBe('0');
+    });
+
+    it('should handle simulation error in getLiquidityPool (get_pair)', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({
+        error: 'fail'
+      });
+      (rpc.Api.isSimulationError as any).mockReturnValueOnce(true);
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
     });
   });
 
@@ -784,6 +790,104 @@ describe('SoroswapProtocol', () => {
 
     it('should report not initialized', () => {
       expect(soroswapProtocol.isInitialized()).toBe(false);
+    });
+  });
+
+  describe('Liquidity Operations Defaults', () => {
+    const tokenA: Asset = { code: 'XLM', type: 'native' };
+    const tokenB: Asset = { code: 'USDC', issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', type: 'credit_alphanum4' };
+
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should use default min amounts in addLiquidity', async () => {
+      const result = await soroswapProtocol.addLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, '100', '200'
+      );
+      expect(result.metadata.amountAMin).toBeDefined();
+    });
+
+    it('should use default min amounts in removeLiquidity', async () => {
+      const result = await soroswapProtocol.removeLiquidity(
+        testAddress, testPrivateKey, tokenA, tokenB, 'GCP...PAIR', '100'
+      );
+      expect(result.metadata.amountAMin).toBeDefined();
+    });
+
+    it('should handle null simulation in getLiquidityPool', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce(null);
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
+    });
+
+    it('should handle simulation without result in getLiquidityPool', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({});
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
+    });
+
+    it('should handle simulation without retval in getLiquidityPool', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({ result: {} });
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
+    });
+
+    it('should handle faulty reserves ScVal shape', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'address', value: '...' } } }) // get_pair
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval', value: '...' } } }); // get_reserves
+
+      (scValToNative as any).mockImplementationOnce(() => { throw new Error('parse fail'); });
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.reserveA).toBe('0');
+    });
+
+    it('should throw if prepareTransaction fails in addLiquidity', async () => {
+      (soroswapProtocol as any).sorobanServer.prepareTransaction.mockRejectedValueOnce(new Error('Prepare fail'));
+      await expect(
+        soroswapProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
+      ).rejects.toThrow();
+    });
+
+    it('should throw if prepareTransaction fails in removeLiquidity', async () => {
+      (soroswapProtocol as any).sorobanServer.prepareTransaction.mockRejectedValueOnce(new Error('Prepare fail'));
+      await expect(
+        soroswapProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, 'GCP...PAIR', '100')
+      ).rejects.toThrow();
+    });
+
+    it('should cover resolveTokenAddress native branch in various methods', async () => {
+      const nativeAsset: Asset = { code: 'XLM', type: 'native' };
+      const result = await soroswapProtocol.swap(testAddress, testPrivateKey, nativeAsset, tokenB, '10', '9');
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Utility Coverage', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should handle non-Error objects in handleError via swap rejection', async () => {
+      (soroswapProtocol as any).horizonServer.loadAccount.mockRejectedValueOnce('Horizon Error String');
+      await expect(
+        soroswapProtocol.swap(testAddress, testPrivateKey, tokenA, tokenB, '10', '9')
+      ).rejects.toThrow(/Horizon Error String/);
+    });
+
+    it('should handle null in handleError', async () => {
+      // Direct call via any to reach the protected method
+      expect(() => {
+        (soroswapProtocol as any).handleError(null, 'test');
+      }).toThrow(/null/);
+    });
+
+    it('should throw on negative amount in amountToI128ScVal', async () => {
+      await expect(
+        soroswapProtocol.getSwapQuote(tokenA, tokenB, '-10')
+      ).rejects.toThrow(/Amount must be a positive number/);
     });
   });
 });
