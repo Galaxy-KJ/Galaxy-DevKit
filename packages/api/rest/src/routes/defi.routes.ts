@@ -19,11 +19,39 @@ const defaultConfig: Omit<ProtocolConfig, 'protocolId'> = {
         passphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
     },
     contractAddresses: {
-        pool: process.env.BLEND_POOL_ADDRESS || 'CBQ6QVPK6EQQ7YHLU2A4B2NDR2B3W6F25PPMT2C5QFQHXH7QXGZYI6B5',
-        router: process.env.SOROSWAP_ROUTER_ADDRESS || 'CBAX22A4F3F73ZY5P7X73A6QY4E2P6Z4FQ3FQ4F3QY4FQ4FQ4FQ4FQ4F',
-        factory: process.env.SOROSWAP_FACTORY_ADDRESS || 'CBAX22A4F3F73ZY5P7X73A6QY4E2P6Z4FQ3FQ4F3QY4FQ4FQ4FQ4FQ4F'
+        pool: process.env.BLEND_POOL_ADDRESS || 'CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF',
+        oracle: process.env.BLEND_ORACLE_ADDRESS || 'CAZOKR2Y5E2OSWSIBRVZMJ47RUTQPIGVWSAQ2UISGAVC46XKPGDG5PKI',
+        backstop: process.env.BLEND_BACKSTOP_ADDRESS || 'CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA',
+        emitter: process.env.BLEND_EMITTER_ADDRESS || 'CC3WJVJINN4E3LPMNTWKK7LQZLYDQMZHZA7EZGXATPHHBPKNZRIO3KZ6',
+        router: process.env.SOROSWAP_ROUTER_ADDRESS || 'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD',
+        factory: process.env.SOROSWAP_FACTORY_ADDRESS || 'CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY'
     }
 };
+
+/**
+ * Helper to parse asset string into Asset object
+ * Supports: "XLM", "Native", or "CODE:ISSUER"
+ */
+function parseAsset(assetStr: string): Asset {
+    if (assetStr.toUpperCase() === 'XLM' || assetStr.toUpperCase() === 'NATIVE') {
+        return { code: 'XLM', type: 'native' };
+    }
+
+    if (assetStr.includes(':')) {
+        const [code, issuer] = assetStr.split(':');
+        return {
+            code,
+            issuer,
+            type: code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'
+        };
+    }
+
+    // Default to credit_alphanum4 for code only (might fail validation if issuer is required)
+    return {
+        code: assetStr,
+        type: assetStr.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'
+    };
+}
 
 export function setupDefiRoutes(): express.Router {
     const router = express.Router();
@@ -51,9 +79,10 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
+            await protocol.initialize();
 
-            const tokenIn: Asset = { code: assetIn as string, type: assetIn === 'XLM' ? 'native' : 'credit_alphanum4' };
-            const tokenOut: Asset = { code: assetOut as string, type: assetOut === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenIn = parseAsset(assetIn as string);
+            const tokenOut = parseAsset(assetOut as string);
 
             if (!protocol.getSwapQuote) {
                 throw new Error('getSwapQuote not implemented');
@@ -89,9 +118,10 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
+            await protocol.initialize();
 
-            const tokenIn: Asset = { code: assetIn, type: assetIn === 'XLM' ? 'native' : 'credit_alphanum4' };
-            const tokenOut: Asset = { code: assetOut, type: assetOut === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenIn = parseAsset(assetIn);
+            const tokenOut = parseAsset(assetOut);
 
             if (!protocol.swap) {
                 throw new Error('swap not implemented');
@@ -128,6 +158,7 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
+            await protocol.initialize();
 
             const position = await protocol.getPosition(publicKey);
 
@@ -159,8 +190,9 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
+            await protocol.initialize();
 
-            const tokenAsset: Asset = { code: asset, type: asset === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenAsset = parseAsset(asset);
 
             // Empty string for privateKey means it will just return the unsigned XDR
             const result = await protocol.supply(signerPublicKey, '', tokenAsset, amount);
@@ -194,8 +226,9 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
+            await protocol.initialize();
 
-            const tokenAsset: Asset = { code: asset, type: asset === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenAsset = parseAsset(asset);
 
             const result = await protocol.withdraw(signerPublicKey, '', tokenAsset, amount);
 
@@ -228,8 +261,9 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
+            await protocol.initialize();
 
-            const tokenAsset: Asset = { code: asset, type: asset === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenAsset = parseAsset(asset);
 
             const result = await protocol.borrow(signerPublicKey, '', tokenAsset, amount);
 
@@ -262,8 +296,9 @@ export function setupDefiRoutes(): express.Router {
 
             const factory = ProtocolFactory.getInstance();
             const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
+            await protocol.initialize();
 
-            const tokenAsset: Asset = { code: asset, type: asset === 'XLM' ? 'native' : 'credit_alphanum4' };
+            const tokenAsset = parseAsset(asset);
 
             const result = await protocol.repay(signerPublicKey, '', tokenAsset, amount);
 

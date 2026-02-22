@@ -18,6 +18,7 @@ jest.mock('@galaxy-kj/core-defi-protocols', () => {
                                 priceImpact: '0.5'
                             }),
                             swap: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-swap' }),
+                            initialize: jest.fn().mockResolvedValue(undefined),
                         };
                     } else if (config.protocolId === 'blend') {
                         return {
@@ -30,6 +31,7 @@ jest.mock('@galaxy-kj/core-defi-protocols', () => {
                             withdraw: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-withdraw' }),
                             borrow: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-borrow' }),
                             repay: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-repay' }),
+                            initialize: jest.fn().mockResolvedValue(undefined),
                         };
                     }
                     throw new Error('Unknown protocol');
