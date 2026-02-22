@@ -407,8 +407,9 @@ npm run dev
 
 ### Best Practices
 
-1. **Never Store Private Keys** - Private keys are only used to sign transactions and are never stored
-2. **Validate All Inputs** - Use built-in validation utilities for addresses, amounts, and assets
+1. **Unsigned Transaction Workflow** - Protocol methods can return unsigned XDRs when a `privateKey` is not provided (empty string). This allows for secure client-side signing (e.g., via Freighter or Hawkeye).
+2. **Never Store Private Keys** - Private keys are only used to sign transactions and are never stored.
+3. **Validate All Inputs** - Use built-in validation utilities for addresses, amounts, and assets.
 3. **Check Health Factors** - Always check position health before risky operations
 4. **Use Slippage Protection** - Set appropriate slippage tolerance for swaps
 5. **Test on Testnet First** - Always test your integration on testnet before mainnet
