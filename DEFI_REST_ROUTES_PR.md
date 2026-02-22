@@ -23,9 +23,38 @@ Closes #129 <!-- Assuming this is the related issue based on context -->
 - [x] All tests passing locally
 
 ### Manual Verification Results:
-- `GET /api/v1/defi/swap/quote`: Verified delegation to protocol layer.
-- `GET /api/v1/defi/blend/position/:publicKey`: Verified retrieval of position stats.
-- `POST /api/v1/defi/blend/supply`: Verified generation of valid unsigned XDR.
+Testing was performed using `curl` (via PowerShell `Invoke-RestMethod`) against a local development server on Testnet.
+
+#### 1. Soroswap Quote
+- **Request**: `GET /api/v1/defi/swap/quote?assetIn=XLM&assetOut=USDC:GBBD...&amountIn=10`
+- **Result**: Successfully reached the protocol layer. (Currently returns "not implemented" stub from `SoroswapProtocol`, as expected per #28).
+
+#### 2. Blend Position
+- **Request**: `GET /api/v1/defi/blend/position/GBBD...A5`
+- **Result**: Successfully retrieved mock position data:
+```json
+{
+  "address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "supplied": [],
+  "borrowed": [],
+  "healthFactor": "∞",
+  "collateralValue": "0",
+  "debtValue": "0"
+}
+```
+
+#### 3. Blend Supply (Unsigned XDR Generation)
+- **Request**: `POST /api/v1/defi/blend/supply`
+- **Result**: Successfully returned a `pending` transaction containing the **unsigned XDR**:
+```json
+{
+  "hash": "AAAAAgAAAABCPn0F8uyvv...",
+  "status": "pending",
+  "ledger": 0,
+  "createdAt": "2026-02-22T03:10:54.174Z",
+  "metadata": { "operation": "supply", "asset": "XLM", "amount": "100" }
+}
+```
 
 ## 📚 Documentation Updates (Required)
 
