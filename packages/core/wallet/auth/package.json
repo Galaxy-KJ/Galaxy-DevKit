@@ -23,10 +23,10 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "events": "^3.3.0",
+    "@ledgerhq/hw-app-str": "^7.0.7",
     "@ledgerhq/hw-transport": "^6.31.4",
-    "@ledgerhq/hw-transport-webusb": "^6.29.4",
     "@ledgerhq/hw-transport-node-hid": "^6.29.4",
-    "@ledgerhq/hw-app-str": "^7.0.7"
+    "@ledgerhq/hw-transport-webusb": "^6.29.4",
+    "events": "^3.3.0"
   }
 }
