@@ -77,10 +77,10 @@ gantt
 
 ### Soroswap DEX (5 issues)
 
-- [ ] **#26** Implement Soroswap protocol service
-- [ ] **#27** Add token swap functionality
-- [ ] **#28** Add liquidity provision operations
-- [ ] **#29** Implement price quote system
+- [x] **#26** Implement Soroswap protocol service ✅
+- [x] **#27** Add token swap functionality ✅
+- [x] **#28** Add liquidity provision operations ✅
+- [x] **#29** Implement price quote system ✅
 - [ ] **#30** Add liquidity pool analytics
 
 ### DEX Aggregator (5 issues)
@@ -191,7 +191,7 @@ gantt
 ### Phase 2
 
 - ✅ Blend protocol fully integrated (Issues #21-#25 complete)
-- ⏳ Soroswap operational
+- ✅ Soroswap operational (Core features complete)
 - ⏳ DEX aggregator routing correctly
 - ⏳ Oracle providing accurate prices
 
