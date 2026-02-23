@@ -1,2 +1,2 @@
-export { SessionKeyManager } from './SessionKeyManager';
-export type { SessionKey, CreateSessionOptions } from './SessionKeyManager';
+export { SessionKeyManager } from './session/SessionKeyManager';
+export type { SessionKey, CreateSessionOptions } from './session/SessionKeyManager';

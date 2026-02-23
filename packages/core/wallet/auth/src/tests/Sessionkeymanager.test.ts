@@ -174,9 +174,9 @@ describe('createSession()', () => {
     await mgr.createSession(MOCK_OPTIONS);
 
     expect(mockDigest).toHaveBeenCalledTimes(1);
-    const [algo, data] = mockDigest.mock.calls[0] as [string, ArrayBuffer];
-    expect(algo).toBe('SHA-256');
-    const payload = new TextDecoder().decode(data);
+    const digestCall = mockDigest.mock.calls[0] as unknown as [string, ArrayBuffer];
+    expect(digestCall[0]).toBe('SHA-256');
+    const payload = new TextDecoder().decode(digestCall[1]);
     // Challenge must encode all three operation parameters
     expect(payload).toContain(MOCK_WALLET);
     expect(payload).toContain(String(MOCK_OPTIONS.ttlSeconds));
@@ -269,16 +269,23 @@ describe('sign()', () => {
 
 describe('revoke()', () => {
   it('zeros the private key synchronously before the network call completes', async () => {
+    // Construct the stalled promise BEFORE revoke() is called so that
+    // resolveRemove is guaranteed to be assigned by the time we need it.
+    // The previous pattern assigned resolveRemove inside the Promise executor
+    // which only runs when removeSigner() is actually invoked — after
+    // _destroyPrivateKey() has already run — leaving resolveRemove undefined.
     let resolveRemove!: () => void;
-    const removeSigner = jest.fn(
-      () => new Promise<void>(resolve => { resolveRemove = resolve; })
-    );
+    const stalledPromise = new Promise<void>(resolve => {
+      resolveRemove = resolve;
+    });
+    const removeSigner = jest.fn(() => stalledPromise);
     const { mgr } = makeManager({ removeSigner });
 
     await mgr.createSession(MOCK_OPTIONS);
     const revokePromise = mgr.revoke(MOCK_WALLET, MOCK_CRED_ID);
 
-    // The private key must be zeroed before the promise resolves
+    // _destroyPrivateKey() is called synchronously inside revoke() before any
+    // await, so these hold while removeSigner's promise is still pending.
     expect(mgr.isActive()).toBe(false);
     expect((mgr as any)._privateKeyBytes).toBeNull();
 
@@ -316,9 +323,8 @@ describe('revoke()', () => {
     mockDigest.mockClear();
     await mgr.revoke(MOCK_WALLET, MOCK_CRED_ID);
 
-    const payload = new TextDecoder().decode(
-      mockDigest.mock.calls[0][1] as ArrayBuffer
-    );
+    const revokeDigestCall = mockDigest.mock.calls[0] as unknown as [string, ArrayBuffer];
+    const payload = new TextDecoder().decode(revokeDigestCall[1]);
     // Revoke challenges must end with :0 (sentinel for no TTL)
     expect(payload).toMatch(/:0$/);
   });
