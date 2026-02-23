@@ -28,6 +28,7 @@ import { validateAuthConfig } from './config/auth-config';
 import { authenticate } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { UserService } from './services/user-service';
+import { setupDefiRoutes } from './routes/defi.routes';
 
 /**
  * REST API Server Class
@@ -130,6 +131,9 @@ class RestApiServer {
 
     // User routes
     router.use('/users', this.setupUserRoutes());
+
+    // DeFi routes
+    router.use('/defi', setupDefiRoutes());
 
     // Add more routes here as needed
 
