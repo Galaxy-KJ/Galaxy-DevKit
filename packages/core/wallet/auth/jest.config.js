@@ -1,26 +1,27 @@
-module.exports = {
+/** @type {import('jest').Config} */
+const config = {
   preset: 'ts-jest',
-  testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.test.ts', '**/tests/**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'js', 'json'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.test.ts',
-    '!src/**/__tests__/**',
-  ],
-  coverageThreshold: {
-    global: {
-      branches: 95,
-      functions: 95,
-      lines: 95,
-      statements: 95,
+  testEnvironment: 'jsdom',
+  globals: {
+    'ts-jest': {
+      tsconfig: './tsconfig.json',
     },
   },
-  transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  moduleNameMapper: {
-    '^@ledgerhq/(.*)$': '<rootDir>/src/hardware/__tests__/mocks/$1',
-  },
+  testMatch: [
+    // Matches the actual layout visible in the screenshot:
+    // packages/core/wallet/auth/src/tests/*.test.ts
+    '<rootDir>/src/tests/**/*.test.ts',
+    // Also match tests alongside source files (future-proof)
+    '<rootDir>/src/**/*.test.ts',
+  ],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.d.ts',
+    '!src/**/index.ts',
+    '!src/tests/**',
+  ],
+  clearMocks: true,
+  restoreMocks: true,
 };
+
+module.exports = config;

@@ -17,16 +17,17 @@
   "devDependencies": {
     "@types/events": "^3.0.3",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.0.9",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
+    "@types/node": "^25.3.0",
+    "jest": "^19.0.2",
+    "jest-environment-jsdom": "^30.2.0",
+    "ts-jest": "^27.1.5",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "events": "^3.3.0",
+    "@ledgerhq/hw-app-str": "^7.0.7",
     "@ledgerhq/hw-transport": "^6.31.4",
-    "@ledgerhq/hw-transport-webusb": "^6.29.4",
     "@ledgerhq/hw-transport-node-hid": "^6.29.4",
-    "@ledgerhq/hw-app-str": "^7.0.7"
+    "@ledgerhq/hw-transport-webusb": "^6.29.4",
+    "events": "^3.3.0"
   }
 }
