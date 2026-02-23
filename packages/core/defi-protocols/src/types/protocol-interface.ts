@@ -232,19 +232,15 @@ export interface IDefiProtocol {
     amountB: string
   ): Promise<TransactionResult>;
 
-  /**
-   * Remove liquidity from a pool
-   * @param {string} walletAddress - User wallet address
-   * @param {string} privateKey - User private key for signing
-   * @param {string} poolAddress - Pool address
-   * @param {string} liquidity - Amount of liquidity tokens to remove
-   * @returns {Promise<TransactionResult>}
-   */
   removeLiquidity?(
     walletAddress: string,
     privateKey: string,
+    tokenA: Asset,
+    tokenB: Asset,
     poolAddress: string,
-    liquidity: string
+    liquidity: string,
+    amountAMin?: string,
+    amountBMin?: string
   ): Promise<TransactionResult>;
 
   /**

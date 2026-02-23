@@ -271,3 +271,20 @@ export class WebAuthNProvider extends BiometricAuthProvider {
   }
 }
 
+
+// mock please remove this after impl   issue#[221]
+export const extractPublicKey = jest.fn(
+  (_credential: PublicKeyCredential): Uint8Array => {
+    const key = new Uint8Array(65);
+    key[0] = 0x04;
+    key.fill(0xab, 1, 33);
+    key.fill(0xcd, 33, 65);
+    return key;
+  }
+);
+export const convertSignatureDERtoCompact = jest.fn(
+  (_derSignature: ArrayBuffer): Uint8Array => {
+
+    return new Uint8Array(64).fill(0xef);
+  }
+);
