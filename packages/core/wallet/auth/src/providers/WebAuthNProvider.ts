@@ -6,6 +6,134 @@ import {
   BiometricType,
 } from '../BiometricAuth';
 
+export function extractPublicKey(credential: PublicKeyCredential): Uint8Array {
+  const response = credential.response as AuthenticatorAttestationResponse;
+
+  if (typeof response.getPublicKey !== 'function') {
+    throw new Error(
+      'extractPublicKey: credential.response is not an AuthenticatorAttestationResponse. ' +
+      'Pass the credential returned by navigator.credentials.create(), not .get().'
+    );
+  }
+
+  // getPublicKey() returns the DER SubjectPublicKeyInfo blob directly (72 bytes for P-256).
+  const spki = response.getPublicKey();
+  if (!spki) {
+    throw new Error(
+      'extractPublicKey: getPublicKey() returned null. ' +
+      'The authenticator may not support P-256 or the attestation format is unsupported.'
+    );
+  }
+
+  // P-256 SPKI is 72 bytes; the 65-byte uncompressed point starts at offset 27.
+  const SPKI_HEADER_LENGTH = 26;
+  const UNCOMPRESSED_POINT_LENGTH = 65;
+
+  if (spki.byteLength < SPKI_HEADER_LENGTH + UNCOMPRESSED_POINT_LENGTH) {
+    throw new Error(
+      `extractPublicKey: SPKI blob is ${spki.byteLength} bytes — expected at least ` +
+      `${SPKI_HEADER_LENGTH + UNCOMPRESSED_POINT_LENGTH} bytes for a P-256 key.`
+    );
+  }
+
+  const point = new Uint8Array(spki, SPKI_HEADER_LENGTH, UNCOMPRESSED_POINT_LENGTH);
+
+  if (point[0] !== 0x04) {
+    throw new Error(
+      `extractPublicKey: Expected uncompressed point marker 0x04 at offset ${SPKI_HEADER_LENGTH}, ` +
+      `got 0x${point[0].toString(16).padStart(2, '0')}. ` +
+      'The key may be compressed or the SPKI offset is wrong for this authenticator.'
+    );
+  }
+
+  // Return a copy — never return a view into the original ArrayBuffer since
+  // the caller may hold a reference and the buffer could be GC'd or mutated.
+  return point.slice();
+}
+
+
+export function convertSignatureDERtoCompact(derSignature: ArrayBuffer): Uint8Array {
+  const der = new Uint8Array(derSignature);
+  let offset = 0;
+
+  // ── Outer SEQUENCE ──────────────────────────────────────────────────────────
+  if (der[offset++] !== 0x30) {
+    throw new Error(
+      `convertSignatureDERtoCompact: Expected SEQUENCE tag 0x30 at offset 0, ` +
+      `got 0x${der[0].toString(16).padStart(2, '0')}.`
+    );
+  }
+
+  // Read and skip the total-length byte (we validate components individually)
+  const totalLength = der[offset++];
+  if (offset + totalLength > der.byteLength) {
+    throw new Error(
+      `convertSignatureDERtoCompact: DER total length ${totalLength} exceeds buffer ` +
+      `size ${der.byteLength - 2}.`
+    );
+  }
+
+  // ── r INTEGER ───────────────────────────────────────────────────────────────
+  if (der[offset++] !== 0x02) {
+    throw new Error(
+      `convertSignatureDERtoCompact: Expected INTEGER tag 0x02 for r at offset ${offset - 1}.`
+    );
+  }
+  const rLen = der[offset++];
+  if (rLen < 1 || rLen > 33) {
+    throw new Error(
+      `convertSignatureDERtoCompact: Invalid r length ${rLen} (expected 1–33).`
+    );
+  }
+  const rBytes = der.slice(offset, offset + rLen);
+  offset += rLen;
+
+  // ── s INTEGER ───────────────────────────────────────────────────────────────
+  if (der[offset++] !== 0x02) {
+    throw new Error(
+      `convertSignatureDERtoCompact: Expected INTEGER tag 0x02 for s at offset ${offset - 1}.`
+    );
+  }
+  const sLen = der[offset++];
+  if (sLen < 1 || sLen > 33) {
+    throw new Error(
+      `convertSignatureDERtoCompact: Invalid s length ${sLen} (expected 1–33).`
+    );
+  }
+  const sBytes = der.slice(offset, offset + sLen);
+
+  const compact = new Uint8Array(64);
+  compact.set(padScalar(rBytes, 'r'), 0);   // bytes  0–31
+  compact.set(padScalar(sBytes, 's'), 32);  // bytes 32–63
+
+  return compact;
+}
+
+
+function padScalar(scalar: Uint8Array, name: 'r' | 's'): Uint8Array {
+  // Strip the leading 0x00 that DER adds when the high bit of the first data
+  // byte is set (to keep the integer positive in two's complement).
+  let start = 0;
+  if (scalar.length === 33 && scalar[0] === 0x00) {
+    start = 1;
+  }
+
+  const stripped = scalar.subarray(start);
+
+  if (stripped.length > 32) {
+    throw new Error(
+      `convertSignatureDERtoCompact: ${name} scalar is ${stripped.length} bytes after ` +
+      `stripping padding — expected ≤ 32 bytes.`
+    );
+  }
+
+  const padded = new Uint8Array(32); // zero-filled by default
+  // Right-align: copy into the end of the 32-byte buffer
+  padded.set(stripped, 32 - stripped.length);
+  return padded;
+}
+
+
 export class WebAuthNProvider extends BiometricAuthProvider {
   private readonly rpId: string;
   private readonly rpName: string;
@@ -270,21 +398,3 @@ export class WebAuthNProvider extends BiometricAuthProvider {
     return decoder.decode(decrypted);
   }
 }
-
-
-// mock please remove this after impl   issue#[221]
-export const extractPublicKey = jest.fn(
-  (_credential: PublicKeyCredential): Uint8Array => {
-    const key = new Uint8Array(65);
-    key[0] = 0x04;
-    key.fill(0xab, 1, 33);
-    key.fill(0xcd, 33, 65);
-    return key;
-  }
-);
-export const convertSignatureDERtoCompact = jest.fn(
-  (_derSignature: ArrayBuffer): Uint8Array => {
-
-    return new Uint8Array(64).fill(0xef);
-  }
-);
