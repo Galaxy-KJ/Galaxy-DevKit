@@ -26,8 +26,10 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { rateLimiterMiddleware } from './middleware/rate-limiter';
 import { validateAuthConfig } from './config/auth-config';
 import { authenticate } from './middleware/auth';
+import { auditRequest } from './middleware/audit';
 import { AuthService } from './services/auth-service';
 import { UserService } from './services/user-service';
+import { AuditLogger } from './services/audit-logger';
 import { setupDefiRoutes } from './routes/defi.routes';
 
 /**
@@ -52,6 +54,9 @@ class RestApiServer {
    * Setup middleware
    */
   private setupMiddleware(): void {
+    // Trust proxy for accurate IPs behind reverse proxies
+    this.app.set('trust proxy', true);
+
     // Security middleware
     this.app.use(helmet());
 
@@ -146,6 +151,7 @@ class RestApiServer {
   private setupAuthRoutes(): express.Router {
     const router = express.Router();
     const authService = new AuthService();
+    const auditLogger = new AuditLogger();
 
     // Login endpoint
     router.post('/login', async (req, res, next) => {
@@ -166,6 +172,17 @@ class RestApiServer {
         const result = await authService.authenticateUser(email, password);
 
         if (!result.success) {
+          void auditLogger.log({
+            user_id: null,
+            action: 'auth.login',
+            resource: req.originalUrl,
+            ip_address: req.ip || null,
+            success: false,
+            error_code: 'AUTH_ERROR',
+            metadata: {
+              reason: result.error || 'authentication_failed',
+            },
+          });
           res.status(401).json({
             error: {
               code: 'AUTH_ERROR',
@@ -175,6 +192,14 @@ class RestApiServer {
           });
           return;
         }
+
+        void auditLogger.log({
+          user_id: result.user?.userId || null,
+          action: 'auth.login',
+          resource: req.originalUrl,
+          ip_address: req.ip || null,
+          success: true,
+        });
 
         res.json({
           user: result.user,
@@ -212,7 +237,7 @@ class RestApiServer {
     });
 
     // Logout endpoint
-    router.post('/logout', authenticate(), async (req, res, next) => {
+    router.post('/logout', authenticate(), auditRequest(), async (req, res, next) => {
       try {
         const sessionToken = req.headers['x-session-token'] as string;
 
@@ -239,7 +264,7 @@ class RestApiServer {
     const authService = new AuthService();
 
     // All API key routes require authentication
-    router.use(authenticate());
+    router.use(authenticate(), auditRequest());
 
     // Create API key
     router.post('/', async (req, res, next) => {
@@ -317,7 +342,7 @@ class RestApiServer {
     const userService = new UserService();
 
     // Get current user profile
-    router.get('/me', authenticate(), async (req, res, next) => {
+    router.get('/me', authenticate(), auditRequest(), async (req, res, next) => {
       try {
         if (!req.user) {
           res.status(401).json({
@@ -350,7 +375,7 @@ class RestApiServer {
     });
 
     // Update user profile
-    router.put('/me', authenticate(), async (req, res, next) => {
+    router.put('/me', authenticate(), auditRequest(), async (req, res, next) => {
       try {
         if (!req.user) {
           res.status(401).json({
@@ -460,4 +485,3 @@ export * from './services/auth-service';
 export * from './services/user-service';
 export * from './services/session-service';
 export * from './types/auth-types';
-

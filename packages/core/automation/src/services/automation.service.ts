@@ -16,6 +16,7 @@ import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
 import { OracleAggregator } from '@galaxy-kj/core-oracles';
+import { supabaseClient } from '../../stellar-sdk/src/utils/supabase-client.js';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;
@@ -36,6 +37,7 @@ export class AutomationService extends EventEmitter {
   private config: Required<AutomationServiceConfig>;
   private network: StellarNetwork;
   private activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private supabase = supabaseClient;
 
   constructor(config: AutomationServiceConfig = {}) {
     super();
@@ -68,42 +70,67 @@ export class AutomationService extends EventEmitter {
    * Register a new automation rule
    */
   async registerRule(rule: AutomationRule): Promise<void> {
-    // Validate rule
-    const validation = this.validateRule(rule);
-    if (!validation.valid) {
-      throw new Error(`Invalid rule: ${validation.error}`);
-    }
-
-    // Store rule
-    this.rules.set(rule.id, rule);
-
-    // Initialize metrics
-    if (this.config.enableMetrics) {
-      this.initializeMetrics(rule.id);
-    }
-
-    // Schedule if it's a cron trigger and active
-    if (
-      rule.triggerType === TriggerType.CRON &&
-      rule.status === AutomationStatus.ACTIVE
-    ) {
-      if (!rule.cronExpression) {
-        throw new Error('Cron expression required for CRON trigger type');
+    try {
+      // Validate rule
+      const validation = this.validateRule(rule);
+      if (!validation.valid) {
+        throw new Error(`Invalid rule: ${validation.error}`);
       }
 
-      const cronJob = this.cronManager.scheduleJob(
-        rule.id,
-        rule.cronExpression,
-        async () => {
-          await this.executeRule(rule.id);
+      // Store rule
+      this.rules.set(rule.id, rule);
+
+      // Initialize metrics
+      if (this.config.enableMetrics) {
+        this.initializeMetrics(rule.id);
+      }
+
+      // Schedule if it's a cron trigger and active
+      if (
+        rule.triggerType === TriggerType.CRON &&
+        rule.status === AutomationStatus.ACTIVE
+      ) {
+        if (!rule.cronExpression) {
+          throw new Error('Cron expression required for CRON trigger type');
         }
-      );
 
-      this.cronManager.startJob(rule.id);
+        const cronJob = this.cronManager.scheduleJob(
+          rule.id,
+          rule.cronExpression,
+          async () => {
+            await this.executeRule(rule.id);
+          }
+        );
 
-      this.emit('rule:registered', { rule, cronJob });
-    } else {
-      this.emit('rule:registered', { rule });
+        this.cronManager.startJob(rule.id);
+
+        this.emit('rule:registered', { rule, cronJob });
+      } else {
+        this.emit('rule:registered', { rule });
+      }
+
+      void this.logAuditEvent({
+        userId: rule.userId,
+        action: 'automation.rule.register',
+        resource: rule.id,
+        success: true,
+        metadata: {
+          triggerType: rule.triggerType,
+          executionType: rule.executionType,
+        },
+      });
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: rule.userId,
+        action: 'automation.rule.register',
+        resource: rule.id,
+        success: false,
+        errorCode: 'rule_register_failed',
+        metadata: {
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        },
+      });
+      throw error;
     }
   }
 
@@ -163,7 +190,7 @@ export class AutomationService extends EventEmitter {
       if (!conditionsMet) {
         this.emit('rule:conditions_not_met', { ruleId, context });
 
-        return {
+        const result = {
           ruleId,
           executionId: `exec_${ruleId}_${Date.now()}`,
           success: false,
@@ -171,6 +198,20 @@ export class AutomationService extends EventEmitter {
           duration: 0,
           error: new Error('Conditions not met'),
         };
+
+        void this.logAuditEvent({
+          userId: rule.userId,
+          action: 'automation.rule.execute',
+          resource: ruleId,
+          success: false,
+          errorCode: 'conditions_not_met',
+          metadata: {
+            executionId: result.executionId,
+            executionType: rule.executionType,
+          },
+        });
+
+        return result;
       }
 
       this.emit('rule:executing', { ruleId, context });
@@ -207,6 +248,19 @@ export class AutomationService extends EventEmitter {
 
       this.emit('rule:executed', { ruleId, result });
 
+      void this.logAuditEvent({
+        userId: rule.userId,
+        action: 'automation.rule.execute',
+        resource: ruleId,
+        success: result.success,
+        errorCode: result.success ? undefined : 'execution_failed',
+        metadata: {
+          executionId: result.executionId,
+          executionType: rule.executionType,
+          duration: result.duration,
+        },
+      });
+
       return result;
     } catch (error) {
       const errorResult: ExecutionResult = {
@@ -222,6 +276,19 @@ export class AutomationService extends EventEmitter {
       this.rules.set(ruleId, rule);
 
       this.emit('rule:error', { ruleId, error });
+
+      void this.logAuditEvent({
+        userId: rule.userId,
+        action: 'automation.rule.execute',
+        resource: ruleId,
+        success: false,
+        errorCode: 'execution_error',
+        metadata: {
+          executionId: errorResult.executionId,
+          executionType: rule.executionType,
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        },
+      });
 
       return errorResult;
     } finally {
@@ -444,6 +511,70 @@ export class AutomationService extends EventEmitter {
       metrics.successfulExecutions / metrics.totalExecutions;
 
     this.metrics.set(ruleId, metrics);
+  }
+
+  private sanitizeAuditMetadata(
+    metadata?: Record<string, unknown>
+  ): Record<string, unknown> | undefined {
+    if (!metadata) return undefined;
+
+    const sensitiveKeys = new Set([
+      'password',
+      'token',
+      'privatekey',
+      'encrypted_private_key',
+      'secret',
+      'sessiontoken',
+    ]);
+
+    const sanitizeValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map(sanitizeValue);
+      }
+
+      if (value && typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const sanitized: Record<string, unknown> = {};
+        for (const [key, nestedValue] of Object.entries(obj)) {
+          if (sensitiveKeys.has(key.toLowerCase())) {
+            continue;
+          }
+          sanitized[key] = sanitizeValue(nestedValue);
+        }
+        return sanitized;
+      }
+
+      return value;
+    };
+
+    return sanitizeValue(metadata) as Record<string, unknown>;
+  }
+
+  private async logAuditEvent(params: {
+    userId?: string | null;
+    action: string;
+    resource?: string | null;
+    success: boolean;
+    errorCode?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const metadata = this.sanitizeAuditMetadata(params.metadata);
+
+      await this.supabase.from('audit_logs').insert([
+        {
+          user_id: params.userId || null,
+          action: params.action,
+          resource: params.resource || null,
+          ip_address: null,
+          success: params.success,
+          error_code: params.errorCode,
+          metadata,
+        },
+      ]);
+    } catch (error) {
+      console.warn('Failed to write audit log:', error);
+    }
   }
 
   /**
