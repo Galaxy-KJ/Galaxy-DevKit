@@ -62,7 +62,7 @@ const mockWalletRow = {
   id: MOCK_WALLET_ID,
   user_id: MOCK_USER_ID,
   public_key: MOCK_PUBLIC_KEY,
-  encrypted_private_key: MOCK_ENCRYPTED_KEY,
+  _deprecated_encrypted_private_key: MOCK_ENCRYPTED_KEY,
   network: MOCK_NETWORK,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),

@@ -36,7 +36,7 @@ export class ShamirManager {
 
     const shares = await split(secretUint8Array, options.totalShares, options.threshold);
 
-    const shamirShares: ShamirShare[] = shares.map((shareBuffer, index) => ({
+    const shamirShares: ShamirShare[] = shares.map((shareBuffer: Uint8Array, index: number) => ({
       index: index + 1,
       data: Buffer.from(shareBuffer).toString('base64'),
       threshold: options.threshold,
