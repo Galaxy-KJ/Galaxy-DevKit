@@ -18,6 +18,8 @@ jest.mock('@galaxy-kj/core-defi-protocols', () => {
                                 priceImpact: '0.5'
                             }),
                             swap: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-swap' }),
+                            addLiquidity: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-add-liquidity' }),
+                            removeLiquidity: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-remove-liquidity' }),
                             initialize: jest.fn().mockResolvedValue(undefined),
                         };
                     } else if (config.protocolId === 'blend') {
@@ -173,6 +175,103 @@ describe('DeFi Routes', () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('hash', 'mock-unsigned-xdr-repay');
+        });
+    });
+
+    describe('Liquidity Routes', () => {
+        it('POST /api/v1/defi/liquidity/add should return unsigned XDR', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/add')
+                .send({
+                    assetA: 'XLM',
+                    assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+                    amountA: '100',
+                    amountB: '200',
+                    signerPublicKey: 'GD...SIGNER'
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('hash', 'mock-unsigned-xdr-add-liquidity');
+        });
+
+        it('POST /api/v1/defi/liquidity/add should validate missing parameters', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/add')
+                .send({ assetA: 'XLM', assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN' });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBeDefined();
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
+        });
+
+        it('POST /api/v1/defi/liquidity/add should validate missing assetA', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/add')
+                .send({
+                    assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+                    amountA: '100',
+                    amountB: '200',
+                    signerPublicKey: 'GD...SIGNER'
+                });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
+        });
+
+        it('POST /api/v1/defi/liquidity/remove should return unsigned XDR', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/remove')
+                .send({
+                    assetA: 'XLM',
+                    assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+                    poolAddress: 'CA...POOL',
+                    lpAmount: '50',
+                    signerPublicKey: 'GD...SIGNER'
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('hash', 'mock-unsigned-xdr-remove-liquidity');
+        });
+
+        it('POST /api/v1/defi/liquidity/remove should accept optional minAmountA and minAmountB', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/remove')
+                .send({
+                    assetA: 'XLM',
+                    assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+                    poolAddress: 'CA...POOL',
+                    lpAmount: '50',
+                    minAmountA: '47',
+                    minAmountB: '94',
+                    signerPublicKey: 'GD...SIGNER'
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('hash', 'mock-unsigned-xdr-remove-liquidity');
+        });
+
+        it('POST /api/v1/defi/liquidity/remove should validate missing parameters', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/remove')
+                .send({ assetA: 'XLM', lpAmount: '50' });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBeDefined();
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
+        });
+
+        it('POST /api/v1/defi/liquidity/remove should validate missing poolAddress', async () => {
+            const response = await request(app)
+                .post('/api/v1/defi/liquidity/remove')
+                .send({
+                    assetA: 'XLM',
+                    assetB: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+                    lpAmount: '50',
+                    signerPublicKey: 'GD...SIGNER'
+                });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
         });
     });
 });

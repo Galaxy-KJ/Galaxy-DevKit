@@ -308,5 +308,83 @@ export function setupDefiRoutes(): express.Router {
         }
     });
 
+    // Route: Soroswap add liquidity
+    // POST /api/v1/defi/liquidity/add
+    /**
+     * @route POST /api/v1/defi/liquidity/add
+     * @description Add liquidity to a Soroswap pool and return unsigned XDR
+     */
+    router.post('/liquidity/add', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { assetA, assetB, amountA, amountB, signerPublicKey } = req.body;
+
+            if (!assetA || !assetB || !amountA || !amountB || !signerPublicKey) {
+                res.status(400).json({
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'assetA, assetB, amountA, amountB, and signerPublicKey are required in the body',
+                        details: {},
+                    },
+                });
+                return;
+            }
+
+            const factory = ProtocolFactory.getInstance();
+            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
+            await protocol.initialize();
+
+            const tokenA = parseAsset(assetA);
+            const tokenB = parseAsset(assetB);
+
+            if (!protocol.addLiquidity) {
+                throw new Error('addLiquidity not implemented');
+            }
+            const result = await protocol.addLiquidity(signerPublicKey, '', tokenA, tokenB, amountA, amountB);
+
+            res.json(result);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    // Route: Soroswap remove liquidity
+    // POST /api/v1/defi/liquidity/remove
+    /**
+     * @route POST /api/v1/defi/liquidity/remove
+     * @description Remove liquidity from a Soroswap pool and return unsigned XDR
+     */
+    router.post('/liquidity/remove', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { assetA, assetB, poolAddress, lpAmount, minAmountA, minAmountB, signerPublicKey } = req.body;
+
+            if (!assetA || !assetB || !poolAddress || !lpAmount || !signerPublicKey) {
+                res.status(400).json({
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'assetA, assetB, poolAddress, lpAmount, and signerPublicKey are required in the body',
+                        details: {},
+                    },
+                });
+                return;
+            }
+
+            const factory = ProtocolFactory.getInstance();
+            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
+            await protocol.initialize();
+
+            const tokenA = parseAsset(assetA);
+            const tokenB = parseAsset(assetB);
+
+            if (!protocol.removeLiquidity) {
+                throw new Error('removeLiquidity not implemented');
+            }
+            const result = await protocol.removeLiquidity(signerPublicKey, '', tokenA, tokenB, poolAddress, lpAmount, minAmountA, minAmountB);
+
+            res.json(result);
+        } catch (error) {
+            next(error);
+        }
+    });
+
     return router;
 }
