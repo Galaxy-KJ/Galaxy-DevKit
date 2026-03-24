@@ -1,7 +1,5 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, Symbol,
-};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, Symbol};
 
 use smart_wallet_account_common::FactoryDataKey;
 
@@ -44,10 +42,7 @@ impl Factory {
         let salt = env.crypto().sha256(&credential_id);
 
         // Deploy the wallet contract using `deployer().with_current_contract`.
-        let wallet_address = env
-            .deployer()
-            .with_current_contract(salt)
-            .deploy(wasm_hash);
+        let wallet_address = env.deployer().with_current_contract(salt).deploy(wasm_hash);
 
         // Initialize the wallet with the first signer.
         let _: soroban_sdk::Val = env.invoke_contract(
@@ -58,13 +53,14 @@ impl Factory {
 
         // Track the deployment.
         let deployed_key = FactoryDataKey::Deployed(credential_id);
-        env.storage().persistent().set(
-            &deployed_key,
-            &wallet_address,
-        );
         env.storage()
             .persistent()
-            .extend_ttl(&deployed_key, DEPLOYED_TTL_THRESHOLD, DEPLOYED_TTL_EXTEND);
+            .set(&deployed_key, &wallet_address);
+        env.storage().persistent().extend_ttl(
+            &deployed_key,
+            DEPLOYED_TTL_THRESHOLD,
+            DEPLOYED_TTL_EXTEND,
+        );
 
         wallet_address
     }
@@ -73,9 +69,11 @@ impl Factory {
         let key = FactoryDataKey::Deployed(credential_id);
         let result: Option<Address> = env.storage().persistent().get(&key);
         if result.is_some() {
-            env.storage()
-                .persistent()
-                .extend_ttl(&key, DEPLOYED_TTL_THRESHOLD, DEPLOYED_TTL_EXTEND);
+            env.storage().persistent().extend_ttl(
+                &key,
+                DEPLOYED_TTL_THRESHOLD,
+                DEPLOYED_TTL_EXTEND,
+            );
         }
         result
     }

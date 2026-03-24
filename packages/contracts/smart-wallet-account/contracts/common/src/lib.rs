@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contracttype, contracterror, Bytes, BytesN};
+use soroban_sdk::{contracterror, contracttype, Bytes, BytesN};
 
 #[contracttype]
 #[derive(Clone, Debug)]

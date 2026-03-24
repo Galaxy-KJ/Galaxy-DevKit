@@ -25,17 +25,9 @@ impl SmartWallet {
 
     /// Called once by the factory right after deployment.
     /// Stores the first admin signer (the passkey used during registration).
-    pub fn init(
-        env: Env,
-        credential_id: Bytes,
-        public_key: BytesN<65>,
-    ) -> Result<(), WalletError> {
+    pub fn init(env: Env, credential_id: Bytes, public_key: BytesN<65>) -> Result<(), WalletError> {
         // Guard against re-init.
-        if env
-            .storage()
-            .instance()
-            .has(&WalletDataKey::WalletAddress)
-        {
+        if env.storage().instance().has(&WalletDataKey::WalletAddress) {
             return Err(WalletError::AlreadyInitialized);
         }
 
@@ -43,9 +35,10 @@ impl SmartWallet {
         validate_public_key(&public_key)?;
 
         // Store wallet's own address for self-auth checks.
-        env.storage()
-            .instance()
-            .set(&WalletDataKey::WalletAddress, &env.current_contract_address());
+        env.storage().instance().set(
+            &WalletDataKey::WalletAddress,
+            &env.current_contract_address(),
+        );
 
         // Persist the first admin signer.
         let signer = Signer {
@@ -217,11 +210,8 @@ impl CustomAccountInterface for SmartWallet {
 
         // Verify secp256r1 signature
         // Protocol 21 host function: verify_sig_ecdsa_secp256r1
-        env.crypto().secp256r1_verify(
-            &signer.public_key,
-            &message_hash,
-            &signature.signature,
-        );
+        env.crypto()
+            .secp256r1_verify(&signer.public_key, &message_hash, &signature.signature);
 
         // Extend the signer TTL on successful auth.
         extend_signer_ttl(&env, &signature.id, &signer.kind);
@@ -328,8 +318,7 @@ fn verify_challenge(
 }
 
 pub fn base64url_encode(env: &Env, input: &[u8]) -> Bytes {
-    const TABLE: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = Bytes::new(env);
 
