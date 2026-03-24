@@ -1,4 +1,4 @@
-import { Transaction, xdr, StrKey } from "@stellar/stellar-sdk";
+import { Transaction, xdr, StrKey, Networks } from "@stellar/stellar-sdk";
 import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/rpc";
 import { WebAuthNProvider } from "../auth/src/providers/WebAuthNProvider";
 import { convertSignatureDERtoCompact } from "../auth/src/providers/WebAuthNProvider";
@@ -20,12 +20,18 @@ function base64UrlToUint8Array(base64url: string): Uint8Array {
 
 export class SmartWalletService {
      private server: Server;
+     private factoryContractId: string = "CAX5RLKVBMYLASX546TKXCZIQSROJGQ7DUIH3LUDG3PR4UB3RRW5O5PE";
 
      constructor(
           private webAuthnProvider: WebAuthNProvider,
-          private rpcUrl: string
+          private rpcUrl: string,
+          factoryId?: string,
+          private network: string = Networks.TESTNET
      ) {
           this.server = new Server(rpcUrl);
+          if (factoryId) {
+               this.factoryContractId = factoryId;
+          }
      }
 
      /**

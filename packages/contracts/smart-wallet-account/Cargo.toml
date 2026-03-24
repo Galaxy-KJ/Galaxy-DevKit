@@ -1,18 +1,11 @@
-[package]
-name = "smart-wallet-account"
-version = "0.1.0"
-edition = "2021"
-publish = false
+[workspace]
+resolver = "2"
 
-[lib]
-crate-type = ["cdylib"]
-doctest = false
-
-[dependencies]
-soroban-sdk = "21.0.0"
-
-[dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+members = [
+    "contracts/common",
+    "contracts/factory",
+    "contracts/wallet",
+]
 
 [profile.release]
 opt-level = "z"
@@ -23,7 +16,3 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
-
-[profile.release-with-logs]
-inherits = "release"
-debug-assertions = true
