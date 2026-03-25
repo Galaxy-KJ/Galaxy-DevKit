@@ -14,50 +14,27 @@ export interface CreateSessionOptions {
 }
 
 // ─── Dependency interfaces ────────────────────────────────────────────────────
-//
-// These mirror the relevant parts of WebAuthNProvider and SmartWalletService
-// (#123) so SessionKeyManager can be unit-tested with mocks without importing
-// the concrete classes (avoids circular deps and browser-env requirements).
 
-/**
- * The subset of WebAuthNProvider that SessionKeyManager needs.
- *
- * WebAuthNProvider.authenticate() discards the raw assertion, which is fine
- * for login flows. But registering a session key requires the assertion
- * response itself (authenticatorData + clientDataJSON + signature) so the
- * Soroban contract can verify it inside __check_auth (#120).
- *
- * We therefore call navigator.credentials.get() directly here, using the same
- * challenge-derivation and base64 helpers that WebAuthNProvider uses internally.
- * The rpId is forwarded from the provider instance so tests can override it.
- */
 export interface IWebAuthnProvider {
   readonly rpId: string;
 }
 
 /**
- * The subset of SmartWalletService (#123) that SessionKeyManager needs.
- * Both methods accept a pre-built WebAuthn assertion so they can produce and
- * submit the authorised Soroban invocation.
+ * The subset of SmartWalletService that SessionKeyManager needs.
+ *
+ * Matches the AddSignerParams object-bag accepted by SmartWalletService.addSigner().
+ * `webAuthnAssertion` is mandatory here because SessionKeyManager derives
+ * the challenge from the operation payload and obtains the assertion itself,
+ * then hands it off so SmartWalletService can attach it to the Soroban auth entry.
  */
 export interface ISmartWalletService {
-  /**
-   * Build, authorise (via the WebAuthn assertion), and submit an add-signer
-   * transaction that registers `sessionPublicKey` on the smart wallet with a
-   * Soroban TTL of `ttlSeconds`.
-   */
   addSigner(params: {
     walletAddress: string;
     sessionPublicKey: string;
     ttlSeconds: number;
     webAuthnAssertion: PublicKeyCredential;
-  }): Promise<void>;
+  }): Promise<string>;
 
-  /**
-   * Build, authorise (via a fresh WebAuthn assertion), and submit a
-   * remove-signer transaction.  A new biometric prompt is acceptable here
-   * because revocation is an intentional, infrequent user action.
-   */
   removeSigner(params: {
     walletAddress: string;
     signerPublicKey: string;
@@ -80,23 +57,17 @@ export interface ISmartWalletService {
  * - The private key buffer is zeroed with `Buffer.fill(0)` on `revoke()` and
  *   on any error path during `createSession()`.
  * - A fresh keypair is generated on every `createSession()` call.
- * - The WebAuthn challenge is derived from the add-signer transaction payload,
- *   not a random nonce, so the authenticator assertion binds to that specific
- *   operation (prevents replay across different txs).
+ * - The WebAuthn challenge is derived from the add-signer operation parameters,
+ *   not a random nonce, so the authenticator assertion is cryptographically
+ *   bound to this specific tx (prevents replay across different txs).
  *
- * ## Integration with WebAuthNProvider
- * WebAuthNProvider.authenticate() returns only `{ success: boolean }` and
- * discards the raw `AuthenticatorAssertionResponse`.  For session key
- * registration we need that response (authenticatorData + clientDataJSON +
- * signature) so the Soroban contract can verify it in __check_auth (#120).
- * We therefore call `navigator.credentials.get()` directly, mirroring the
- * same pattern used in WebAuthNProvider — same rpId, same base64 helpers,
- * same `allowCredentials` construction from the credentialId.
- *
- * ## Dependencies (injected via constructor)
- * - `webAuthnProvider`   – supplies `rpId`; future versions may expose
- *                          `assertRaw()` so we stop calling the Web API directly.
- * - `smartWalletService` – builds + submits the authorised Soroban tx (#123).
+ * ## Integration with SmartWalletService
+ * SessionKeyManager derives the challenge, obtains the WebAuthn assertion once
+ * (the single biometric prompt per session), and forwards the raw
+ * `PublicKeyCredential` to `SmartWalletService.addSigner()` via
+ * `webAuthnAssertion`.  SmartWalletService then simulates the Soroban tx,
+ * attaches the assertion to the auth entry, and returns the fee-less XDR for
+ * the sponsor — no second prompt needed.
  */
 export class SessionKeyManager {
   private readonly _webAuthnProvider: IWebAuthnProvider;
@@ -122,14 +93,16 @@ export class SessionKeyManager {
    * Flow:
    *  1. Destroy any existing in-memory session key.
    *  2. Generate a fresh Ed25519 keypair with `StellarSdk.Keypair.random()`.
-   *  3. Derive a WebAuthn challenge from the add-signer tx payload so the
-   *     authenticator assertion is bound to this specific operation.
-   *  4. Prompt the user once (biometric) via `navigator.credentials.get()`,
-   *     using the supplied `passkeyCredentialId` to target the right credential.
-   *  5. Forward the assertion to `SmartWalletService.addSigner()`, which builds
-   *     and submits the Soroban invocation.  The contract stores the signer with
-   *     `instance().extend_ttl()` — no server-side cleanup needed.
-   *  6. On any failure after step 2, zero the private key and rethrow.
+   *  3. Derive a deterministic WebAuthn challenge from the operation parameters
+   *     (walletAddress ‖ sessionPublicKey ‖ ttlSeconds) so the assertion is
+   *     bound to this specific add-signer invocation.
+   *  4. Prompt the user ONCE (biometric) via `navigator.credentials.get()`.
+   *  5. Forward the assertion to `SmartWalletService.addSigner()`, which
+   *     simulates, attaches the signature, and submits the Soroban tx.
+   *     The contract stores the signer with Soroban temporary TTL storage —
+   *     no server-side cleanup needed after expiry.
+   *  6. On any failure after step 2, zero the private key and rethrow so we
+   *     never hold an orphaned in-memory key for an unregistered signer.
    *
    * @returns SessionKey  { publicKey (G-address), expiresAt (unix seconds) }
    */
@@ -148,21 +121,25 @@ export class SessionKeyManager {
 
     try {
       // Step 3 — derive a deterministic challenge from the operation payload.
-      //   Hash of (walletAddress ‖ sessionPublicKey ‖ ttlSeconds) so the
-      //   WebAuthn assertion cryptographically binds to THIS add-signer tx.
+      //   Hash of (walletAddress ‖ ":" ‖ sessionPublicKey ‖ ":" ‖ ttlSeconds)
+      //   binds the WebAuthn assertion to THIS add-signer tx only.
       const challenge = await this._deriveChallenge({
         smartWalletAddress,
         sessionPublicKey: keypair.publicKey(),
         ttlSeconds,
       });
 
-      // Step 4 — biometric prompt (the ONE prompt per session)
+      // Step 4 — ONE biometric prompt per session
       const assertion = await this._assertCredential({
         credentialId: passkeyCredentialId,
         challenge,
       });
 
-      // Step 5 — register signer on-chain via SmartWalletService (#123)
+      // Step 5 — register signer on-chain via SmartWalletService.addSigner()
+      //
+      // We pass `webAuthnAssertion` so SmartWalletService can skip its own
+      // navigator.credentials.get() call — the assertion was already obtained
+      // above and must not trigger a second biometric prompt.
       await this._smartWalletService.addSigner({
         walletAddress: smartWalletAddress,
         sessionPublicKey: keypair.publicKey(),
@@ -170,8 +147,8 @@ export class SessionKeyManager {
         webAuthnAssertion: assertion,
       });
     } catch (err) {
-      // Step 6 — roll back: zero key so we never hold an orphaned private key
-      // for a signer that was never registered on-chain.
+      // Step 6 — zero key so we never hold an orphaned private key for a
+      // signer that was never successfully registered on-chain.
       this._destroyPrivateKey();
       throw err;
     }
@@ -190,11 +167,9 @@ export class SessionKeyManager {
    */
   sign(txHash: Buffer): Buffer {
     if (!this.isActive()) {
-      // Auto-zero on expiry so the dead key doesn't linger.
+      // Auto-zero on expiry so the dead key doesn't linger in memory.
       this._destroyPrivateKey();
-      throw new Error(
-        'No active session. Call createSession() first.'
-      );
+      throw new Error('No active session. Call createSession() first.');
     }
 
     const keypair = StellarSdk.Keypair.fromRawEd25519Seed(
@@ -221,14 +196,10 @@ export class SessionKeyManager {
    * smart wallet contract.  Zeroing before the async call ensures the key is
    * gone even if the network call throws.
    *
-   * A fresh biometric prompt is issued for the remove-signer tx — this is
-   * intentional: revocation is a deliberate, infrequent user action, so
-   * requiring re-authentication is the correct security posture.
+   * A fresh biometric prompt is issued for the remove-signer tx — intentional,
+   * since revocation is a deliberate infrequent user action.
    *
    * Safe to call when no session is active (no-op).
-   *
-   * @param smartWalletAddress  The contract address to remove the signer from.
-   * @param passkeyCredentialId The credential to use for the remove-signer auth.
    */
   async revoke(
     smartWalletAddress: string,
@@ -241,12 +212,12 @@ export class SessionKeyManager {
     // Zero BEFORE the network call — key is gone regardless of what follows.
     this._destroyPrivateKey();
 
-    // Build a challenge for the remove-signer operation so the assertion is
-    // bound to this specific revocation (not replayable for add-signer).
+    // Derive a challenge for the remove-signer operation (ttlSeconds = 0
+    // acts as a sentinel so this assertion cannot be replayed as add-signer).
     const challenge = await this._deriveChallenge({
       smartWalletAddress,
       sessionPublicKey: publicKey,
-      ttlSeconds: 0, // sentinel: revoke operations have no TTL
+      ttlSeconds: 0,
     });
 
     const assertion = await this._assertCredential({
@@ -266,10 +237,9 @@ export class SessionKeyManager {
   /**
    * Derives a 32-byte WebAuthn challenge from the operation parameters.
    *
-   * Using a deterministic, operation-specific challenge (rather than a random
-   * nonce) means the WebAuthn assertion is cryptographically bound to THIS
-   * add-signer / remove-signer invocation, preventing replay attacks where a
-   * captured assertion could be replayed against a different tx.
+   * Using a deterministic, operation-specific challenge means the WebAuthn
+   * assertion is cryptographically bound to THIS add-signer / remove-signer
+   * invocation, preventing replay attacks.
    *
    * Encoding: SHA-256( walletAddress ‖ ":" ‖ sessionPublicKey ‖ ":" ‖ ttlSeconds )
    */
@@ -284,18 +254,9 @@ export class SessionKeyManager {
   }
 
   /**
-   * Calls `navigator.credentials.get()` to obtain a WebAuthn assertion for the
-   * supplied credential and challenge.
-   *
-   * This mirrors WebAuthNProvider.authenticate() but returns the raw
-   * `PublicKeyCredential` instead of discarding it, because the Soroban
-   * contract's __check_auth (#120) needs the authenticatorData + signature to
-   * verify the passkey authorisation on-chain.
-   *
-   * - `rpId` is taken from the injected webAuthnProvider so the same relying
-   *   party origin is used consistently.
-   * - `userVerification: 'required'` ensures the biometric check always happens.
-   * - `timeout: 60_000` matches WebAuthNProvider's existing convention.
+   * Calls `navigator.credentials.get()` and returns the raw
+   * `PublicKeyCredential` so the Soroban contract can verify the
+   * authenticatorData + signature inside __check_auth.
    */
   private async _assertCredential(params: {
     credentialId: string;   // base64-encoded
@@ -335,7 +296,6 @@ export class SessionKeyManager {
     this._sessionKey = null;
   }
 
-  /** Mirrors the base64ToArrayBuffer helper in WebAuthNProvider. */
   private _base64ToArrayBuffer(base64: string): ArrayBuffer {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
