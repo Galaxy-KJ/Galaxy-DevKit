@@ -75,9 +75,15 @@ jest.mock("@stellar/stellar-sdk", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Import route AFTER mocks
+// Set environment variables before imports trigger AuditLogger init
 // ---------------------------------------------------------------------------
+process.env.SUPABASE_URL = "https://test.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+
 import submitTxRoute from "../routes/wallets/submit-tx.route";
+import { userSubmitTxLimiter } from "../middleware/rate-limit"; // Corrected path
+
+
 
 // ---------------------------------------------------------------------------
 // App factory

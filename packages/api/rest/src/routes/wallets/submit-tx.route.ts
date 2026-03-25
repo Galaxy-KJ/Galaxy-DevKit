@@ -119,6 +119,8 @@ async function pollTransaction(
   throw new Error(`Transaction ${hash} not confirmed within ${timeoutMs}ms`);
 }
 
+import { userSubmitTxLimiter, globalSubmitTxLimiter } from "../../middleware/rate-limit";
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -126,7 +128,10 @@ const router = Router();
 
 router.post(
   "/submit-tx",
+  userSubmitTxLimiter,
+  globalSubmitTxLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
+
     try {
       const supabase = getSupabaseClient();
 
