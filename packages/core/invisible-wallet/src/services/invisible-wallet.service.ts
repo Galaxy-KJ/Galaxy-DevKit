@@ -4,7 +4,7 @@
  * @fileoverview Invisible Wallet Service
  * @description Main service for managing invisible wallets
  * @author @ryzen_xp
- * @version 2.0.0
+ * @version 1.0.0
  * @since 2024-12-01
  *
  * ARCHITECTURE (Phase 1 – Non-custodial):
