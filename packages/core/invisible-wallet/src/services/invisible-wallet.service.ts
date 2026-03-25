@@ -466,10 +466,20 @@ export class InvisibleWalletService {
     keypair: Keypair
   ): Promise<PaymentResult> {
     const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) throw new Error('Invalid or expired session');
+      
+      if (!validation.valid || !validation.session) {
+        throw new Error('Invalid or expired session');
+      }
 
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) throw new Error('Wallet not found');
+      if (validation.session.walletId !== walletId) {
+        throw new Error('Session does not belong to this wallet');
+      }
+
+      const wallet = await this.getWalletById(walletId);
+        if (!wallet) throw new Error('Wallet not found');
+        if (keypair.publicKey() !== wallet.publicKey) {
+        throw new Error('Keypair does not match wallet');
+      }
 
     const stellarWallet: Wallet = {
       id: wallet.id,
@@ -480,6 +490,9 @@ export class InvisibleWalletService {
       updatedAt: wallet.updatedAt,
       metadata: wallet.metadata,
     };
+
+    
+//////////////
 
     const result = await this.stellarService.addTrustline(
       stellarWallet,
@@ -689,7 +702,7 @@ export class InvisibleWalletService {
   // Metadata & backup
   // ---------------------------------------------------------------------------
 
-  async updateMetadata(walletId: string, metadata: Partial<Wallet>): Promise<void> {
+  async updateMetadata(walletId: string,metadata: Partial<InvisibleWallet['metadata']>): Promise<void> {
     const wallet = await this.getWalletById(walletId);
     if (!wallet) throw new Error('Wallet not found');
 
@@ -720,10 +733,21 @@ export class InvisibleWalletService {
         },
       })
       .eq('id', walletId);
+      
 
-    if (error) {
-      console.warn('Failed to update backup status:', error);
-    }
+   
+  // Fix
+      if (error) {
+        void this.logAuditEvent({
+          userId: wallet.userId,
+          action: 'wallet.backup',
+          resource: wallet.publicKey,
+          success: false,
+          errorCode: 'backup_update_failed',
+          metadata: { walletId: wallet.id, error: error.message },
+        });
+        throw new Error(`Failed to update backup status: ${error.message}`);
+      }
 
     await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.BACKUP_CREATED);
 
