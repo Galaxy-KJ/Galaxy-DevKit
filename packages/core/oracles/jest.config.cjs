@@ -20,7 +20,10 @@ module.exports = {
   coverageDirectory: 'coverage',
   verbose: true,
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'CommonJS' } }],
+  },
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
