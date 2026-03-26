@@ -194,7 +194,6 @@ router.post(
         );
         return res.status(502).json({
           error: "Stellar RPC submission failed",
-          detail: rpcErr?.message,
         });
       }
 
@@ -205,7 +204,6 @@ router.post(
         );
         return res.status(502).json({
           error: "Stellar RPC returned an error",
-          detail: rpcResult.errorResult?.toXDR("base64"),
         });
       }
 
@@ -225,7 +223,6 @@ router.post(
           );
           return res.status(502).json({
             error: "Transaction failed after submission",
-            detail: confirmed.status,
           });
         }
       }

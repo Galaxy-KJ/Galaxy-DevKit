@@ -23,5 +23,9 @@ create policy "service role can insert smart wallets"
 -- 3. Index for fast user lookups
 create index if not exists smart_wallets_user_id_idx on smart_wallets (user_id);
 
--- 4. Deprecate encrypted_private_key on invisible_wallets (rename, not drop — safer)
-alter table invisible_wallets rename column encrypted_private_key to _deprecated_encrypted_private_key;
+-- 4. Remove custodial key material from invisible_wallets
+alter table invisible_wallets
+    drop column if exists _deprecated_encrypted_private_key;
+
+alter table invisible_wallets
+    drop column if exists encrypted_private_key;
