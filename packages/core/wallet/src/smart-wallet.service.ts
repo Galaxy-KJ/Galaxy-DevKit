@@ -7,6 +7,7 @@ import {
   TransactionBuilder,
   BASE_FEE,
   nativeToScVal,
+  Address,
 } from "@stellar/stellar-sdk";
 import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/rpc";
 import { WebAuthNProvider } from "../auth/src/providers/WebAuthNProvider";
@@ -77,6 +78,16 @@ export interface AddSignerParams {
    */
   webAuthnAssertion?: PublicKeyCredential;
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Validated DeFi Router contract IDs */
+const VALIDATED_DEFI_ROUTERS = [
+  "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD", // Soroswap Testnet
+  "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH", // Soroswap Mainnet
+];
 
 // ---------------------------------------------------------------------------
 // Service
@@ -342,89 +353,149 @@ export class SmartWalletService {
       throw new Error("Simulation returned no auth entries.");
     }
 
-    const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+    // Process all authorization entries
+    for (let i = 0; i < simResult.result.auth.length; i++) {
+      const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[i];
 
-    const authEntryBytes = authEntry.toXDR();
-    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-      authEntryBytes.byteOffset,
-      authEntryBytes.byteOffset + authEntryBytes.byteLength
-    ) as ArrayBuffer;
+      // 1. Validate DeFi authorization entries (Soroswap, etc.)
+      this.validateDeFiAuthorization(authEntry, contractAddress);
 
-    const authEntryHash = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", authEntryArrayBuffer)
-    );
+      // 2. Obtain Passkey signature
+      const authEntryBytes = authEntry.toXDR();
+      const authEntryArrayBuffer = authEntryBytes.buffer.slice(
+        authEntryBytes.byteOffset,
+        authEntryBytes.byteOffset + authEntryBytes.byteLength
+      ) as ArrayBuffer;
 
-    const challenge = toBase64Url(authEntryHash);
+      const authEntryHash = new Uint8Array(
+        await crypto.subtle.digest("SHA-256", authEntryArrayBuffer)
+      );
 
-    const pkCredential = (await navigator.credentials.get({
-      publicKey: {
-        challenge: Buffer.from(base64UrlToUint8Array(challenge)),
-        rpId: (this.webAuthnProvider as any).rpId,
-        allowCredentials: [
-          {
-            type: "public-key" as const,
-            id: Buffer.from(base64UrlToUint8Array(credentialId)),
-          },
-        ],
-        userVerification: "required",
-        timeout: 60000,
-      },
-    })) as PublicKeyCredential | null;
+      const challenge = toBase64Url(authEntryHash);
 
-    if (!pkCredential) {
-      throw new Error("WebAuthn authentication was cancelled or timed out.");
-    }
+      const pkCredential = (await navigator.credentials.get({
+        publicKey: {
+          challenge: Buffer.from(base64UrlToUint8Array(challenge)),
+          rpId: (this.webAuthnProvider as any).rpId,
+          allowCredentials: [
+            {
+              type: "public-key" as const,
+              id: Buffer.from(base64UrlToUint8Array(credentialId)),
+            },
+          ],
+          userVerification: "required",
+          timeout: 60000,
+        },
+      })) as PublicKeyCredential | null;
 
-    const assertionResponse =
-      pkCredential.response as AuthenticatorAssertionResponse;
+      if (!pkCredential) {
+        throw new Error("WebAuthn authentication was cancelled or timed out.");
+      }
 
-    const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
-    const clientDataJSON = new Uint8Array(assertionResponse.clientDataJSON);
-    const compactSig = convertSignatureDERtoCompact(assertionResponse.signature);
+      const assertionResponse =
+        pkCredential.response as AuthenticatorAssertionResponse;
 
-    const signerSignature = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("authenticator_data"),
-        val: xdr.ScVal.scvBytes(Buffer.from(authenticatorData)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("client_data_json"),
-        val: xdr.ScVal.scvBytes(Buffer.from(clientDataJSON)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("id"),
-        val: xdr.ScVal.scvBytes(
-          Buffer.from(base64UrlToUint8Array(credentialId))
-        ),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("signature"),
-        val: xdr.ScVal.scvBytes(Buffer.from(compactSig)),
-      }),
-    ]);
+      const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
+      const clientDataJSON = new Uint8Array(assertionResponse.clientDataJSON);
+      const compactSig = convertSignatureDERtoCompact(assertionResponse.signature);
 
-    authEntry.credentials(
-      xdr.SorobanCredentials.sorobanCredentialsAddress(
-        new xdr.SorobanAddressCredentials({
-          address: xdr.ScAddress.scAddressTypeContract(
-            Buffer.from(
-              StrKey.decodeContract(contractAddress)
-            ) as unknown as xdr.Hash
+      const signerSignature = xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("authenticator_data"),
+          val: xdr.ScVal.scvBytes(Buffer.from(authenticatorData)),
+        }),
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("client_data_json"),
+          val: xdr.ScVal.scvBytes(Buffer.from(clientDataJSON)),
+        }),
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("id"),
+          val: xdr.ScVal.scvBytes(
+            Buffer.from(base64UrlToUint8Array(credentialId))
           ),
-          nonce: authEntry.credentials().address().nonce(),
-          signatureExpirationLedger: authEntry
-            .credentials()
-            .address()
-            .signatureExpirationLedger(),
-          signature: signerSignature,
-        })
-      )
-    );
+        }),
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("signature"),
+          val: xdr.ScVal.scvBytes(Buffer.from(compactSig)),
+        }),
+      ]);
 
-    simResult.result.auth[0] = authEntry;
+      authEntry.credentials(
+        xdr.SorobanCredentials.sorobanCredentialsAddress(
+          new xdr.SorobanAddressCredentials({
+            address: xdr.ScAddress.scAddressTypeContract(
+              Buffer.from(
+                StrKey.decodeContract(contractAddress)
+              ) as unknown as xdr.Hash
+            ),
+            nonce: authEntry.credentials().address().nonce(),
+            signatureExpirationLedger: authEntry
+              .credentials()
+              .address()
+              .signatureExpirationLedger(),
+            signature: signerSignature,
+          })
+        )
+      );
+
+      simResult.result.auth[i] = authEntry;
+    }
 
     const signedTx = assembleTransaction(sorobanTx, simResult).build();
     return signedTx.toEnvelope().toXDR("base64");
+  }
+
+  /**
+   * Validates that DeFi-related authorization entries are safe (e.g. swap 'to' address
+   * matches the wallet address).
+   */
+  private validateDeFiAuthorization(
+    authEntry: xdr.SorobanAuthorizationEntry,
+    walletAddress: string
+  ): void {
+    const rootInvocation = authEntry.rootInvocation();
+    const functionAuth = rootInvocation.function();
+
+    if (
+      functionAuth.switch() !==
+      xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeContractFn()
+    ) {
+      return;
+    }
+
+    const contractFn = functionAuth.contractFn();
+    const contractId = Address.fromScVal(
+      xdr.ScVal.scvAddress(contractFn.contractAddress())
+    ).toString();
+    const functionName = contractFn.functionName().toString();
+
+    if (VALIDATED_DEFI_ROUTERS.includes(contractId)) {
+      const args = contractFn.args();
+
+      if (functionName.includes("swap")) {
+        // Router swap functions: swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)
+        // 'to' is commonly the 4th argument (index 3)
+        if (args.length >= 4) {
+          const toAddress = Address.fromScVal(args[3]).toString();
+          if (toAddress !== walletAddress) {
+            throw new Error(
+              `DeFi Validation Failed: Swap 'to' address (${toAddress}) does not match wallet address (${walletAddress})`
+            );
+          }
+        }
+      } else if (functionName.includes("add_liquidity")) {
+        // add_liquidity(token_a, token_b, amount_a_desired, amount_b_desired, amount_a_min, amount_b_min, to, deadline)
+        // 'to' is index 6
+        if (args.length >= 7) {
+          const toAddress = Address.fromScVal(args[6]).toString();
+          if (toAddress !== walletAddress) {
+            throw new Error(
+              `DeFi Validation Failed: Liquidity 'to' address (${toAddress}) does not match wallet address (${walletAddress})`
+            );
+          }
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------------------

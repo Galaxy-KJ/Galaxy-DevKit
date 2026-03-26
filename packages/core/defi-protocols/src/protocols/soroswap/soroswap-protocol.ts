@@ -37,6 +37,11 @@ import { SoroswapPairInfo } from './soroswap-types.js';
 import { SOROSWAP_DEFAULT_FEE } from './soroswap-config.js';
 
 /**
+ * Simulation placeholder account (valid Ed25519 G-address)
+ */
+const SIMULATION_PLACEHOLDER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+
+/**
  * Soroswap Protocol implementation
  * @class SoroswapProtocol
  * @extends BaseProtocol
@@ -431,7 +436,18 @@ export class SoroswapProtocol extends BaseProtocol {
         nativeToScVal(deadline, { type: 'u64' })
       );
 
-      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const sourceAccountAddress = walletAddress.startsWith('C') ? SIMULATION_PLACEHOLDER : walletAddress;
+      const sourceAccount = await this.horizonServer.loadAccount(sourceAccountAddress).catch((error) => {
+        if (walletAddress.startsWith('C')) {
+          return {
+            accountId: () => sourceAccountAddress,
+            sequenceNumber: () => '0',
+            incrementSequenceNumber: () => {},
+            sequence: '0',
+          } as any;
+        }
+        throw error;
+      });
       const transaction = new TransactionBuilder(sourceAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -493,7 +509,6 @@ export class SoroswapProtocol extends BaseProtocol {
       );
 
       // Simulation placeholder
-      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
       const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
           accountId: () => SIMULATION_PLACEHOLDER,
           sequenceNumber: () => '0',
@@ -601,7 +616,18 @@ export class SoroswapProtocol extends BaseProtocol {
       );
 
       // Load the source account and assemble the transaction
-      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const sourceAccountAddress = walletAddress.startsWith('C') ? SIMULATION_PLACEHOLDER : walletAddress;
+      const sourceAccount = await this.horizonServer.loadAccount(sourceAccountAddress).catch((error) => {
+          if (walletAddress.startsWith('C')) {
+            return {
+              accountId: () => sourceAccountAddress,
+              sequenceNumber: () => '0',
+              incrementSequenceNumber: () => {},
+              sequence: '0',
+            } as any;
+          }
+          throw error;
+      });
       const transaction = new TransactionBuilder(sourceAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -691,7 +717,18 @@ export class SoroswapProtocol extends BaseProtocol {
       );
 
       // Load source account and build the transaction
-      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const sourceAccountAddress = walletAddress.startsWith('C') ? SIMULATION_PLACEHOLDER : walletAddress;
+      const sourceAccount = await this.horizonServer.loadAccount(sourceAccountAddress).catch((error) => {
+          if (walletAddress.startsWith('C')) {
+            return {
+              accountId: () => sourceAccountAddress,
+              sequenceNumber: () => '0',
+              incrementSequenceNumber: () => {},
+              sequence: '0',
+            } as any;
+          }
+          throw error;
+      });
       const transaction = new TransactionBuilder(sourceAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -749,7 +786,6 @@ export class SoroswapProtocol extends BaseProtocol {
       );
 
       // Use a fixed placeholder address for simulation — no signing is needed
-      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
       const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => {
         // If account not found on network, create a minimal object for simulation
         return {

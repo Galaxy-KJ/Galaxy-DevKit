@@ -84,6 +84,13 @@ function makeAuthEntry() {
   const entry = {
     toXDR: jest.fn(() => Buffer.alloc(32, 0xab)),
     credentials: jest.fn(),
+    rootInvocation: jest.fn().mockReturnValue({
+      function: () => ({
+        switch: () => ({
+          value: xdr.SorobanAuthorizedFunctionType.sorobanAuthorizedFunctionTypeCreateContractHostFn().value,
+        }),
+      }),
+    }),
   } as unknown as xdr.SorobanAuthorizationEntry;
 
   (entry.credentials as jest.Mock).mockReturnValue({
