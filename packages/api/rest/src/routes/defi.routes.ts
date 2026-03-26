@@ -386,5 +386,50 @@ export function setupDefiRoutes(): express.Router {
         }
     });
 
+    // Route: Soroswap pool analytics
+    // GET /api/v1/defi/pools/analytics?poolAddress=... (optional; omit for all pools)
+    /**
+     * @route GET /api/v1/defi/pools/analytics
+     * @description Get liquidity pool analytics (TVL, spot prices, fee APR).
+     *   Omit `poolAddress` to retrieve analytics for all registered pools.
+     *   Supply `poolAddress` to query a single pool.
+     */
+    router.get('/pools/analytics', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { poolAddress } = req.query;
+
+            const factory = ProtocolFactory.getInstance();
+            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
+            await protocol.initialize();
+
+            if (poolAddress) {
+                if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
+                    res.status(400).json({
+                        error: {
+                            code: 'VALIDATION_ERROR',
+                            message: 'poolAddress must be a non-empty string',
+                            details: {},
+                        },
+                    });
+                    return;
+                }
+
+                if (!protocol.getPoolAnalytics) {
+                    throw new Error('getPoolAnalytics not implemented');
+                }
+                const analytics = await protocol.getPoolAnalytics(poolAddress);
+                res.json(analytics);
+            } else {
+                if (!protocol.getAllPoolsAnalytics) {
+                    throw new Error('getAllPoolsAnalytics not implemented');
+                }
+                const analytics = await protocol.getAllPoolsAnalytics();
+                res.json(analytics);
+            }
+        } catch (error) {
+            next(error);
+        }
+    });
+
     return router;
 }

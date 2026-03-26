@@ -250,6 +250,48 @@ export interface IDefiProtocol {
    * @returns {Promise<LiquidityPool>}
    */
   getLiquidityPool?(tokenA: Asset, tokenB: Asset): Promise<LiquidityPool>;
+
+  /**
+   * Get analytics for a specific liquidity pool
+   * @param {string} poolAddress - Pair/pool contract address
+   * @returns {Promise<PoolAnalytics>}
+   */
+  getPoolAnalytics?(poolAddress: string): Promise<PoolAnalytics>;
+
+  /**
+   * Get analytics for all registered liquidity pools
+   * @returns {Promise<PoolAnalytics[]>}
+   */
+  getAllPoolsAnalytics?(): Promise<PoolAnalytics[]>;
+}
+
+/**
+ * Liquidity pool analytics including TVL, volume, APR, and spot prices
+ * @interface PoolAnalytics
+ */
+export interface PoolAnalytics {
+  /** Pair/pool contract address */
+  poolAddress: string;
+  /** First token in the pair */
+  token0: Asset;
+  /** Second token in the pair */
+  token1: Asset;
+  /** Raw reserve of token0 in stroops (i128) */
+  reserve0: bigint;
+  /** Raw reserve of token1 in stroops (i128) */
+  reserve1: bigint;
+  /** Total value locked in USD (requires oracle; 0 if unavailable) */
+  tvlUsd: number;
+  /** 24-hour trading volume in USD (requires event data; 0 if unavailable) */
+  volume24hUsd: number;
+  /** Annualised fee APR: (volume24h * 0.003 * 365) / TVL; 0 if TVL is zero */
+  feeApr: number;
+  /** Spot price of token0 denominated in token1 (reserve1 / reserve0) */
+  priceToken0InToken1: number;
+  /** Spot price of token1 denominated in token0 (reserve0 / reserve1) */
+  priceToken1InToken0: number;
+  /** Unix timestamp (ms) when analytics were last computed */
+  lastUpdated: number;
 }
 
 /**
