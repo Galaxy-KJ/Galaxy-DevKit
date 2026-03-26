@@ -890,4 +890,202 @@ describe('SoroswapProtocol', () => {
       ).rejects.toThrow(/Amount must be a positive number/);
     });
   });
+
+  // ==========================================
+  // GET POOL ANALYTICS
+  // ==========================================
+
+  describe('getPoolAnalytics()', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return a PoolAnalytics object for a valid pool address', async () => {
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics).toBeDefined();
+      expect(analytics.poolAddress).toBe(poolAddress);
+      expect(typeof analytics.reserve0).toBe('bigint');
+      expect(typeof analytics.reserve1).toBe('bigint');
+      expect(typeof analytics.priceToken0InToken1).toBe('number');
+      expect(typeof analytics.priceToken1InToken0).toBe('number');
+      expect(typeof analytics.tvlUsd).toBe('number');
+      expect(typeof analytics.volume24hUsd).toBe('number');
+      expect(typeof analytics.feeApr).toBe('number');
+      expect(analytics.lastUpdated).toBeGreaterThan(0);
+    });
+
+    it('should compute correct spot prices from reserves', async () => {
+      // Default mock: scValToNative returns [1000000n, 2000000n, 500000n]
+      // reserve0 = 1000000 stroops = 0.1 units, reserve1 = 2000000 stroops = 0.2 units
+      // priceToken0InToken1 = r1/r0 = 0.2/0.1 = 2.0
+      // priceToken1InToken0 = r0/r1 = 0.1/0.2 = 0.5
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.priceToken0InToken1).toBeCloseTo(2.0, 5);
+      expect(analytics.priceToken1InToken0).toBeCloseTo(0.5, 5);
+    });
+
+    it('should use bigint 0n for reserves when simulation fails', async () => {
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      mockSorobanServer.simulateTransaction.mockResolvedValueOnce({ error: 'fail' });
+      (rpc.Api.isSimulationError as any).mockReturnValueOnce(true);
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.reserve0).toBe(0n);
+      expect(analytics.reserve1).toBe(0n);
+    });
+
+    it('should return priceToken0InToken1 = 0 when reserve0 is zero', async () => {
+      (scValToNative as any).mockReturnValueOnce([0n, 2000000n, 0n]);
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.priceToken0InToken1).toBe(0);
+    });
+
+    it('should return priceToken1InToken0 = 0 when reserve1 is zero', async () => {
+      (scValToNative as any).mockReturnValueOnce([1000000n, 0n, 0n]);
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.priceToken1InToken0).toBe(0);
+    });
+
+    it('should detect native XLM token0 when address matches SAC', async () => {
+      // token_0 simulation resolves to the XLM native contract address
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      // Call order: get_reserves (1st), token_0 (2nd), token_1 (3rd)
+      mockSorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } })   // reserves
+        .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }) // token_0
+        .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }); // token_1
+
+      (Address.fromScVal as jest.Mock).mockReturnValueOnce({
+        toString: jest.fn().mockReturnValue('CNATIVE_CONTRACT_ADDRESS'),
+      });
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.token0.type).toBe('native');
+      expect(analytics.token0.code).toBe('XLM');
+    });
+
+    it('should fall back to UNKN asset when token address query fails', async () => {
+      const mockSorobanServer = (soroswapProtocol as any).sorobanServer;
+      mockSorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }) // reserves
+        .mockRejectedValueOnce(new Error('rpc error'))                    // token_0
+        .mockRejectedValueOnce(new Error('rpc error'));                   // token_1
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.token0.code).toBe('UNKN');
+      expect(analytics.token1.code).toBe('UNKN');
+    });
+
+    it('should handle short reserves array gracefully', async () => {
+      (scValToNative as any).mockReturnValueOnce([1000000n]); // Only 1 element, need ≥ 2
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.reserve0).toBe(0n);
+      expect(analytics.reserve1).toBe(0n);
+    });
+
+    it('should handle reserves scValToNative parse error', async () => {
+      // The first call (reserves) returns a retval that causes scValToNative to throw
+      (scValToNative as any).mockImplementationOnce(() => {
+        throw new Error('parse error');
+      });
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.reserve0).toBe(0n);
+      expect(analytics.reserve1).toBe(0n);
+    });
+
+    it('should throw on empty pool address', async () => {
+      await expect(soroswapProtocol.getPoolAnalytics('')).rejects.toThrow(
+        /Pool address is required/
+      );
+    });
+
+    it('should throw if not initialized', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+
+      await expect(uninitProtocol.getPoolAnalytics(poolAddress)).rejects.toThrow(
+        /not initialized/
+      );
+    });
+
+    it('should handle loadAccount failure for simulation placeholder', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Horizon unavailable'));
+
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics).toBeDefined();
+      expect(analytics.poolAddress).toBe(poolAddress);
+    });
+
+    it('should return feeApr = 0 when volume24hUsd is 0', async () => {
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress);
+
+      expect(analytics.feeApr).toBe(0);
+    });
+  });
+
+  // ==========================================
+  // GET ALL POOLS ANALYTICS
+  // ==========================================
+
+  describe('getAllPoolsAnalytics()', () => {
+    beforeEach(async () => {
+      await soroswapProtocol.initialize();
+    });
+
+    it('should return an empty array when no pairs are registered', async () => {
+      const analytics = await soroswapProtocol.getAllPoolsAnalytics();
+
+      expect(Array.isArray(analytics)).toBe(true);
+      expect(analytics).toHaveLength(0);
+    });
+
+    it('should return analytics for each registered pair', async () => {
+      // Mock getAllPairs to return two pool addresses
+      jest.spyOn(soroswapProtocol, 'getAllPairs').mockResolvedValueOnce([
+        poolAddress,
+        'CPOOL2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXYYYYYYY',
+      ]);
+
+      const analytics = await soroswapProtocol.getAllPoolsAnalytics();
+
+      expect(analytics.length).toBe(2);
+      analytics.forEach(a => {
+        expect(a).toBeDefined();
+        expect(typeof a.poolAddress).toBe('string');
+        expect(typeof a.reserve0).toBe('bigint');
+      });
+    });
+
+    it('should omit pools whose analytics call rejects', async () => {
+      jest.spyOn(soroswapProtocol, 'getAllPairs').mockResolvedValueOnce([
+        poolAddress,
+        '', // empty address will cause getPoolAnalytics to throw
+      ]);
+
+      const analytics = await soroswapProtocol.getAllPoolsAnalytics();
+
+      // Only the valid pool should appear
+      expect(analytics.length).toBe(1);
+      expect(analytics[0].poolAddress).toBe(poolAddress);
+    });
+
+    it('should throw if not initialized', async () => {
+      const uninitProtocol = new SoroswapProtocol(mockConfig);
+
+      await expect(uninitProtocol.getAllPoolsAnalytics()).rejects.toThrow(/not initialized/);
+    });
+  });
 });

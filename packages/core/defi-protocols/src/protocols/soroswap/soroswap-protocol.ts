@@ -30,6 +30,7 @@ import {
   SwapQuote,
   LiquidityPool
 } from '../../types/defi-types.js';
+import { PoolAnalytics } from '../../types/protocol-interface.js';
 import { InvalidOperationError } from '../../errors/index.js';
 
 import { SoroswapPairInfo } from './soroswap-types.js';
@@ -836,6 +837,168 @@ export class SoroswapProtocol extends BaseProtocol {
       };
     } catch (error) {
       this.handleError(error, 'getLiquidityPool');
+    }
+  }
+
+  // ========================================
+  // POOL ANALYTICS
+  // ========================================
+
+  /**
+   * Get analytics for a specific liquidity pool.
+   *
+   * Queries the pair contract directly for reserves and token addresses,
+   * then derives spot prices from the constant-product AMM formula.
+   * TVL and 24h-volume fields require an external oracle / event indexer
+   * and are returned as 0 until that data source is wired in.
+   *
+   * @param {string} poolAddress - Pair/pool contract address
+   * @returns {Promise<PoolAnalytics>}
+   */
+  public async getPoolAnalytics(poolAddress: string): Promise<PoolAnalytics> {
+    this.ensureInitialized();
+
+    if (!poolAddress) {
+      throw new Error('Pool address is required');
+    }
+
+    try {
+      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
+        accountId: () => SIMULATION_PLACEHOLDER,
+        sequenceNumber: () => '0',
+        incrementSequenceNumber: () => {},
+        sequence: '0',
+      } as any));
+
+      const pairContract = new Contract(poolAddress);
+
+      /** Simulate a single read-only call and return the raw simulation result. */
+      const simulate = async (op: ReturnType<Contract['call']>) => {
+        const tx = new TransactionBuilder(sourceAccount, {
+          fee: BASE_FEE,
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(op)
+          .setTimeout(30)
+          .build();
+        return this.sorobanServer.simulateTransaction(tx);
+      };
+
+      // ---- Reserves -------------------------------------------------------
+      let reserve0 = 0n;
+      let reserve1 = 0n;
+
+      const reserveSim = await simulate(pairContract.call('get_reserves'));
+      if (
+        reserveSim &&
+        !rpc.Api.isSimulationError(reserveSim) &&
+        'result' in reserveSim &&
+        reserveSim.result?.retval
+      ) {
+        try {
+          const native = scValToNative(reserveSim.result.retval) as bigint[];
+          if (Array.isArray(native) && native.length >= 2) {
+            reserve0 = native[0] ?? 0n;
+            reserve1 = native[1] ?? 0n;
+          }
+        } catch {
+          // Unexpected ScVal shape — keep defaults
+        }
+      }
+
+      // ---- Token addresses ------------------------------------------------
+      const nativeContractId = StellarAsset.native().contractId(this.networkPassphrase);
+
+      const resolveToken = async (method: string): Promise<Asset> => {
+        try {
+          const sim = await simulate(pairContract.call(method));
+          if (
+            sim &&
+            !rpc.Api.isSimulationError(sim) &&
+            'result' in sim &&
+            sim.result?.retval
+          ) {
+            const addr = Address.fromScVal(sim.result.retval).toString();
+            if (addr === nativeContractId) {
+              return { code: 'XLM', type: 'native' };
+            }
+            // Use the last 4 chars of the contract address as a short code
+            return {
+              code: addr.slice(-4).toUpperCase(),
+              issuer: addr,
+              type: 'credit_alphanum4',
+            };
+          }
+        } catch {
+          // Resolution failed — return an unknown placeholder
+        }
+        return { code: 'UNKN', type: 'credit_alphanum4' };
+      };
+
+      const [token0, token1] = await Promise.all([
+        resolveToken('token_0'),
+        resolveToken('token_1'),
+      ]);
+
+      // ---- Spot prices from reserves (constant-product AMM) ---------------
+      const r0 = Number(reserve0) / 1e7;
+      const r1 = Number(reserve1) / 1e7;
+      const priceToken0InToken1 = r0 > 0 ? r1 / r0 : 0;
+      const priceToken1InToken0 = r1 > 0 ? r0 / r1 : 0;
+
+      // ---- Oracle-dependent metrics (placeholders) ------------------------
+      // tvlUsd and volume24hUsd require an external price oracle / event indexer.
+      // feeApr = (volume24h * 0.003 * 365) / TVL — computed once oracle data arrives.
+      const tvlUsd = 0;
+      const volume24hUsd = 0;
+      const feeApr =
+        volume24hUsd > 0 && tvlUsd > 0
+          ? (volume24hUsd * 0.003 * 365) / tvlUsd
+          : 0;
+
+      return {
+        poolAddress,
+        token0,
+        token1,
+        reserve0,
+        reserve1,
+        tvlUsd,
+        volume24hUsd,
+        feeApr,
+        priceToken0InToken1,
+        priceToken1InToken0,
+        lastUpdated: Date.now(),
+      };
+    } catch (error) {
+      this.handleError(error, 'getPoolAnalytics');
+    }
+  }
+
+  /**
+   * Get analytics for all registered liquidity pools.
+   *
+   * Fetches the list of known pair addresses from the factory contract via
+   * {@link getAllPairs} and resolves each pool's analytics in parallel.
+   * Pools whose analytics cannot be fetched are silently omitted.
+   *
+   * @returns {Promise<PoolAnalytics[]>}
+   */
+  public async getAllPoolsAnalytics(): Promise<PoolAnalytics[]> {
+    this.ensureInitialized();
+
+    try {
+      const pairs = await this.getAllPairs();
+
+      const results = await Promise.allSettled(
+        pairs.map(pairAddress => this.getPoolAnalytics(pairAddress))
+      );
+
+      return results
+        .filter((r): r is PromiseFulfilledResult<PoolAnalytics> => r.status === 'fulfilled')
+        .map(r => r.value);
+    } catch (error) {
+      this.handleError(error, 'getAllPoolsAnalytics');
     }
   }
 }
