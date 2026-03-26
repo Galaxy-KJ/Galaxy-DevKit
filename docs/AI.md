@@ -57,6 +57,7 @@ Wallets are created with email/password only. Private keys are encrypted (AES-25
 - `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts`
 - `packages/core/invisible-wallet/src/services/key-managment.service.ts`
 - `packages/core/invisible-wallet/src/types/wallet.types.ts`
+- `packages/core/invisible-wallet/src/types/smart-wallet.types.ts` 🆕
 
 ### 2. Stellar SDK Wrapper
 
@@ -777,6 +778,28 @@ await wallet.signProposal(proposal.id, signerPub, signature);
 await wallet.executeProposal(proposal.id);
 ```
 
+### 8. Smart Wallet Migration Pattern (Issue #125)
+
+The system is migrating towards a non-custodial smart wallet architecture. 
+
+**Key Changes:**
+1.  **New Table**: `smart_wallets` stores passkey-based wallet metadata.
+2.  **Deprecation**: The `encrypted_private_key` column in `invisible_wallets` has been renamed to `_deprecated_encrypted_private_key`.
+3.  **Mapping**: TypeScript services have been updated to map `_deprecated_encrypted_private_key` to internal `encryptedPrivateKey` properties to maintain backward compatibility.
+
+**SmartWallet Interface:**
+```typescript
+export interface SmartWallet {
+  id: string;
+  user_id: string;
+  contract_address: string;
+  passkey_credential_id: string;
+  public_key_65bytes: string;
+  network: 'testnet' | 'mainnet';
+  created_at: string;
+}
+```
+
 ## 🛠️ Tech Stack
 
 ### Backend
@@ -1101,6 +1124,11 @@ Galaxy DevKit follows a **4-phase development roadmap** with 20 issues per phase
 - Oracle system foundation
 - Enhanced wallet features
 - CLI improvements
+**Progress**: 15/21 issues completed (71% ✅)
+**Remaining**: 2 open issues + 4 CLI improvements pending
+**Next Milestones**:
+- Smart Wallet Implementation (#125 ✅)
+- Setup integration tests infrastructure (#72)
 
 ### Phase 2: DeFi Integration (Issues #21-#40)
 

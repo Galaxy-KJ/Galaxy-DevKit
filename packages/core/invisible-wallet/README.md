@@ -323,6 +323,7 @@ SUPABASE_ANON_KEY=your-anon-key
 6. **Use strong passwords** (minimum 8 characters, uppercase, lowercase, numbers)
 7. **`privateKey` field naming**: The `Wallet.privateKey` field carries **encrypted ciphertext** (AES-256-GCM format: `salt:iv:authTag:ciphertext`), not the raw Stellar secret key. Always call `decryptPrivateKey(wallet.privateKey, password)` before using it with `Keypair.fromSecret()`. This naming is a legacy convention — the value is never a plaintext secret.
 8. **CSPRNG for IDs**: All generated identifiers (wallet IDs, event IDs, subscription IDs) use `crypto.randomBytes()` instead of `Math.random()` for cryptographic safety
+9. **Smart Wallet Migration**: The system is migrating to a smart wallet architecture (Issue #125). As part of this, the `encrypted_private_key` column has been renamed to `_deprecated_encrypted_private_key`. All core services have been updated to handle this change while maintaining existing invisible wallet functionality.
 
 ## License
 

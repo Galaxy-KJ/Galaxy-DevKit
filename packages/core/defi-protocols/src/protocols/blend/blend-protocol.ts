@@ -151,7 +151,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAmount(amount);
 
     try {
-      const sourceKeypair = Keypair.fromSecret(privateKey);
+      const sourceKeypair = privateKey ? Keypair.fromSecret(privateKey) : undefined;
       const account = await this.horizonServer.loadAccount(walletAddress);
 
       if (!this.poolContract) {
@@ -186,6 +186,15 @@ export class BlendProtocol extends BaseProtocol {
         .addOperation(this.poolContract.call('submit', ...scVals))
         .setTimeout(30)
         .build();
+
+      if (!sourceKeypair) {
+        const preparedTx = await this.sorobanServer.prepareTransaction(tx);
+        return this.buildTransactionResult(preparedTx.toXDR(), 'pending', 0, {
+          operation: 'supply',
+          asset: asset.code,
+          amount
+        });
+      }
 
       tx.sign(sourceKeypair);
 
@@ -239,7 +248,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAmount(amount);
 
     try {
-      const sourceKeypair = Keypair.fromSecret(privateKey);
+      const sourceKeypair = privateKey ? Keypair.fromSecret(privateKey) : undefined;
       const account = await this.horizonServer.loadAccount(walletAddress);
 
       if (!this.poolContract) {
@@ -262,6 +271,15 @@ export class BlendProtocol extends BaseProtocol {
         .addOperation(contract.call('withdraw', ...params))
         .setTimeout(30)
         .build();
+
+      if (!sourceKeypair) {
+        const preparedTx = await this.sorobanServer.prepareTransaction(tx);
+        return this.buildTransactionResult(preparedTx.toXDR(), 'pending', 0, {
+          operation: 'withdraw',
+          asset: asset.code,
+          amount
+        });
+      }
 
       tx.sign(sourceKeypair);
 
@@ -319,7 +337,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAmount(amount);
 
     try {
-      const sourceKeypair = Keypair.fromSecret(privateKey);
+      const sourceKeypair = privateKey ? Keypair.fromSecret(privateKey) : undefined;
       const account = await this.horizonServer.loadAccount(walletAddress);
 
       if (!this.poolContract) {
@@ -342,6 +360,15 @@ export class BlendProtocol extends BaseProtocol {
         .addOperation(contract.call('borrow', ...params))
         .setTimeout(30)
         .build();
+
+      if (!sourceKeypair) {
+        const preparedTx = await this.sorobanServer.prepareTransaction(tx);
+        return this.buildTransactionResult(preparedTx.toXDR(), 'pending', 0, {
+          operation: 'borrow',
+          asset: asset.code,
+          amount
+        });
+      }
 
       tx.sign(sourceKeypair);
 
@@ -395,7 +422,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAmount(amount);
 
     try {
-      const sourceKeypair = Keypair.fromSecret(privateKey);
+      const sourceKeypair = privateKey ? Keypair.fromSecret(privateKey) : undefined;
       const account = await this.horizonServer.loadAccount(walletAddress);
 
       if (!this.poolContract) {
@@ -418,6 +445,15 @@ export class BlendProtocol extends BaseProtocol {
         .addOperation(contract.call('repay', ...params))
         .setTimeout(30)
         .build();
+
+      if (!sourceKeypair) {
+        const preparedTx = await this.sorobanServer.prepareTransaction(tx);
+        return this.buildTransactionResult(preparedTx.toXDR(), 'pending', 0, {
+          operation: 'repay',
+          asset: asset.code,
+          amount
+        });
+      }
 
       tx.sign(sourceKeypair);
 

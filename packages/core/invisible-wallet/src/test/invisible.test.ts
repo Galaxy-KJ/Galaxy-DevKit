@@ -52,7 +52,7 @@ describe('InvisibleWalletService', () => {
     id: 'iwallet_123_abc',
     user_id: 'user_123',
     public_key: mockKeypair.publicKey,
-    encrypted_private_key: 'encrypted_key_data',
+    _deprecated_encrypted_private_key: 'encrypted_key_data',
     network: mockNetworkConfig,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

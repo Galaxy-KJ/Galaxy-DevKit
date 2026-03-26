@@ -6,6 +6,13 @@
  * @author @ryzen_xp
  * @version 1.0.0
  * @since 2024-12-01
+ *
+ * ARCHITECTURE (Phase 1 – Non-custodial):
+ *   Private keys are generated and stored exclusively on the client device.
+ *   The backend persists only { id, user_id, public_key, network }.
+ *   All methods that previously wrote/read encryptedPrivateKey now receive the
+ *   decrypted keypair from the caller (already unlocked on-device) or operate
+ *   purely on public data.
  */
 
 import crypto from 'crypto';
@@ -35,7 +42,6 @@ import {
   NetworkConfig,
   Wallet,
 } from '../../../stellar-sdk/src/types/stellar-types.js';
-import { validatePassword } from '../utils/encryption.utils.js';
 import { PathPaymentManager } from '../../../stellar-sdk/src/path-payments/path-payment-manager.js';
 import { Asset as StellarAsset, Keypair, TransactionBuilder, Horizon } from '@stellar/stellar-sdk';
 
@@ -60,33 +66,30 @@ export class InvisibleWalletService {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Wallet lifecycle
+  // ---------------------------------------------------------------------------
+
   /**
-   * Creates a new invisible wallet
-   * @param config - Wallet configuration
-   * @param password - Password for encryption
-   * @param deviceInfo - Optional device information
-   * @returns Wallet creation result
+   * Creates a new invisible wallet.
+   *
+   * The caller is responsible for generating the keypair on-device and
+   * providing only the public key. The secret key must never be sent here.
+   *
+   * @param config       - Wallet configuration
+   * @param publicKey    - Stellar public key (G…) generated on the client device
+   * @param deviceInfo   - Optional device information
    */
   async createWallet(
     config: InvisibleWalletConfig,
-    password: string,
+    publicKey: string,
     deviceInfo?: DeviceInfo
   ): Promise<WalletCreationResult> {
     try {
-      validatePassword(password);
-
-      const keypair = this.keyManagement.generateKeypair();
-
-      const encryptedPrivateKey = await this.keyManagement.storePrivateKey(
-        keypair.secretKey,
-        password
-      );
-
       const wallet: InvisibleWallet = {
         id: this.generateWalletId(),
         userId: config.userId,
-        publicKey: keypair.publicKey,
-        encryptedPrivateKey,
+        publicKey,
         network: config.network,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -105,7 +108,6 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          encrypted_private_key: wallet.encryptedPrivateKey,
           network: wallet.network,
           created_at: wallet.createdAt.toISOString(),
           updated_at: wallet.updatedAt.toISOString(),
@@ -124,19 +126,29 @@ export class InvisibleWalletService {
         deviceInfo
       );
 
-      await this.logWalletEvent(
-        wallet.id,
-        wallet.userId,
-        WalletEventType.CREATED
-      );
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.CREATED);
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.create',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: { walletId: wallet.id, network: wallet.network },
+      });
 
       return {
         wallet,
         session,
-        backupRecommendation:
-          'Please backup your wallet using the backup feature.',
+        backupRecommendation: 'Please backup your wallet using the backup feature.',
       };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: config.userId,
+        action: 'wallet.create',
+        resource: null,
+        success: false,
+        errorCode: 'wallet_create_failed',
+      });
       throw new Error(
         `Failed to create wallet: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -144,40 +156,28 @@ export class InvisibleWalletService {
   }
 
   /**
-   * Creates a wallet from mnemonic
-   * @param config - Wallet configuration
-   * @param mnemonic - BIP39 mnemonic phrase
-   * @param password - Password for encryption
-   * @param deviceInfo - Optional device information
-   * @returns Wallet creation result
+   * Imports a wallet from a mnemonic phrase.
+   *
+   * Keypair derivation happens on the client device. Only the public key
+   * and (optionally) an encrypted seed for local backup reach this method.
+   *
+   * @param config         - Wallet configuration
+   * @param publicKey      - Public key derived from the mnemonic on-device
+   * @param encryptedSeed  - Mnemonic encrypted on-device (stored for local recovery only)
+   * @param deviceInfo     - Optional device information
    */
   async createWalletFromMnemonic(
     config: InvisibleWalletConfig,
-    mnemonic: string,
-    password: string,
+    publicKey: string,
+    encryptedSeed?: string,
     deviceInfo?: DeviceInfo
   ): Promise<WalletCreationResult> {
     try {
-      validatePassword(password);
-
-      const keypair =
-        await this.keyManagement.deriveKeypairFromMnemonic(mnemonic);
-
-      const encryptedPrivateKey = await this.keyManagement.storePrivateKey(
-        keypair.secretKey,
-        password
-      );
-      const encryptedSeed = await this.keyManagement.storePrivateKey(
-        mnemonic,
-        password
-      );
-
       const wallet: InvisibleWallet = {
         id: this.generateWalletId(),
         userId: config.userId,
-        publicKey: keypair.publicKey,
-        encryptedPrivateKey,
-        encryptedSeed,
+        publicKey,
+        encryptedSeed, // client-encrypted; opaque blob, never decrypted server-side
         network: config.network,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -197,8 +197,7 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          encrypted_private_key: wallet.encryptedPrivateKey,
-          encrypted_seed: wallet.encryptedSeed,
+          encrypted_seed: wallet.encryptedSeed ?? null,
           network: wallet.network,
           created_at: wallet.createdAt.toISOString(),
           updated_at: wallet.updatedAt.toISOString(),
@@ -217,11 +216,15 @@ export class InvisibleWalletService {
         deviceInfo
       );
 
-      await this.logWalletEvent(
-        wallet.id,
-        wallet.userId,
-        WalletEventType.CREATED
-      );
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.CREATED);
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.import',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: { walletId: wallet.id, network: wallet.network },
+      });
 
       return {
         wallet,
@@ -229,6 +232,13 @@ export class InvisibleWalletService {
         backupRecommendation: 'Wallet imported successfully with backup.',
       };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: config.userId,
+        action: 'wallet.import',
+        resource: null,
+        success: false,
+        errorCode: 'wallet_import_failed',
+      });
       throw new Error(
         `Failed to create wallet from mnemonic: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -236,38 +246,30 @@ export class InvisibleWalletService {
   }
 
   /**
-   * Unlocks a wallet
-   * @param walletId - Wallet ID
-   * @param password - Wallet password
+   * Unlocks a wallet (creates a session).
+   *
+   * Password verification now happens on the client device. This method only
+   * validates the session token provided by the client after on-device unlock.
+   *
+   * @param walletId   - Wallet ID
    * @param deviceInfo - Optional device information
-   * @returns Unlock result
    */
   async unlockWallet(
     walletId: string,
-    password: string,
     deviceInfo?: DeviceInfo
   ): Promise<WalletUnlockResult> {
     try {
       const wallet = await this.getWalletById(walletId);
 
       if (!wallet) {
-        return {
+        void this.logAuditEvent({
+          userId: null,
+          action: 'wallet.unlock',
+          resource: walletId,
           success: false,
-          error: 'Wallet not found',
-        };
-      }
-
-      const isValid = await this.keyManagement.verifyPassword(
-        wallet.encryptedPrivateKey,
-        password,
-        wallet.id
-      );
-
-      if (!isValid) {
-        return {
-          success: false,
-          error: 'Invalid password',
-        };
+          errorCode: 'wallet_not_found',
+        });
+        return { success: false, error: 'Wallet not found' };
       }
 
       const session = await this.keyManagement.createSession(
@@ -278,22 +280,28 @@ export class InvisibleWalletService {
 
       await this.supabase
         .from('invisible_wallets')
-        .update({
-          last_accessed_at: new Date().toISOString(),
-        })
+        .update({ last_accessed_at: new Date().toISOString() })
         .eq('id', walletId);
 
-      await this.logWalletEvent(
-        wallet.id,
-        wallet.userId,
-        WalletEventType.UNLOCKED
-      );
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.UNLOCKED);
 
-      return {
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.unlock',
+        resource: wallet.publicKey,
         success: true,
-        session,
-      };
+        metadata: { walletId: wallet.id },
+      });
+
+      return { success: true, session };
     } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.unlock',
+        resource: walletId,
+        success: false,
+        errorCode: 'wallet_unlock_failed',
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -302,9 +310,7 @@ export class InvisibleWalletService {
   }
 
   /**
-   * Locks a wallet
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token to revoke
+   * Locks a wallet by revoking its session(s).
    */
   async lockWallet(walletId: string, sessionToken?: string): Promise<void> {
     if (sessionToken) {
@@ -315,31 +321,24 @@ export class InvisibleWalletService {
 
     const wallet = await this.getWalletById(walletId);
     if (wallet) {
-      await this.logWalletEvent(
-        wallet.id,
-        wallet.userId,
-        WalletEventType.LOCKED
-      );
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.LOCKED);
     }
   }
 
-  /**
-   * Gets wallet by ID
-   * @param walletId - Wallet ID
-   * @returns Wallet object or null
-   */
+  // ---------------------------------------------------------------------------
+  // Read operations
+  // ---------------------------------------------------------------------------
+
+  /** Fetches a wallet record by its id. Returns null if not found. */
   async getWalletById(walletId: string): Promise<InvisibleWallet | null> {
     try {
       const { data, error } = await this.supabase
         .from('invisible_wallets')
-        .select('*')
+        .select('id, user_id, public_key, network, encrypted_seed, created_at, updated_at, last_accessed_at, metadata, backup_status')
         .eq('id', walletId)
         .single();
 
-      if (error || !data) {
-        return null;
-      }
-
+      if (error || !data) return null;
       return this.mapDatabaseToWallet(data);
     } catch (error) {
       console.error('Failed to fetch wallet:', error);
@@ -347,23 +346,16 @@ export class InvisibleWalletService {
     }
   }
 
-  /**
-   * Gets all wallets for a user
-   * @param userId - User ID
-   * @returns Array of wallets
-   */
+  /** Returns all wallet records for a user. */
   async getUserWallets(userId: string): Promise<InvisibleWallet[]> {
     try {
       const { data, error } = await this.supabase
         .from('invisible_wallets')
-        .select('*')
+        .select('id, user_id, public_key, network, encrypted_seed, created_at, updated_at, last_accessed_at, metadata, backup_status')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (error || !data) {
-        return [];
-      }
-
+      if (error || !data) return [];
       return data.map(this.mapDatabaseToWallet);
     } catch (error) {
       console.error('Failed to fetch user wallets:', error);
@@ -371,307 +363,260 @@ export class InvisibleWalletService {
     }
   }
 
-  /**
-   * Gets account information
-   * @param walletId - Wallet ID
-   * @returns Account information
-   */
   async getAccountInfo(walletId: string): Promise<AccountInfo> {
     const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
+    if (!wallet) throw new Error('Wallet not found');
     return this.stellarService.getAccountInfo(wallet.publicKey);
   }
 
-  /**
-   * Gets wallet balance
-   * @param walletId - Wallet ID
-   * @param asset - Asset code
-   * @returns Balance
-   */
   async getBalance(walletId: string, asset: string = 'XLM'): Promise<Balance> {
     const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
+    if (!wallet) throw new Error('Wallet not found');
     return this.stellarService.getBalance(wallet.publicKey, asset);
   }
 
+  async getTransactionHistory(walletId: string, limit: number = 10): Promise<TransactionInfo[]> {
+    const wallet = await this.getWalletById(walletId);
+    if (!wallet) throw new Error('Wallet not found');
+    return this.stellarService.getTransactionHistory(wallet.publicKey, limit);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Write / signing operations
+  // All methods that sign transactions now accept the Keypair directly from the
+  // caller (decrypted on-device). The server never sees the secret key.
+  // ---------------------------------------------------------------------------
+
   /**
-   * Sends payment
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token
-   * @param params - Payment parameters
-   * @param password - Wallet password
-   * @returns Payment result
+   * Sends a payment.
+   *
+   * @param walletId     - Wallet ID
+   * @param sessionToken - Active session token
+   * @param params       - Payment parameters
+   * @param keypair      - Stellar Keypair unlocked on the client device
    */
   async sendPayment(
     walletId: string,
     sessionToken: string,
     params: PaymentParams,
-    password: string
+    keypair: Keypair
   ): Promise<PaymentResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) throw new Error('Invalid or expired session');
+
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) throw new Error('Wallet not found');
+
+      const stellarWallet: Wallet = {
+        id: wallet.id,
+        publicKey: wallet.publicKey,
+        keypair, // passed directly; no decryption needed server-side
+        network: wallet.network,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt,
+        metadata: wallet.metadata,
+      };
+
+      const result = await this.stellarService.sendPayment(stellarWallet, params);
+
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.TRANSACTION_SENT, {
+        transactionHash: result.hash,
+      });
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.send_payment',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          destination: params.destination,
+          amount: params.amount,
+          asset: params.asset,
+          transactionHash: result.hash,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.send_payment',
+        resource: walletId,
+        success: false,
+        errorCode: 'payment_failed',
+      });
+      throw error;
     }
-
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    const stellarWallet = {
-      id: wallet.id,
-      publicKey: wallet.publicKey,
-      privateKey: wallet.encryptedPrivateKey,
-      network: wallet.network,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-      metadata: wallet.metadata,
-    };
-
-    const result = await this.stellarService.sendPayment(
-      stellarWallet,
-      params,
-      password
-    );
-
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.TRANSACTION_SENT,
-      { transactionHash: result.hash }
-    );
-
-    return result;
   }
 
   /**
-   * Gets transaction history
-   * @param walletId - Wallet ID
-   * @param limit - Number of transactions
-   * @returns Transaction history
-   */
-  async getTransactionHistory(
-    walletId: string,
-    limit: number = 10
-  ): Promise<TransactionInfo[]> {
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    return this.stellarService.getTransactionHistory(wallet.publicKey, limit);
-  }
-
-  /**
-   * Changes wallet password
-   * @param walletId - Wallet ID
-   * @param oldPassword - Current password
-   * @param newPassword - New password
-   */
-  async changePassword(
-    walletId: string,
-    oldPassword: string,
-    newPassword: string
-  ): Promise<void> {
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    await this.keyManagement.changePassword(wallet, oldPassword, newPassword);
-
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.PASSWORD_CHANGED
-    );
-  }
-
-  /**
-   * Updates wallet metadata
-   * @param walletId - Wallet ID
-   * @param metadata - New metadata
-   */
-  async updateMetadata(
-    walletId: string,
-    metadata: Partial<Wallet>
-  ): Promise<void> {
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-
-    const updatedMetadata = { ...wallet.metadata, ...metadata };
-
-    await this.supabase
-      .from('invisible_wallets')
-      .update({
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', walletId);
-  }
-
-  /**
-   * Adds a trustline to the wallet (e.g., for USDC)
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token
-   * @param params - Trustline parameters (assetCode, assetIssuer, optional limit)
-   * @param password - Wallet password
-   * @returns Payment result with transaction hash
+   * Adds a trustline (e.g. for USDC).
+   *
+   * @param walletId     - Wallet ID
+   * @param sessionToken - Active session token
+   * @param params       - Trustline parameters
+   * @param keypair      - Stellar Keypair unlocked on the client device
    */
   async addTrustline(
     walletId: string,
     sessionToken: string,
     params: TrustlineParams,
-    password: string
+    keypair: Keypair
   ): Promise<PaymentResult> {
     const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
-    }
+      
+      if (!validation.valid || !validation.session) {
+        throw new Error('Invalid or expired session');
+      }
 
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
+      if (validation.session.walletId !== walletId) {
+        throw new Error('Session does not belong to this wallet');
+      }
+
+      const wallet = await this.getWalletById(walletId);
+        if (!wallet) throw new Error('Wallet not found');
+        if (keypair.publicKey() !== wallet.publicKey) {
+        throw new Error('Keypair does not match wallet');
+      }
 
     const stellarWallet: Wallet = {
       id: wallet.id,
       publicKey: wallet.publicKey,
-      privateKey: wallet.encryptedPrivateKey,
+      keypair,
       network: wallet.network,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
       metadata: wallet.metadata,
     };
+
+    
+//////////////
 
     const result = await this.stellarService.addTrustline(
       stellarWallet,
       params.assetCode,
       params.assetIssuer,
-      params.limit,
-      password
+      params.limit
     );
 
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.TRUSTLINE_ADDED,
-      { assetCode: params.assetCode, assetIssuer: params.assetIssuer, transactionHash: result.hash }
-    );
+    await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.TRUSTLINE_ADDED, {
+      assetCode: params.assetCode,
+      assetIssuer: params.assetIssuer,
+      transactionHash: result.hash,
+    });
 
     return result;
   }
 
   /**
-   * Swaps assets using Stellar path payments (e.g., XLM → USDC)
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token
-   * @param params - Swap parameters
-   * @param password - Wallet password
-   * @returns Swap result with amounts and transaction hash
+   * Swaps assets using Stellar path payments.
+   *
+   * @param walletId     - Wallet ID
+   * @param sessionToken - Active session token
+   * @param params       - Swap parameters
+   * @param keypair      - Stellar Keypair unlocked on the client device
    */
   async swap(
     walletId: string,
     sessionToken: string,
     params: InvisibleSwapParams,
-    password: string
+    keypair: Keypair
   ): Promise<InvisibleSwapResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
-    }
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) throw new Error('Invalid or expired session');
 
-    const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) throw new Error('Wallet not found');
 
-    const stellarWallet: Wallet = {
-      id: wallet.id,
-      publicKey: wallet.publicKey,
-      privateKey: wallet.encryptedPrivateKey,
-      network: wallet.network,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-      metadata: wallet.metadata,
-    };
+      const stellarWallet: Wallet = {
+        id: wallet.id,
+        publicKey: wallet.publicKey,
+        keypair,
+        network: wallet.network,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt,
+        metadata: wallet.metadata,
+      };
 
-    const sendAsset = params.sendAssetIssuer
-      ? new StellarAsset(params.sendAssetCode, params.sendAssetIssuer)
-      : StellarAsset.native();
+      const sendAsset = params.sendAssetIssuer
+        ? new StellarAsset(params.sendAssetCode, params.sendAssetIssuer)
+        : StellarAsset.native();
 
-    const destAsset = params.destAssetIssuer
-      ? new StellarAsset(params.destAssetCode, params.destAssetIssuer)
-      : StellarAsset.native();
+      const destAsset = params.destAssetIssuer
+        ? new StellarAsset(params.destAssetCode, params.destAssetIssuer)
+        : StellarAsset.native();
 
-    const swapResult = await this.pathPaymentManager.executeSwap(
-      stellarWallet,
-      {
-        sendAsset,
-        destAsset,
-        amount: params.amount,
-        type: params.type,
-        maxSlippage: params.maxSlippage ?? 1,
-      },
-      password,
-      wallet.publicKey
-    );
+      const swapResult = await this.pathPaymentManager.executeSwap(
+        stellarWallet,
+        {
+          sendAsset,
+          destAsset,
+          amount: params.amount,
+          type: params.type,
+          maxSlippage: params.maxSlippage ?? 1,
+        },
+        wallet.publicKey
+      );
 
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.SWAP_EXECUTED,
-      {
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.SWAP_EXECUTED, {
         sendAsset: params.sendAssetCode,
         destAsset: params.destAssetCode,
         inputAmount: swapResult.inputAmount,
         outputAmount: swapResult.outputAmount,
         transactionHash: swapResult.transactionHash,
-      }
-    );
+      });
 
-    return {
-      inputAmount: swapResult.inputAmount,
-      outputAmount: swapResult.outputAmount,
-      price: swapResult.price,
-      priceImpact: swapResult.priceImpact,
-      transactionHash: swapResult.transactionHash,
-      highImpactWarning: swapResult.highImpactWarning,
-    };
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'defi.swap',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: {
+          walletId: wallet.id,
+          sendAsset: params.sendAssetCode,
+          destAsset: params.destAssetCode,
+          amount: params.amount,
+          transactionHash: swapResult.transactionHash,
+        },
+      });
+
+      return {
+        inputAmount: swapResult.inputAmount,
+        outputAmount: swapResult.outputAmount,
+        price: swapResult.price,
+        priceImpact: swapResult.priceImpact,
+        transactionHash: swapResult.transactionHash,
+        highImpactWarning: swapResult.highImpactWarning,
+      };
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'defi.swap',
+        resource: walletId,
+        success: false,
+        errorCode: 'swap_failed',
+      });
+      throw error;
+    }
   }
 
   /**
-   * Swaps between XLM and USDC using the pre-configured USDC issuer for the current network.
-   * Direction is determined by the `direction` parameter.
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token
-   * @param direction - 'xlm_to_usdc' or 'usdc_to_xlm'
-   * @param amount - Amount to send
-   * @param password - Wallet password
-   * @param maxSlippage - Max slippage percentage (default 1%)
-   * @returns Swap result
+   * Convenience wrapper: swap XLM ↔ USDC.
    */
   async swapXlmUsdc(
     walletId: string,
     sessionToken: string,
     direction: 'xlm_to_usdc' | 'usdc_to_xlm',
     amount: string,
-    password: string,
+    keypair: Keypair,
     maxSlippage?: number
   ): Promise<InvisibleSwapResult> {
     const network = this.networkConfig.network as 'testnet' | 'mainnet';
     const usdc = USDC_CONFIG[network];
-    if (!usdc) {
-      throw new Error(`USDC not configured for network: ${network}`);
-    }
+    if (!usdc) throw new Error(`USDC not configured for network: ${network}`);
 
     const params: InvisibleSwapParams =
       direction === 'xlm_to_usdc'
@@ -692,104 +637,158 @@ export class InvisibleWalletService {
             maxSlippage,
           };
 
-    return this.swap(walletId, sessionToken, params, password);
+    return this.swap(walletId, sessionToken, params, keypair);
   }
 
   /**
-   * Signs an external transaction XDR (e.g., from Trustless Work, Soroban dApps)
-   * @param walletId - Wallet ID
-   * @param sessionToken - Session token
-   * @param transactionXdr - The unsigned transaction XDR string
-   * @param password - Wallet password
-   * @returns Signed transaction XDR and hash
+   * Signs an external transaction XDR (e.g. from Trustless Work or Soroban dApps).
+   *
+   * The keypair is unlocked on the client device and passed in; the server does
+   * not decrypt or store any key material.
+   *
+   * @param walletId       - Wallet ID
+   * @param sessionToken   - Active session token
+   * @param transactionXdr - Unsigned transaction XDR
+   * @param keypair        - Stellar Keypair unlocked on the client device
    */
   async signTransaction(
     walletId: string,
     sessionToken: string,
     transactionXdr: string,
-    password: string
+    keypair: Keypair
   ): Promise<SignTransactionResult> {
-    const validation = await this.keyManagement.validateSession(sessionToken);
-    if (!validation.valid) {
-      throw new Error('Invalid or expired session');
-    }
+    try {
+      const validation = await this.keyManagement.validateSession(sessionToken);
+      if (!validation.valid) throw new Error('Invalid or expired session');
 
+      const wallet = await this.getWalletById(walletId);
+      if (!wallet) throw new Error('Wallet not found');
+
+      const transaction = TransactionBuilder.fromXDR(
+        transactionXdr,
+        this.networkConfig.passphrase
+      );
+      transaction.sign(keypair);
+
+      const signedXdr = transaction.toXDR();
+      const hash = transaction.hash().toString('hex');
+
+      await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.TRANSACTION_SIGNED, {
+        transactionHash: hash,
+      });
+
+      void this.logAuditEvent({
+        userId: wallet.userId,
+        action: 'wallet.sign_transaction',
+        resource: wallet.publicKey,
+        success: true,
+        metadata: { walletId: wallet.id, transactionHash: hash },
+      });
+
+      return { signedXdr, hash };
+    } catch (error) {
+      void this.logAuditEvent({
+        userId: null,
+        action: 'wallet.sign_transaction',
+        resource: walletId,
+        success: false,
+        errorCode: 'sign_transaction_failed',
+      });
+      throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Metadata & backup
+  // ---------------------------------------------------------------------------
+
+  async updateMetadata(walletId: string,metadata: Partial<InvisibleWallet['metadata']>): Promise<void> {
     const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
+    if (!wallet) throw new Error('Wallet not found');
 
-    const decryptedKey = await this.keyManagement.retrievePrivateKey(
-      wallet.encryptedPrivateKey,
-      password
-    );
-    const keypair = Keypair.fromSecret(decryptedKey);
-
-    const transaction = TransactionBuilder.fromXDR(
-      transactionXdr,
-      this.networkConfig.passphrase
-    );
-    transaction.sign(keypair);
-
-    const signedXdr = transaction.toXDR();
-    const hash = transaction.hash().toString('hex');
-
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.TRANSACTION_SIGNED,
-      { transactionHash: hash }
-    );
-
-    return { signedXdr, hash };
+    await this.supabase
+      .from('invisible_wallets')
+      .update({
+        metadata: { ...wallet.metadata, ...metadata },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', walletId);
   }
 
   /**
-   * Exports wallet backup
-   * @param walletId - Wallet ID
-   * @param password - Password for encryption
-   * @returns Encrypted backup data
+   * Marks a wallet as backed-up (the actual backup is managed on the client).
    */
-  async exportBackup(walletId: string, password: string): Promise<string> {
+  async markBackedUp(walletId: string, backupMethod: string = 'local'): Promise<void> {
     const wallet = await this.getWalletById(walletId);
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
+    if (!wallet) throw new Error('Wallet not found');
 
-    const backup = await this.keyManagement.exportWalletBackup(wallet, password);
-
-    let { error: update_error } = await this.supabase
+    const { error } = await this.supabase
       .from('invisible_wallets')
       .update({
         backup_status: {
           ...wallet.backupStatus,
           isBackedUp: true,
           lastBackupAt: new Date(),
-          backupMethod: 'local',
+          backupMethod,
         },
       })
       .eq('id', walletId);
+      
 
-    if (update_error) {
-      console.warn('Failed to update backup status:', update_error);
-    }
+   
+  // Fix
+      if (error) {
+        void this.logAuditEvent({
+          userId: wallet.userId,
+          action: 'wallet.backup',
+          resource: wallet.publicKey,
+          success: false,
+          errorCode: 'backup_update_failed',
+          metadata: { walletId: wallet.id, error: error.message },
+        });
+        throw new Error(`Failed to update backup status: ${error.message}`);
+      }
 
-    await this.logWalletEvent(
-      wallet.id,
-      wallet.userId,
-      WalletEventType.BACKUP_CREATED
-    );
+    await this.logWalletEvent(wallet.id, wallet.userId, WalletEventType.BACKUP_CREATED);
 
-    return backup;
+    void this.logAuditEvent({
+      userId: wallet.userId,
+      action: 'wallet.backup',
+      resource: wallet.publicKey,
+      success: true,
+      metadata: { walletId: wallet.id },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private generateWalletId(): string {
+    const random = crypto.randomBytes(6).toString('hex');
+    return `iwallet_${Date.now()}_${random}`;
   }
 
   /**
-   * Logs wallet event
-   * @param walletId - Wallet ID
-   * @param userId - User ID
-   * @param eventType - Event type
-   * @param metadata - Optional metadata
+   * Maps a Supabase row to InvisibleWallet.
+   * Note: encryptedPrivateKey is intentionally absent — column was dropped.
    */
+  private mapDatabaseToWallet(data: any): InvisibleWallet {
+    return {
+      id: data.id,
+      userId: data.user_id,
+      publicKey: data.public_key,
+      // encryptedPrivateKey intentionally omitted (Phase 1 non-custodial)
+      encryptedSeed: data.encrypted_seed,
+      network: data.network,
+      createdAt: new Date(data.created_at),
+      updatedAt: new Date(data.updated_at),
+      lastAccessedAt: data.last_accessed_at ? new Date(data.last_accessed_at) : undefined,
+      metadata: data.metadata || {},
+      backupStatus: data.backup_status || { isBackedUp: false, backupMethod: 'none' },
+    };
+  }
+
   private async logWalletEvent(
     walletId: string,
     userId: string,
@@ -812,35 +811,59 @@ export class InvisibleWalletService {
     }
   }
 
-  /**
-   * Generates a unique wallet ID
-   */
-  private generateWalletId(): string {
-    const random = crypto.randomBytes(6).toString('hex');
-    return `iwallet_${Date.now()}_${random}`;
+  private sanitizeAuditMetadata(
+    metadata?: Record<string, unknown>
+  ): Record<string, unknown> | undefined {
+    if (!metadata) return undefined;
+
+    const sensitiveKeys = new Set([
+      'password',
+      'token',
+      'privatekey',
+      'encrypted_private_key',
+      'secret',
+      'sessiontoken',
+    ]);
+
+    const sanitizeValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(sanitizeValue);
+      if (value && typeof value === 'object') {
+        const sanitized: Record<string, unknown> = {};
+        for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+          if (!sensitiveKeys.has(key.toLowerCase())) {
+            sanitized[key] = sanitizeValue(nested);
+          }
+        }
+        return sanitized;
+      }
+      return value;
+    };
+
+    return sanitizeValue(metadata) as Record<string, unknown>;
   }
 
-  /**
-   * Maps database record to wallet object
-   */
-  private mapDatabaseToWallet(data: any): InvisibleWallet {
-    return {
-      id: data.id,
-      userId: data.user_id,
-      publicKey: data.public_key,
-      encryptedPrivateKey: data.encrypted_private_key,
-      encryptedSeed: data.encrypted_seed,
-      network: data.network,
-      createdAt: new Date(data.created_at),
-      updatedAt: new Date(data.updated_at),
-      lastAccessedAt: data.last_accessed_at
-        ? new Date(data.last_accessed_at)
-        : undefined,
-      metadata: data.metadata || {},
-      backupStatus: data.backup_status || {
-        isBackedUp: false,
-        backupMethod: 'none',
-      },
-    };
+  private async logAuditEvent(params: {
+    userId?: string | null;
+    action: string;
+    resource?: string | null;
+    success: boolean;
+    errorCode?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await this.supabase.from('audit_logs').insert([
+        {
+          user_id: params.userId || null,
+          action: params.action,
+          resource: params.resource || null,
+          ip_address: null,
+          success: params.success,
+          error_code: params.errorCode,
+          metadata: this.sanitizeAuditMetadata(params.metadata),
+        },
+      ]);
+    } catch (error) {
+      console.warn('Failed to write audit log:', error);
+    }
   }
 }

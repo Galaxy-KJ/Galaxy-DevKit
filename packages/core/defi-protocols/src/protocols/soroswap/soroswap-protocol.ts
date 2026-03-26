@@ -379,8 +379,13 @@ export class SoroswapProtocol extends BaseProtocol {
 
   /**
    * Execute a token swap
-   * @stub Implementation planned for issue #27
-   * @throws {Error} Not yet implemented
+   * @param {string} walletAddress - Wallet public key
+   * @param {string} privateKey - Wallet private key (unused — returns unsigned XDR)
+   * @param {Asset} tokenIn - Source token
+   * @param {Asset} tokenOut - Destination token
+   * @param {string} amountIn - Amount of source token (decimal string)
+   * @param {string} minAmountOut - Minimum amount of destination token to accept
+   * @returns {Promise<TransactionResult>} Unsigned XDR transaction
    */
   public async swap(
     walletAddress: string,
@@ -397,14 +402,64 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAmount(amountIn);
     this.validateAmount(minAmountOut);
 
-    // TODO: Implement in issue #27
-    throw new Error('swap() is not yet implemented. See issue #27 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      const tokenInAddress = this.resolveTokenAddress(tokenIn);
+      const tokenOutAddress = this.resolveTokenAddress(tokenOut);
+
+      // Deadline: 20 minutes from now (standard for DEX)
+      const deadline = Math.floor(Date.now() / 1000) + 1200;
+
+      // Soroswap path: [tokenIn, tokenOut]
+      const path = [
+        new Address(tokenInAddress).toScVal(),
+        new Address(tokenOutAddress).toScVal()
+      ];
+
+      // Build the swap_exact_tokens_for_tokens invocation
+      // Router signature: swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)
+      const swapOp = this.routerContract.call(
+        'swap_exact_tokens_for_tokens',
+        SoroswapProtocol.amountToI128ScVal(amountIn),
+        SoroswapProtocol.amountToI128ScVal(minAmountOut),
+        nativeToScVal(path),
+        new Address(walletAddress).toScVal(),
+        nativeToScVal(deadline, { type: 'u64' })
+      );
+
+      const sourceAccount = await this.horizonServer.loadAccount(walletAddress);
+      const transaction = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(swapOp)
+        .setTimeout(180)
+        .build();
+
+      const preparedTx = await this.sorobanServer.prepareTransaction(transaction);
+      const xdr = preparedTx.toXDR();
+
+      return this.buildTransactionResult(xdr, 'pending', 0, {
+        operation: 'swap',
+        tokenIn,
+        tokenOut,
+        amountIn,
+        minAmountOut,
+      });
+    } catch (error) {
+      this.handleError(error, 'swap');
+    }
   }
 
   /**
    * Get a swap quote for a token pair
-   * @stub Implementation planned for issue #28
-   * @throws {Error} Not yet implemented
+   * @param {Asset} tokenIn - Source token
+   * @param {Asset} tokenOut - Destination token
+   * @param {string} amountIn - Amount of source token (decimal string)
+   * @returns {Promise<SwapQuote>} Swap quote information
    */
   public async getSwapQuote(
     tokenIn: Asset,
@@ -416,8 +471,76 @@ export class SoroswapProtocol extends BaseProtocol {
     this.validateAsset(tokenOut);
     this.validateAmount(amountIn);
 
-    // TODO: Implement in issue #28
-    throw new Error('getSwapQuote() is not yet implemented. See issue #28 for tracking.');
+    try {
+      if (!this.routerContract) {
+        throw new Error('Router contract not initialized');
+      }
+
+      const tokenInAddress = this.resolveTokenAddress(tokenIn);
+      const tokenOutAddress = this.resolveTokenAddress(tokenOut);
+
+      // Soroswap path: [tokenIn, tokenOut]
+      const path = [
+        new Address(tokenInAddress).toScVal(),
+        new Address(tokenOutAddress).toScVal()
+      ];
+
+      const getAmountsOutOp = this.routerContract.call(
+        'get_amounts_out',
+        SoroswapProtocol.amountToI128ScVal(amountIn),
+        nativeToScVal(path)
+      );
+
+      // Simulation placeholder
+      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
+          accountId: () => SIMULATION_PLACEHOLDER,
+          sequenceNumber: () => '0',
+          incrementSequenceNumber: () => {},
+          sequence: '0',
+      } as any));
+
+      const tx = new TransactionBuilder(sourceAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(getAmountsOutOp)
+        .setTimeout(30)
+        .build();
+
+      const simulation = await this.sorobanServer.simulateTransaction(tx);
+
+      if (rpc.Api.isSimulationError(simulation)) {
+          throw new Error(`Swap quote simulation failed: ${simulation.error}`);
+      }
+
+      if (!('result' in simulation) || !simulation.result?.retval) {
+          throw new Error('Invalid simulation result for swap quote');
+      }
+
+      // get_amounts_out returns a Vec<i128> [amountIn, amountOut]
+      const amounts = scValToNative(simulation.result.retval) as bigint[];
+      if (!Array.isArray(amounts) || amounts.length < 2) {
+          throw new Error('Unexpected return value from get_amounts_out');
+      }
+      
+      const amountOutRaw = amounts[1];
+      const amountOut = (Number(amountOutRaw) / 1e7).toString();
+      const minimumReceived = (parseFloat(amountOut) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+
+      return {
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut,
+        priceImpact: '0', // Simplified
+        minimumReceived,
+        path: [tokenInAddress, tokenOutAddress],
+        validUntil: new Date(Date.now() + 60000) // 1 minute validity
+      };
+    } catch (error) {
+      this.handleError(error, 'getSwapQuote');
+    }
   }
 
   /**

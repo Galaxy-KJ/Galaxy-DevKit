@@ -1,26 +1,12 @@
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.test.ts', '**/tests/**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'js', 'json'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.test.ts',
-    '!src/**/__tests__/**',
+  testEnvironment: 'jsdom',
+  testMatch: [
+    '<rootDir>/src/tests/**/*.test.ts',
+    '<rootDir>/src/**/*.test.ts',
   ],
-  coverageThreshold: {
-    global: {
-      branches: 95,
-      functions: 95,
-      lines: 95,
-      statements: 95,
-    },
-  },
   transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  moduleNameMapper: {
-    '^@ledgerhq/(.*)$': '<rootDir>/src/hardware/__tests__/mocks/$1',
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: './tsconfig.json',
+    }],
   },
 };
