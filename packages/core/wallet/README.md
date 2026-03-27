@@ -11,6 +11,23 @@ The wallet `auth` module provides biometric authentication primitives used by th
 - `WebAuthNProvider` (`packages/core/wallet/auth/src/providers/WebAuthNProvider.ts`) — WebAuthn-based implementation for browsers.
 - `MockBiometricProvider` (`packages/core/wallet/auth/src/providers/MockProvider.ts`) — Local testing provider used in unit tests.
 
+## Smart Wallet Service
+
+`SmartWalletService` is the Soroban smart-wallet signing layer for Galaxy DevKit. It handles:
+
+- Admin signing with WebAuthn passkeys
+- Delegated signing with short-lived session keys
+- Add/remove signer flows for the wallet contract
+- Fee-less XDR generation for sponsor-side submission
+
+It now supports injectable credential backends, so browser WebAuthn is no longer the only runtime option. Browser apps can keep using the default backend, while Node.js tests, SSR environments, and mobile runtimes can provide their own `CredentialBackend`.
+
+Related smart-wallet docs:
+
+- `docs/smart-wallet/api-reference.md`
+- `docs/smart-wallet/integration-guide.md`
+- `docs/architecture/smart-wallet-flow.md`
+
 ## Quick Setup
 
 1. Install dependencies and build the package.

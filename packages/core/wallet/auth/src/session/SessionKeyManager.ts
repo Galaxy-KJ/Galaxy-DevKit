@@ -41,7 +41,7 @@ export interface ISmartWalletService {
     walletAddress: string;
     signerPublicKey: string;
     webAuthnAssertion: PublicKeyCredential;
-  }): Promise<void>;
+  }): Promise<string>;
 
   /**
    * Signs `sorobanTx` using the session key identified by `credentialId`.

@@ -144,6 +144,10 @@ export class WebAuthNProvider extends BiometricAuthProvider {
     this.rpName = options.rpName || 'Wallet Application';
   }
 
+  get relyingPartyId(): string {
+    return this.rpId;
+  }
+
   async checkAvailability(): Promise<BiometricCapabilities> {
     if (!window.PublicKeyCredential) {
       return {

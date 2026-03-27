@@ -9,7 +9,7 @@
  *  - Registers a REAL P-256 credential via Playwright's CDP virtual authenticator.
  *  - Calls SmartWalletService.deploy() against the live Stellar testnet RPC.
  *  - Signs a Soroban invocation with a real P-256 assertion from the virtual
- *    authenticator (no mocked `navigator.credentials`).
+ *    authenticator through an injected credential backend.
  *  - Submits the fee-bumped transaction via the REST API and asserts it lands
  *    on testnet (result.transactionHash is defined).
  *
@@ -47,6 +47,7 @@ import {
 import { Server } from '@stellar/stellar-sdk/rpc';
 import { convertSignatureDERtoCompact } from '../../auth/src/providers/WebAuthNProvider';
 import { SmartWalletService } from '../smart-wallet.service';
+import type { CredentialBackend } from '../types/smart-wallet.types';
 import {
   createE2EEnv,
   teardownE2EEnv,
@@ -114,24 +115,13 @@ function buildFactoryDeployTx(
     .build();
 }
 
-/**
- * Inject a mock `navigator.credentials` into global scope that delegates
- * assertions to the Playwright browser page's virtual authenticator.
- *
- * This bridges the gap between Node.js (where SmartWalletService runs) and
- * the browser (where the virtual authenticator lives):
- *   - The service calls `navigator.credentials.get(options)`.
- *   - This mock extracts the challenge from `options`, runs `getAssertion()`
- *     in the browser, and returns a `PublicKeyCredential`-compatible object.
- */
-function installBrowserCredentialsMock(
+function createBrowserCredentialBackend(
   env: E2EEnv,
   credentialId: string,
   rpId: string,
-): void {
-  (global as any).navigator = {
-    credentials: {
-      get: async (options: CredentialRequestOptions) => {
+): CredentialBackend {
+  return {
+    get: async (options: CredentialRequestOptions) => {
         const challenge = new Uint8Array(
           options.publicKey!.challenge as ArrayBuffer,
         );
@@ -142,14 +132,8 @@ function installBrowserCredentialsMock(
           challenge,
         );
         return buildPublicKeyCredential(assertion);
-      },
-    },
+      }
   };
-}
-
-/** Restore global navigator after the test. */
-function removeBrowserCredentialsMock(): void {
-  (global as any).navigator = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +148,6 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
   });
 
   test.afterAll(async () => {
-    removeBrowserCredentialsMock();
     await teardownE2EEnv(env);
   });
 
@@ -210,9 +193,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
 
     // SmartWalletService.deploy() simulates the factory tx and extracts the
     // deployed contract address from the simulation return value.
-    const mockProvider = { rpId: 'localhost' } as any;
     const service = new SmartWalletService(
-      mockProvider,
+      { relyingPartyId: 'localhost' },
       cfg.rpcUrl,
       cfg.factoryContractId,
       Networks.TESTNET,
@@ -238,9 +220,13 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     const cred = await registerCredential(env.page, 'localhost');
     const publicKey65Bytes = fromBase64(cred.publicKeyBase64);
 
-    // Install the browser-delegation mock so service.sign() uses the virtual
-    // authenticator instead of real navigator.credentials.get().
-    installBrowserCredentialsMock(env, cred.credentialId, 'localhost');
+    // Inject a credential backend that delegates WebAuthn to the virtual
+    // authenticator running in the Playwright browser.
+    const credentialBackend = createBrowserCredentialBackend(
+      env,
+      cred.credentialId,
+      'localhost'
+    );
 
     // Also mock crypto.subtle.digest (available in Node >= 16 via globalThis,
     // but declare explicitly for environments where it isn't on global).
@@ -261,12 +247,12 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       cfg.networkPassphrase,
     );
 
-    const mockProvider = { rpId: 'localhost' } as any;
     const service = new SmartWalletService(
-      mockProvider,
+      { relyingPartyId: 'localhost' },
       cfg.rpcUrl,
       cfg.factoryContractId,
       Networks.TESTNET,
+      credentialBackend
     );
 
     const contractAddress = await service.deploy(publicKey65Bytes, factoryTx as any);
@@ -336,7 +322,11 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     const cred = await registerCredential(env.page, 'localhost');
     const publicKey65Bytes = fromBase64(cred.publicKeyBase64);
 
-    installBrowserCredentialsMock(env, cred.credentialId, 'localhost');
+    const credentialBackend = createBrowserCredentialBackend(
+      env,
+      cred.credentialId,
+      'localhost'
+    );
 
     if (typeof (global as any).crypto === 'undefined') {
       (global as any).crypto = require('crypto').webcrypto;
@@ -355,12 +345,12 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       cfg.networkPassphrase,
     );
 
-    const mockProvider = { rpId: 'localhost' } as any;
     const service = new SmartWalletService(
-      mockProvider,
+      { relyingPartyId: 'localhost' },
       cfg.rpcUrl,
       cfg.factoryContractId,
       Networks.TESTNET,
+      credentialBackend
     );
 
     // Deploy
