@@ -771,7 +771,7 @@ export class InvisibleWalletService {
 
   /**
    * Maps a Supabase row to InvisibleWallet.
-   * Note: encryptedPrivateKey is intentionally absent — column was dropped.
+   * Any legacy private-key fields are intentionally ignored.
    */
   private mapDatabaseToWallet(data: any): InvisibleWallet {
     return {
@@ -820,7 +820,9 @@ export class InvisibleWalletService {
       'password',
       'token',
       'privatekey',
+      'encryptedprivatekey',
       'encrypted_private_key',
+      '_deprecated_encrypted_private_key',
       'secret',
       'sessiontoken',
     ]);
