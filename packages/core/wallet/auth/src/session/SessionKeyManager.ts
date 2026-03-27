@@ -23,7 +23,7 @@ export interface IWebAuthnProvider {
 /**
  * The subset of SmartWalletService that SessionKeyManager needs.
  *
- * `addSigner` / `removeSigner` handle the on-chain registration and removal of
+ * `addSigner` / `removeSigner` handle on-chain registration and removal of
  * session keys (triggered by the admin passkey on creation/revocation).
  *
  * `signWithSessionKey` handles signing subsequent transactions with the

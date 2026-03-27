@@ -91,16 +91,18 @@ function mockTxHash(): Buffer {
 }
 
 function makeDependencies(overrides: {
-  rpId?:         string;
-  addSigner?:    jest.Mock;
-  removeSigner?: jest.Mock;
+  rpId?:                string;
+  addSigner?:           jest.Mock;
+  removeSigner?:        jest.Mock;
+  signWithSessionKey?:  jest.Mock;
 } = {}) {
   const webAuthnProvider: IWebAuthnProvider = {
     rpId: overrides.rpId ?? 'localhost',
   };
   const smartWalletService: ISmartWalletService = {
-    addSigner:    overrides.addSigner    ?? jest.fn(async () => {}),
-    removeSigner: overrides.removeSigner ?? jest.fn(async () => {}),
+    addSigner:           overrides.addSigner           ?? jest.fn(async () => 'MOCK_XDR'),
+    removeSigner:        overrides.removeSigner        ?? jest.fn(async () => 'MOCK_XDR'),
+    signWithSessionKey:  overrides.signWithSessionKey  ?? jest.fn(async () => 'MOCK_XDR'),
   };
   return { webAuthnProvider, smartWalletService };
 }
