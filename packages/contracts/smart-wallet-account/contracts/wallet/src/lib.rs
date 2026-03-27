@@ -6,13 +6,13 @@ use soroban_sdk::{
     Bytes, BytesN, Env, Vec,
 };
 
-use smart_wallet_account_common::{Signature, Signer, SignerKind, WalletDataKey, WalletError};
+use smart_wallet_account_common::{
+    AccountSignature, Signer, SignerKind, WalletDataKey, WalletError,
+};
 
-/// TTL constants (in ledgers). ~1 ledger ≈ 5 seconds on mainnet.
+/// TTL constants for admin signers (in ledgers). ~1 ledger ≈ 5 seconds.
 const ADMIN_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
-const ADMIN_TTL_EXTEND: u32 = 120_960; // ~7 days
-const SESSION_TTL_THRESHOLD: u32 = 8_640; // ~12 hours
-const SESSION_TTL_EXTEND: u32 = 17_280; // ~1 day
+const ADMIN_TTL_EXTEND: u32 = 120_960;   // ~7 days
 
 #[contract]
 pub struct SmartWallet;
@@ -26,30 +26,26 @@ impl SmartWallet {
     /// Called once by the factory right after deployment.
     /// Stores the first admin signer (the passkey used during registration).
     pub fn init(env: Env, credential_id: Bytes, public_key: BytesN<65>) -> Result<(), WalletError> {
-        // Guard against re-init.
         if env.storage().instance().has(&WalletDataKey::WalletAddress) {
             return Err(WalletError::AlreadyInitialized);
         }
 
-        // Validate uncompressed key prefix.
-        validate_public_key(&public_key)?;
+        validate_admin_public_key(&public_key)?;
 
-        // Store wallet's own address for self-auth checks.
         env.storage().instance().set(
             &WalletDataKey::WalletAddress,
             &env.current_contract_address(),
         );
 
-        // Persist the first admin signer.
         let signer = Signer {
-            public_key,
+            public_key: public_key.into(),
             kind: SignerKind::Admin,
+            ttl_ledgers: 0, // admin TTL is managed by constants
         };
         env.storage()
             .persistent()
             .set(&WalletDataKey::Signer(credential_id.clone()), &signer);
 
-        // Extend TTLs.
         env.storage().persistent().extend_ttl(
             &WalletDataKey::Signer(credential_id),
             ADMIN_TTL_THRESHOLD,
@@ -59,7 +55,6 @@ impl SmartWallet {
             .instance()
             .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
 
-        // Initialize admin signer count.
         env.storage()
             .instance()
             .set(&WalletDataKey::AdminSignerCount, &1u32);
@@ -71,15 +66,15 @@ impl SmartWallet {
     //  Signer management (requires wallet self-auth)
     // ────────────────────────────────────────────────────────
 
-    /// Add a new admin signer. Must be called via `require_auth` on the
-    /// wallet address itself (which invokes `__check_auth` under the hood).
+    /// Add a new admin signer (secp256r1 / P-256 passkey).
+    /// Requires wallet self-auth (`require_auth` → `__check_auth`).
     pub fn add_signer(
         env: Env,
         credential_id: Bytes,
         public_key: BytesN<65>,
     ) -> Result<(), WalletError> {
         env.current_contract_address().require_auth();
-        validate_public_key(&public_key)?;
+        validate_admin_public_key(&public_key)?;
 
         let key = WalletDataKey::Signer(credential_id.clone());
         if env.storage().persistent().has(&key) || env.storage().temporary().has(&key) {
@@ -87,15 +82,15 @@ impl SmartWallet {
         }
 
         let signer = Signer {
-            public_key,
+            public_key: public_key.into(),
             kind: SignerKind::Admin,
+            ttl_ledgers: 0,
         };
         env.storage().persistent().set(&key, &signer);
         env.storage()
             .persistent()
             .extend_ttl(&key, ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
 
-        // Increment admin signer count.
         let count: u32 = env
             .storage()
             .instance()
@@ -108,45 +103,69 @@ impl SmartWallet {
         Ok(())
     }
 
-    /// Add a session (temporary) signer with short TTL. Requires wallet self-auth.
+    /// Register a short-lived Ed25519 session key with a caller-specified TTL.
+    ///
+    /// Session keys let callers authorise multiple Soroban transactions within a
+    /// time window without repeated biometric prompts — ideal for trading bots,
+    /// DCA strategies, or any high-frequency DeFi flow.
+    ///
+    /// ## On-chain TTL semantics
+    /// The entry is written to **Soroban temporary storage**, which auto-expires
+    /// when its TTL reaches 0.  The TTL is set to `ttl_ledgers` on creation and
+    /// renewed by `extend_signer_ttl` after each successful `__check_auth` call,
+    /// capped at the original `ttl_ledgers` value.  No manual revocation is
+    /// needed after expiry — the entry simply disappears, and any subsequent tx
+    /// that references this credential ID will fail with `SignerNotFound`.
+    ///
+    /// ## Key format
+    /// `public_key` must be the 32-byte raw Ed25519 public key (decoded from the
+    /// Stellar G-address via `StrKey.decodeEd25519PublicKey`).
+    ///
+    /// Requires wallet self-auth (`require_auth` → `__check_auth` with an admin
+    /// passkey) so only the wallet owner can register new session keys.
     pub fn add_session_signer(
         env: Env,
         credential_id: Bytes,
-        public_key: BytesN<65>,
+        public_key: BytesN<32>,
+        ttl_ledgers: u32,
     ) -> Result<(), WalletError> {
         env.current_contract_address().require_auth();
-        validate_public_key(&public_key)?;
+
+        if ttl_ledgers == 0 {
+            return Err(WalletError::NotAuthorized);
+        }
 
         let key = WalletDataKey::Signer(credential_id.clone());
 
-        // Check both storages to prevent duplicates.
         if env.storage().persistent().has(&key) || env.storage().temporary().has(&key) {
             return Err(WalletError::SignerAlreadyExists);
         }
 
         let signer = Signer {
-            public_key,
+            public_key: public_key.into(),
             kind: SignerKind::Session,
+            ttl_ledgers,
         };
         env.storage().temporary().set(&key, &signer);
+        // Use the caller-provided TTL for both the threshold and extend so the
+        // entry lives exactly as long as requested.
         env.storage()
             .temporary()
-            .extend_ttl(&key, SESSION_TTL_THRESHOLD, SESSION_TTL_EXTEND);
+            .extend_ttl(&key, ttl_ledgers / 2, ttl_ledgers);
 
         Ok(())
     }
 
     /// Remove a signer by credential ID. Requires wallet self-auth.
     ///
-    /// Prevents removing the last admin signer to avoid permanently
-    /// locking the wallet.
+    /// Prevents removing the last admin signer to avoid permanently locking
+    /// the wallet.
     pub fn remove_signer(env: Env, credential_id: Bytes) -> Result<(), WalletError> {
         env.current_contract_address().require_auth();
 
         let key = WalletDataKey::Signer(credential_id);
 
         if env.storage().persistent().has(&key) {
-            // Check if this is an admin signer.
             let signer: Signer = env.storage().persistent().get(&key).unwrap();
             if matches!(signer.kind, SignerKind::Admin) {
                 let count: u32 = env
@@ -179,42 +198,72 @@ impl SmartWallet {
 
 #[contractimpl]
 impl CustomAccountInterface for SmartWallet {
-    type Signature = Signature;
+    type Signature = AccountSignature;
     type Error = WalletError;
 
     #[allow(non_snake_case)]
     fn __check_auth(
         env: Env,
         signature_payload: Hash<32>,
-        signature: Signature,
+        signature: AccountSignature,
         _auth_contexts: Vec<Context>,
     ) -> Result<(), WalletError> {
-        // Resolve signer
-        let signer = get_signer(&env, &signature.id)?;
+        match signature {
+            // ── Admin passkey path (secp256r1 / P-256 / WebAuthn) ─────────────
+            AccountSignature::WebAuthn(sig) => {
+                let signer = get_signer(&env, &sig.id)?;
 
-        // Verify challenge
-        verify_challenge(&env, &signature.client_data_json, &signature_payload)?;
+                // Verify the WebAuthn challenge encodes exactly `signature_payload`.
+                verify_challenge(&env, &sig.client_data_json, &signature_payload)?;
 
-        // Build signed message
-        // The authenticator signs: SHA-256(authData ‖ SHA-256(clientDataJSON))
-        let client_data_hash = env.crypto().sha256(&signature.client_data_json);
+                // Authenticator-signed message: SHA-256(authData ‖ SHA-256(clientDataJSON))
+                let client_data_hash = env.crypto().sha256(&sig.client_data_json);
+                let mut signed_data = Bytes::new(&env);
+                signed_data.append(&sig.authenticator_data);
+                signed_data.append(&Bytes::from_slice(
+                    &env,
+                    client_data_hash.to_array().as_slice(),
+                ));
+                let message_hash = env.crypto().sha256(&signed_data);
 
-        let mut signed_data = Bytes::new(&env);
-        signed_data.append(&signature.authenticator_data);
-        signed_data.append(&Bytes::from_slice(
-            &env,
-            client_data_hash.to_array().as_slice(),
-        ));
+                // Verify P-256 signature; panics on failure (Soroban host behaviour).
+                let pk: BytesN<65> = signer
+                    .public_key
+                    .try_into()
+                    .map_err(|_| WalletError::InvalidPublicKey)?;
+                env.crypto()
+                    .secp256r1_verify(&pk, &message_hash, &sig.signature);
 
-        let message_hash = env.crypto().sha256(&signed_data);
+                extend_signer_ttl(&env, &sig.id, &signer.kind, signer.ttl_ledgers);
+            }
 
-        // Verify secp256r1 signature
-        // Protocol 21 host function: verify_sig_ecdsa_secp256r1
-        env.crypto()
-            .secp256r1_verify(&signer.public_key, &message_hash, &signature.signature);
+            // ── Session key path (Ed25519) ─────────────────────────────────────
+            //
+            // Session keys sign the raw 32-byte `signature_payload` (the Soroban
+            // auth-entry hash) with Ed25519 — no WebAuthn round-trip needed.
+            // Only `SignerKind::Session` entries may use this path; an admin
+            // credential presented here is rejected with `NotAuthorized`.
+            AccountSignature::SessionKey(sig) => {
+                let signer = get_signer(&env, &sig.id)?;
 
-        // Extend the signer TTL on successful auth.
-        extend_signer_ttl(&env, &signature.id, &signer.kind);
+                // Session-only check — prevent admin keys from bypassing challenge
+                // verification by sending a bare Ed25519 signature.
+                if !matches!(signer.kind, SignerKind::Session) {
+                    return Err(WalletError::NotAuthorized);
+                }
+
+                // Verify Ed25519 signature over the 32-byte auth-entry hash.
+                let pk: BytesN<32> = signer
+                    .public_key
+                    .try_into()
+                    .map_err(|_| WalletError::InvalidPublicKey)?;
+                let payload_bytes =
+                    Bytes::from_slice(&env, signature_payload.to_array().as_slice());
+                env.crypto().ed25519_verify(&pk, &payload_bytes, &sig.signature);
+
+                extend_signer_ttl(&env, &sig.id, &signer.kind, signer.ttl_ledgers);
+            }
+        }
 
         Ok(())
     }
@@ -224,7 +273,7 @@ impl CustomAccountInterface for SmartWallet {
 //  Internal helpers
 // ────────────────────────────────────────────────────────
 
-/// Resolve a signer from persistent or temporary storage.
+/// Resolve a signer from persistent (admin) or temporary (session) storage.
 fn get_signer(env: &Env, credential_id: &Bytes) -> Result<Signer, WalletError> {
     let key = WalletDataKey::Signer(credential_id.clone());
 
@@ -238,7 +287,13 @@ fn get_signer(env: &Env, credential_id: &Bytes) -> Result<Signer, WalletError> {
     Err(WalletError::SignerNotFound)
 }
 
-fn extend_signer_ttl(env: &Env, credential_id: &Bytes, kind: &SignerKind) {
+/// Extend a signer's TTL after a successful `__check_auth`.
+///
+/// - Admin signers: always use the fixed constants.
+/// - Session signers: extend by the original `ttl_ledgers` so the key stays
+///   alive as long as it is actively used, capped at the original lifetime.
+///   The threshold is `ttl_ledgers / 2` (renew when half-way through).
+fn extend_signer_ttl(env: &Env, credential_id: &Bytes, kind: &SignerKind, ttl_ledgers: u32) {
     let key = WalletDataKey::Signer(credential_id.clone());
     match kind {
         SignerKind::Admin => {
@@ -250,14 +305,19 @@ fn extend_signer_ttl(env: &Env, credential_id: &Bytes, kind: &SignerKind) {
                 .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
         }
         SignerKind::Session => {
-            env.storage()
-                .temporary()
-                .extend_ttl(&key, SESSION_TTL_THRESHOLD, SESSION_TTL_EXTEND);
+            if ttl_ledgers > 0 {
+                let threshold = ttl_ledgers / 2;
+                env.storage()
+                    .temporary()
+                    .extend_ttl(&key, threshold, ttl_ledgers);
+            }
         }
     }
 }
 
-fn validate_public_key(public_key: &BytesN<65>) -> Result<(), WalletError> {
+/// Validate an admin (P-256) public key: must be 65 bytes starting with `0x04`
+/// (SEC-1 uncompressed point).
+fn validate_admin_public_key(public_key: &BytesN<65>) -> Result<(), WalletError> {
     let arr = public_key.to_array();
     if arr[0] != 0x04 {
         return Err(WalletError::InvalidPublicKey);
@@ -265,6 +325,8 @@ fn validate_public_key(public_key: &BytesN<65>) -> Result<(), WalletError> {
     Ok(())
 }
 
+/// Scan `client_data_json` for the `"challenge":"<base64url>"` field and
+/// confirm it matches `base64url(signature_payload)`.
 fn verify_challenge(
     env: &Env,
     client_data_json: &Bytes,
@@ -274,7 +336,6 @@ fn verify_challenge(
     let json_len = client_data_json.len();
     let needle_len = needle.len() as u32;
 
-    // Search for the challenge key in the JSON bytes.
     let mut challenge_start: Option<u32> = None;
     if json_len >= needle_len {
         for i in 0..=(json_len - needle_len) {
@@ -294,7 +355,6 @@ fn verify_challenge(
 
     let start = challenge_start.ok_or(WalletError::InvalidClientData)?;
 
-    // Find the closing quote.
     let mut challenge_end: Option<u32> = None;
     for i in start..json_len {
         if client_data_json.get(i).unwrap() == b'"' {
@@ -304,10 +364,7 @@ fn verify_challenge(
     }
     let end = challenge_end.ok_or(WalletError::InvalidClientData)?;
 
-    // Extract the challenge bytes from clientDataJSON.
     let challenge_bytes = client_data_json.slice(start..end);
-
-    // Encode signature_payload as base64url (no padding).
     let expected = base64url_encode(env, signature_payload.to_array().as_slice());
 
     if challenge_bytes != expected {
@@ -318,7 +375,8 @@ fn verify_challenge(
 }
 
 pub fn base64url_encode(env: &Env, input: &[u8]) -> Bytes {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = Bytes::new(env);
 
