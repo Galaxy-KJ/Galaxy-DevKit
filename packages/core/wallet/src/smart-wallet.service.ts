@@ -48,6 +48,112 @@ function base64UrlToUint8Array(base64url: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
+// ScVal builders for AccountSignature enum
+// ---------------------------------------------------------------------------
+//
+// The Soroban `AccountSignature` contracttype enum is encoded as a single-entry
+// ScMap: { key: scvSymbol("VariantName"), val: <variant payload> }.
+//
+// AccountSignature::WebAuthn(Signature)    → {WebAuthn:   <Signature map>}
+// AccountSignature::SessionKey(SessionSig) → {SessionKey: <SessionSig map>}
+
+/**
+ * Build the ScVal for `AccountSignature::WebAuthn(sig)`.
+ * Wraps the four WebAuthn fields (authenticator_data, client_data_json, id,
+ * signature) in the discriminated-union encoding expected by __check_auth.
+ */
+function buildWebAuthnSignatureScVal(
+  authenticatorData: Uint8Array,
+  clientDataJSON: Uint8Array,
+  credentialIdBytes: Uint8Array,
+  compactSig: Uint8Array
+): xdr.ScVal {
+  const innerSig = xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("authenticator_data"),
+      val: xdr.ScVal.scvBytes(Buffer.from(authenticatorData)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("client_data_json"),
+      val: xdr.ScVal.scvBytes(Buffer.from(clientDataJSON)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("id"),
+      val: xdr.ScVal.scvBytes(Buffer.from(credentialIdBytes)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("signature"),
+      val: xdr.ScVal.scvBytes(Buffer.from(compactSig)),
+    }),
+  ]);
+
+  // Wrap in AccountSignature::WebAuthn enum variant
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("WebAuthn"),
+      val: innerSig,
+    }),
+  ]);
+}
+
+/**
+ * Build the ScVal for `AccountSignature::SessionKey(sig)`.
+ * Wraps the credential ID and 64-byte Ed25519 signature in the
+ * discriminated-union encoding expected by __check_auth.
+ */
+function buildSessionKeySignatureScVal(
+  credentialIdBytes: Uint8Array,
+  ed25519Sig: Uint8Array
+): xdr.ScVal {
+  const innerSig = xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("id"),
+      val: xdr.ScVal.scvBytes(Buffer.from(credentialIdBytes)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("signature"),
+      val: xdr.ScVal.scvBytes(Buffer.from(ed25519Sig)),
+    }),
+  ]);
+
+  // Wrap in AccountSignature::SessionKey enum variant
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("SessionKey"),
+      val: innerSig,
+    }),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper — attach a signature ScVal to a Soroban auth entry
+// ---------------------------------------------------------------------------
+
+function attachSignatureToAuthEntry(
+  authEntry: xdr.SorobanAuthorizationEntry,
+  contractAddress: string,
+  signatureScVal: xdr.ScVal
+): void {
+  authEntry.credentials(
+    xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: xdr.ScAddress.scAddressTypeContract(
+          Buffer.from(
+            StrKey.decodeContract(contractAddress)
+          ) as unknown as xdr.Hash
+        ),
+        nonce: authEntry.credentials().address().nonce(),
+        signatureExpirationLedger: authEntry
+          .credentials()
+          .address()
+          .signatureExpirationLedger(),
+        signature: signatureScVal,
+      })
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
 // addSigner params type
 // ---------------------------------------------------------------------------
 
@@ -115,7 +221,8 @@ export class SmartWalletService {
    *     already prompted the user), use it directly.
    *     Otherwise, derive the hash as a WebAuthn challenge and call
    *     `navigator.credentials.get()` — same pattern as `sign()`.
-   *  4. Attach the compact signature to the auth entry.
+   *  4. Attach the compact `AccountSignature::WebAuthn(...)` signature to the
+   *     auth entry.
    *  5. Assemble and return the fee-less XDR for the sponsor.
    *
    * The TTL is stored in Soroban temporary storage so the signer auto-expires
@@ -158,7 +265,6 @@ export class SmartWalletService {
 
     const { sequence } = await this.server.getLatestLedger();
 
-    // Dummy source account for simulation — the fee sponsor replaces it.
     const sourceAccount = {
       accountId: () => walletAddress,
       sequenceNumber: () => String(BigInt(sequence) + 1n),
@@ -167,9 +273,6 @@ export class SmartWalletService {
 
     const contract = new Contract(walletAddress);
 
-    // Derive a base64url credentialId bytes placeholder for the on-chain call.
-    // When coming from SessionKeyManager the credentialId may not be passed
-    // (the assertion carries it), so we use a zero-bytes sentinel in that path.
     const credentialBytes = credentialId
       ? Buffer.from(base64UrlToUint8Array(credentialId))
       : Buffer.alloc(0);
@@ -216,13 +319,10 @@ export class SmartWalletService {
     let resolvedCredentialId: string;
 
     if (webAuthnAssertion) {
-      // Caller (SessionKeyManager) already has the assertion — use it directly.
       assertionResponse =
         webAuthnAssertion.response as AuthenticatorAssertionResponse;
       resolvedCredentialId = credentialId ?? "";
     } else {
-      // No pre-obtained assertion: derive challenge from auth entry hash and
-      // prompt the user via navigator.credentials.get() — same as sign().
       const authEntryBytes = authEntry.toXDR();
       const authEntryArrayBuffer = authEntryBytes.buffer.slice(
         authEntryBytes.byteOffset,
@@ -261,54 +361,25 @@ export class SmartWalletService {
     }
 
     // ------------------------------------------------------------------
-    // 4. Attach the compact signature to the auth entry
+    // 4. Build AccountSignature::WebAuthn ScVal and attach to auth entry
     // ------------------------------------------------------------------
 
     const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
     const clientDataJSON = new Uint8Array(assertionResponse.clientDataJSON);
     const compactSig = convertSignatureDERtoCompact(assertionResponse.signature);
 
-    const signerSignature = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("authenticator_data"),
-        val: xdr.ScVal.scvBytes(Buffer.from(authenticatorData)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("client_data_json"),
-        val: xdr.ScVal.scvBytes(Buffer.from(clientDataJSON)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("id"),
-        val: xdr.ScVal.scvBytes(
-          resolvedCredentialId
-            ? Buffer.from(base64UrlToUint8Array(resolvedCredentialId))
-            : Buffer.alloc(0)
-        ),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("signature"),
-        val: xdr.ScVal.scvBytes(Buffer.from(compactSig)),
-      }),
-    ]);
+    const credIdBytes = resolvedCredentialId
+      ? base64UrlToUint8Array(resolvedCredentialId)
+      : new Uint8Array(0);
 
-    authEntry.credentials(
-      xdr.SorobanCredentials.sorobanCredentialsAddress(
-        new xdr.SorobanAddressCredentials({
-          address: xdr.ScAddress.scAddressTypeContract(
-            Buffer.from(
-              StrKey.decodeContract(walletAddress)
-            ) as unknown as xdr.Hash
-          ),
-          nonce: authEntry.credentials().address().nonce(),
-          signatureExpirationLedger: authEntry
-            .credentials()
-            .address()
-            .signatureExpirationLedger(),
-          signature: signerSignature,
-        })
-      )
+    const signerSignature = buildWebAuthnSignatureScVal(
+      authenticatorData,
+      clientDataJSON,
+      credIdBytes,
+      compactSig
     );
 
+    attachSignatureToAuthEntry(authEntry, walletAddress, signerSignature);
     simResult.result.auth[0] = authEntry;
 
     // ------------------------------------------------------------------
@@ -320,12 +391,15 @@ export class SmartWalletService {
   }
 
   // -------------------------------------------------------------------------
-  // sign()  (unchanged from original)
+  // sign()
   // -------------------------------------------------------------------------
 
   /**
+   * Signs a Soroban transaction with a WebAuthn passkey (admin signer path).
+   *
    * Simulates the tx, uses the auth entry hash as the WebAuthn challenge,
-   * attaches the passkey signature, and returns fee-less XDR for the sponsor.
+   * attaches an `AccountSignature::WebAuthn(...)` signature, and returns
+   * fee-less XDR for the sponsor.
    */
   async sign(
     contractAddress: string,
@@ -382,45 +456,14 @@ export class SmartWalletService {
     const clientDataJSON = new Uint8Array(assertionResponse.clientDataJSON);
     const compactSig = convertSignatureDERtoCompact(assertionResponse.signature);
 
-    const signerSignature = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("authenticator_data"),
-        val: xdr.ScVal.scvBytes(Buffer.from(authenticatorData)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("client_data_json"),
-        val: xdr.ScVal.scvBytes(Buffer.from(clientDataJSON)),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("id"),
-        val: xdr.ScVal.scvBytes(
-          Buffer.from(base64UrlToUint8Array(credentialId))
-        ),
-      }),
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol("signature"),
-        val: xdr.ScVal.scvBytes(Buffer.from(compactSig)),
-      }),
-    ]);
-
-    authEntry.credentials(
-      xdr.SorobanCredentials.sorobanCredentialsAddress(
-        new xdr.SorobanAddressCredentials({
-          address: xdr.ScAddress.scAddressTypeContract(
-            Buffer.from(
-              StrKey.decodeContract(contractAddress)
-            ) as unknown as xdr.Hash
-          ),
-          nonce: authEntry.credentials().address().nonce(),
-          signatureExpirationLedger: authEntry
-            .credentials()
-            .address()
-            .signatureExpirationLedger(),
-          signature: signerSignature,
-        })
-      )
+    const signerSignature = buildWebAuthnSignatureScVal(
+      authenticatorData,
+      clientDataJSON,
+      base64UrlToUint8Array(credentialId),
+      compactSig
     );
 
+    attachSignatureToAuthEntry(authEntry, contractAddress, signerSignature);
     simResult.result.auth[0] = authEntry;
 
     const signedTx = assembleTransaction(sorobanTx, simResult).build();
@@ -428,7 +471,92 @@ export class SmartWalletService {
   }
 
   // -------------------------------------------------------------------------
-  // deploy()  (unchanged from original)
+  // signWithSessionKey()
+  // -------------------------------------------------------------------------
+
+  /**
+   * Signs a Soroban transaction using an active Ed25519 session key.
+   *
+   * This is the session-key counterpart of `sign()`.  Instead of prompting the
+   * user with a biometric gesture, it accepts a `signFn` callback that signs
+   * the 32-byte auth-entry hash with the in-memory session keypair.
+   *
+   * The typical caller is `SessionKeyManager.signTransaction()`, which holds
+   * the private key in memory and provides it as a synchronous sign callback.
+   *
+   * ## Flow
+   *  1. Simulate `sorobanTx` to obtain the auth entry (populated with nonce +
+   *     expiration).
+   *  2. Compute `authEntryHash = SHA-256(authEntry.toXDR())` — this is the
+   *     32-byte value the contract will receive as `signature_payload`.
+   *  3. Call `signFn(authEntryHash)` → 64-byte Ed25519 signature.
+   *  4. Build `AccountSignature::SessionKey({id, signature})` ScVal.
+   *  5. Attach to auth entry and return assembled fee-less XDR.
+   *
+   * @param contractAddress  Bech32 address of the smart wallet contract.
+   * @param sorobanTx        The Soroban invocation transaction to sign.
+   * @param credentialId     Base64-encoded credential ID of the session key.
+   * @param signFn           Callback: receives 32-byte hash, returns 64-byte Ed25519 sig.
+   * @returns                Signed fee-less Soroban XDR (base64) for the fee sponsor.
+   */
+  async signWithSessionKey(
+    contractAddress: string,
+    sorobanTx: Transaction,
+    credentialId: string,
+    signFn: (authEntryHash: Buffer) => Buffer
+  ): Promise<string> {
+    if (!contractAddress) {
+      throw new Error("signWithSessionKey: contractAddress is required");
+    }
+    if (!credentialId) {
+      throw new Error("signWithSessionKey: credentialId is required");
+    }
+
+    // 1. Simulate to get the auth entry
+    const simResult = await this.server.simulateTransaction(sorobanTx);
+
+    if (Api.isSimulationError(simResult)) {
+      throw new Error(`signWithSessionKey simulation failed: ${simResult.error}`);
+    }
+
+    if (!simResult.result?.auth?.length) {
+      throw new Error("signWithSessionKey simulation returned no auth entries.");
+    }
+
+    const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+
+    // 2. Compute the 32-byte auth-entry hash (= signature_payload in __check_auth)
+    const authEntryBytes = authEntry.toXDR();
+    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
+      authEntryBytes.byteOffset,
+      authEntryBytes.byteOffset + authEntryBytes.byteLength
+    ) as ArrayBuffer;
+
+    const authEntryHash = Buffer.from(
+      await crypto.subtle.digest("SHA-256", authEntryArrayBuffer)
+    );
+
+    // 3. Invoke the caller's sign callback with the hash
+    const ed25519Sig = signFn(authEntryHash);
+
+    if (!ed25519Sig || ed25519Sig.byteLength !== 64) {
+      throw new Error("signWithSessionKey: signFn must return a 64-byte Ed25519 signature");
+    }
+
+    // 4. Build AccountSignature::SessionKey ScVal
+    const credentialIdBytes = base64UrlToUint8Array(credentialId);
+    const signerSignature = buildSessionKeySignatureScVal(credentialIdBytes, ed25519Sig);
+
+    // 5. Attach to auth entry and assemble XDR
+    attachSignatureToAuthEntry(authEntry, contractAddress, signerSignature);
+    simResult.result.auth[0] = authEntry;
+
+    const signedTx = assembleTransaction(sorobanTx, simResult).build();
+    return signedTx.toEnvelope().toXDR("base64");
+  }
+
+  // -------------------------------------------------------------------------
+  // deploy()
   // -------------------------------------------------------------------------
 
   /**
