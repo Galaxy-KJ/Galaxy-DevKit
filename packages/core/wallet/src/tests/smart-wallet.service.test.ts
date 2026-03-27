@@ -1,4 +1,4 @@
-import { SmartWalletService, ttlSecondsToLedgers } from "../smart-wallet.service";
+import { SmartWalletService, ttlSecondsToLedgers, RemoveSignerParams } from "../smart-wallet.service";
 import { WebAuthNProvider } from "../../auth/src/providers/WebAuthNProvider";
 import { Transaction, xdr } from "@stellar/stellar-sdk";
 import { Api } from "@stellar/stellar-sdk/rpc";
@@ -102,11 +102,16 @@ function makeSimResult(authEntry: xdr.SorobanAuthorizationEntry) {
 
 function makeAssertion(): PublicKeyCredential {
   return {
+    // base64url of "test-credential-id" — required by removeSigner
+    id: Buffer.from("test-credential-id").toString("base64"),
+    rawId: new ArrayBuffer(18),
+    type: "public-key",
     response: {
       authenticatorData: new ArrayBuffer(37),
       clientDataJSON: new ArrayBuffer(100),
       signature: new ArrayBuffer(72),
     },
+    getClientExtensionResults: () => ({}),
   } as unknown as PublicKeyCredential;
 }
 
@@ -540,6 +545,287 @@ describe("SmartWalletService", () => {
 
       await service.deploy(publicKey, factoryTx);
       expect(mockServer.simulateTransaction).toHaveBeenCalledWith(factoryTx);
+    });
+  });
+
+  // =========================================================================
+  // removeSigner()
+  // =========================================================================
+
+  describe("removeSigner()", () => {
+    function setupHappyPath() {
+      const authEntry = makeAuthEntry();
+      mockServer.simulateTransaction.mockResolvedValue(makeSimResult(authEntry));
+      return authEntry;
+    }
+
+    const baseParams = (): RemoveSignerParams => ({
+      walletAddress: MOCK_CONTRACT_ADDRESS,
+      signerPublicKey: MOCK_SESSION_PUBLIC_KEY,
+      webAuthnAssertion: makeAssertion(),
+    });
+
+    // ── Happy path ────────────────────────────────────────────────────────────
+
+    it("returns a non-empty XDR string", async () => {
+      setupHappyPath();
+      const result = await service.removeSigner(baseParams());
+      expect(typeof result).toBe("string");
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("calls simulateTransaction once", async () => {
+      setupHappyPath();
+      await service.removeSigner(baseParams());
+      expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls getLatestLedger to obtain a valid sequence", async () => {
+      setupHappyPath();
+      await service.removeSigner(baseParams());
+      expect(mockServer.getLatestLedger).toHaveBeenCalledTimes(1);
+    });
+
+    it("invokes remove_session_signer on the contract", async () => {
+      setupHappyPath();
+      const { Contract } = jest.requireMock("@stellar/stellar-sdk");
+      const instance = new Contract();
+
+      await service.removeSigner(baseParams());
+
+      expect(instance.call).toHaveBeenCalledWith(
+        "remove_session_signer",
+        expect.anything(), // credential_id bytes
+        expect.anything()  // session_public_key bytes
+      );
+    });
+
+    it("decodes the session G-address to raw Ed25519 bytes", async () => {
+      setupHappyPath();
+      const { StrKey } = jest.requireMock("@stellar/stellar-sdk");
+
+      await service.removeSigner(baseParams());
+
+      expect(StrKey.decodeEd25519PublicKey).toHaveBeenCalledWith(
+        MOCK_SESSION_PUBLIC_KEY
+      );
+    });
+
+    it("uses the pre-obtained WebAuthn assertion without calling credentials.get()", async () => {
+      setupHappyPath();
+      await service.removeSigner(baseParams());
+      expect(mockCredentialsGet).not.toHaveBeenCalled();
+    });
+
+    it("attaches the auth entry signature and assembles the tx", async () => {
+      const authEntry = setupHappyPath();
+      const { assembleTransaction } = jest.requireMock("@stellar/stellar-sdk/rpc");
+
+      await service.removeSigner(baseParams());
+
+      expect(authEntry.credentials).toHaveBeenCalled();
+      expect(assembleTransaction).toHaveBeenCalled();
+    });
+
+    // ── Input validation ──────────────────────────────────────────────────────
+
+    it("throws if walletAddress is empty", async () => {
+      await expect(
+        service.removeSigner({ ...baseParams(), walletAddress: "" })
+      ).rejects.toThrow("walletAddress is required");
+    });
+
+    it("throws if signerPublicKey is empty", async () => {
+      await expect(
+        service.removeSigner({ ...baseParams(), signerPublicKey: "" })
+      ).rejects.toThrow("signerPublicKey is required");
+    });
+
+    it("throws if webAuthnAssertion is missing", async () => {
+      await expect(
+        service.removeSigner({
+          ...baseParams(),
+          webAuthnAssertion: undefined as unknown as PublicKeyCredential,
+        })
+      ).rejects.toThrow("webAuthnAssertion is required");
+    });
+
+    // ── Simulation errors ─────────────────────────────────────────────────────
+
+    it("throws if simulation returns an error", async () => {
+      jest.spyOn(Api, "isSimulationError").mockReturnValue(true);
+      mockServer.simulateTransaction.mockResolvedValue({ error: "contract trap" });
+
+      await expect(service.removeSigner(baseParams())).rejects.toThrow(
+        "removeSigner simulation failed"
+      );
+    });
+
+    it("throws if simulation returns no auth entries", async () => {
+      mockServer.simulateTransaction.mockResolvedValue({ result: { auth: [] } });
+
+      await expect(service.removeSigner(baseParams())).rejects.toThrow(
+        "removeSigner simulation returned no auth entries"
+      );
+    });
+  });
+
+  // =========================================================================
+  // signWithSessionKey()
+  // =========================================================================
+
+  describe("signWithSessionKey()", () => {
+    /** Returns a 64-byte Ed25519 signature stub */
+    const mockSignFn = jest.fn((_hash: Buffer) =>
+      Buffer.alloc(64, 0xed)
+    );
+
+    function setupHappyPath() {
+      const authEntry = makeAuthEntry();
+      mockServer.simulateTransaction.mockResolvedValue(makeSimResult(authEntry));
+      return authEntry;
+    }
+
+    beforeEach(() => {
+      mockSignFn.mockClear();
+    });
+
+    // ── Happy path ────────────────────────────────────────────────────────────
+
+    it("returns a non-empty XDR string", async () => {
+      setupHappyPath();
+      const result = await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        mockSignFn
+      );
+      expect(typeof result).toBe("string");
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("calls simulateTransaction with the provided transaction", async () => {
+      setupHappyPath();
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+      );
+      expect(mockServer.simulateTransaction).toHaveBeenCalledWith(sorobanTx);
+    });
+
+    it("calls signFn with a 32-byte auth-entry hash", async () => {
+      setupHappyPath();
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+      );
+      expect(mockSignFn).toHaveBeenCalledTimes(1);
+      const hashArg: Buffer = mockSignFn.mock.calls[0][0];
+      expect(Buffer.isBuffer(hashArg)).toBe(true);
+      expect(hashArg.byteLength).toBe(32);
+    });
+
+    it("does NOT call navigator.credentials.get() (no biometric prompt)", async () => {
+      setupHappyPath();
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+      );
+      expect(mockCredentialsGet).not.toHaveBeenCalled();
+    });
+
+    it("attaches the session-key signature and assembles the tx", async () => {
+      const authEntry = setupHappyPath();
+      const { assembleTransaction } = jest.requireMock("@stellar/stellar-sdk/rpc");
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+      );
+
+      expect(authEntry.credentials).toHaveBeenCalled();
+      expect(assembleTransaction).toHaveBeenCalled();
+    });
+
+    // ── Input validation ──────────────────────────────────────────────────────
+
+    it("throws if contractAddress is empty", async () => {
+      await expect(
+        service.signWithSessionKey("", sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn)
+      ).rejects.toThrow("contractAddress is required");
+    });
+
+    it("throws if credentialId is empty", async () => {
+      await expect(
+        service.signWithSessionKey(MOCK_CONTRACT_ADDRESS, sorobanTx, "", mockSignFn)
+      ).rejects.toThrow("credentialId is required");
+    });
+
+    it("throws if signFn returns fewer than 64 bytes", async () => {
+      setupHappyPath();
+      const shortSignFn = jest.fn((_h: Buffer) => Buffer.alloc(32, 0xed));
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, shortSignFn
+        )
+      ).rejects.toThrow("64-byte Ed25519 signature");
+    });
+
+    it("throws if signFn returns more than 64 bytes", async () => {
+      setupHappyPath();
+      const longSignFn = jest.fn((_h: Buffer) => Buffer.alloc(65, 0xed));
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, longSignFn
+        )
+      ).rejects.toThrow("64-byte Ed25519 signature");
+    });
+
+    // ── Simulation errors ─────────────────────────────────────────────────────
+
+    it("throws if simulation returns an error", async () => {
+      jest.spyOn(Api, "isSimulationError").mockReturnValue(true);
+      mockServer.simulateTransaction.mockResolvedValue({
+        error: "insufficient fee",
+      });
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+        )
+      ).rejects.toThrow("signWithSessionKey simulation failed");
+    });
+
+    it("throws if simulation returns no auth entries", async () => {
+      mockServer.simulateTransaction.mockResolvedValue({ result: { auth: [] } });
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+        )
+      ).rejects.toThrow("signWithSessionKey simulation returned no auth entries");
+    });
+
+    it("does not call signFn when simulation fails", async () => {
+      jest.spyOn(Api, "isSimulationError").mockReturnValue(true);
+      mockServer.simulateTransaction.mockResolvedValue({ error: "trap" });
+
+      await service
+        .signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+        )
+        .catch(() => {});
+
+      expect(mockSignFn).not.toHaveBeenCalled();
+    });
+
+    it("calls assembleTransaction after attaching the signature", async () => {
+      setupHappyPath();
+      const { assembleTransaction } = jest.requireMock("@stellar/stellar-sdk/rpc");
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS, sorobanTx, MOCK_CREDENTIAL_ID, mockSignFn
+      );
+
+      expect(assembleTransaction).toHaveBeenCalled();
     });
   });
 });

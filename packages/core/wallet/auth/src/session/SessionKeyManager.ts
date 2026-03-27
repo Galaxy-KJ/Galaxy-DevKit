@@ -1,4 +1,5 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
+import type { Transaction } from '@stellar/stellar-sdk';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -22,10 +23,11 @@ export interface IWebAuthnProvider {
 /**
  * The subset of SmartWalletService that SessionKeyManager needs.
  *
- * Matches the AddSignerParams object-bag accepted by SmartWalletService.addSigner().
- * `webAuthnAssertion` is mandatory here because SessionKeyManager derives
- * the challenge from the operation payload and obtains the assertion itself,
- * then hands it off so SmartWalletService can attach it to the Soroban auth entry.
+ * `addSigner` / `removeSigner` handle on-chain registration and removal of
+ * session keys (triggered by the admin passkey on creation/revocation).
+ *
+ * `signWithSessionKey` handles signing subsequent transactions with the
+ * in-memory session key — no biometric prompt, just the Ed25519 callback.
  */
 export interface ISmartWalletService {
   addSigner(params: {
@@ -39,7 +41,21 @@ export interface ISmartWalletService {
     walletAddress: string;
     signerPublicKey: string;
     webAuthnAssertion: PublicKeyCredential;
-  }): Promise<void>;
+  }): Promise<string>;
+
+  /**
+   * Signs `sorobanTx` using the session key identified by `credentialId`.
+   *
+   * The service simulates the tx to obtain the auth-entry hash, calls
+   * `signFn` with that hash, builds the session-key signature ScVal, and
+   * returns the assembled fee-less XDR for the fee sponsor.
+   */
+  signWithSessionKey(
+    contractAddress: string,
+    sorobanTx: Transaction,
+    credentialId: string,
+    signFn: (authEntryHash: Buffer) => Buffer,
+  ): Promise<string>;
 }
 
 // ─── SessionKeyManager ────────────────────────────────────────────────────────
