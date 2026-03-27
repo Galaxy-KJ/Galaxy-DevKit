@@ -199,19 +199,24 @@ For more information, see the [complete documentation](docs/README.md).
 
 ## 📚 Documentation
 
-### Getting Started
-- [Quick Start Guide](docs/README.md) - Get started in 5 minutes
-- [Code Examples](docs/examples/) - Real-world examples
+### 🚀 Getting Started (Start Here!)
+- **[📖 Complete Getting Started Guide](docs/getting-started.md)** - Step-by-step tutorial from installation to first transaction (~30 min)
+- **[⚡ 5-Minute Quickstart](docs/quickstart.md)** - Fast track to your first smart wallet transaction
+- [Code Examples](docs/examples/) - Real-world sample implementations
 
-### Package Documentation
-- [DeFi Protocols](packages/core/defi-protocols/README.md) - DeFi integration guide
-- [Invisible Wallet](packages/core/invisible-wallet/README.md) - Wallet management
-- [Automation](packages/core/automation/README.md) - Automation engine
+### 📦 Package Documentation
+- [DeFi Protocols](packages/core/defi-protocols/README.md) - Integrate lending, borrowing, and swaps
+- [Invisible Wallet](packages/core/invisible-wallet/README.md) - Secure wallet management without private key exposure
+- [Automation Engine](packages/core/automation/README.md) - Build automated trading strategies
+- [Oracles](packages/core/oracles/README.md) - Real-time price feeds and data
 
-### Additional Resources
-- [System Architecture](docs/ARCHITECTURE.md) - Design and patterns
-- [Roadmap](docs/ROADMAP.md) - Development phases and progress
-- [GitHub Issues](https://github.com/galaxy-devkit/galaxy-devkit/issues) - Report bugs or request features
+### 🏗️ Additional Resources
+- [System Architecture](docs/ARCHITECTURE.md) - Design patterns and technical overview
+- [API Reference](docs/api/api-reference.md) - Complete API documentation
+- [Roadmap](docs/ROADMAP.md) - Development phases and upcoming features
+- [Security Guide](docs/guides/security.md) - Best practices and security recommendations
+- [GitHub Issues](https://github.com/Galaxy-KJ/Galaxy-DevKit/issues) - Report bugs or request features
+- [GitHub Discussions](https://github.com/Galaxy-KJ/Galaxy-DevKit/discussions) - Ask questions and share ideas
 
 ---
 
@@ -276,9 +281,10 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for d
 
 ## 🔗 Links
 
-- **GitHub**: https://github.com/galaxy-devkit/galaxy-devkit
+- **GitHub**: https://github.com/Galaxy-KJ/Galaxy-DevKit
 - **Stellar Documentation**: https://developers.stellar.org/
 - **Soroban Documentation**: https://soroban.stellar.org/
+- **Community Support**: https://discord.gg/galaxy-devkit
 
 ---
 
