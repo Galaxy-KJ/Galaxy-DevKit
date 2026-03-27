@@ -1,565 +1,141 @@
-# 🏗️ Galaxy DevKit Architecture
+# Galaxy DevKit Architecture Overview
 
-Comprehensive architecture documentation for Galaxy DevKit.
+This document maps the current Galaxy DevKit codebase to the Soroban smart wallet, session key, oracle, and DeFi aggregation flows that now exist in the repository.
 
-## 📋 Table of Contents
+## Scope
 
-- [System Overview](#-system-overview)
-- [Core Components](#-core-components)
-- [API Architecture](#-api-architecture)
-- [CLI Architecture](#-cli-architecture)
-- [Smart Contract Architecture](#-smart-contract-architecture)
-- [Database Architecture](#-database-architecture)
-- [Security Architecture](#-security-architecture)
-- [Deployment Architecture](#-deployment-architecture)
+- `packages/core/wallet`
+- `packages/core/wallet/auth`
+- `packages/core/defi-protocols`
+- `packages/core/oracles`
+- `packages/contracts/smart-wallet-account`
+- `packages/api/*`
 
-## 🎯 System Overview
+## System Overview
 
-### High-Level Architecture
+```mermaid
+flowchart LR
+    Apps["Apps and SDK consumers"] --> Wallet["Smart wallet service and auth"]
+    Apps --> Defi["DeFi protocol and routing layer"]
+    Apps --> Api["REST / GraphQL / WebSocket APIs"]
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Galaxy DevKit                            │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │   REST API  │  │ GraphQL API │  │ WebSocket   │            │
-│  │   Server    │  │   Server    │  │   Server    │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │   Core      │  │   Core       │  │   Core      │            │
-│  │ Stellar SDK │  │ Invisible    │  │ Automation  │            │
-│  │             │  │ Wallet      │  │             │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │   SDKs      │  │   CLI       │  │   Smart     │            │
-│  │ TypeScript  │  │   Tools     │  │ Contracts   │            │
-│  │ Python      │  │             │  │   Rust      │            │
-│  │ JavaScript  │  │             │  │             │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │  Supabase   │  │   Stellar    │  │   Cloud     │            │
-│  │  Database   │  │   Network    │  │  Services   │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-└─────────────────────────────────────────────────────────────────┘
+    Wallet --> Auth["WebAuthn provider and session key manager"]
+    Wallet --> Contracts["Soroban smart wallet contracts"]
+    Wallet --> Stellar["Stellar RPC / network"]
+
+    Defi --> Wallet
+    Defi --> Aggregators["Protocol adapters and route selection"]
+    Aggregators --> Stellar
+
+    Api --> Wallet
+    Api --> Defi
+    Api --> Oracles["Oracle and automation services"]
+
+    Oracles --> Automation["Automation engine"]
+    Automation --> Wallet
+    Automation --> Stellar
+    Contracts --> Stellar
 ```
 
-### Component Interaction Flow
+## Package Dependency Graph
 
-```
-User Request → API Gateway → Service Layer → Core Layer → External Services
-     ↓              ↓            ↓           ↓              ↓
-  Frontend    →  REST/GraphQL → Business → Stellar SDK → Stellar Network
-  Mobile App  →  WebSocket    → Logic    → Supabase   → Supabase
-  CLI Tool    →  SDK          → Core     → Smart      → Smart Contracts
-```
+```mermaid
+flowchart TD
+    WalletAuth["packages/core/wallet/auth"] --> WalletCore["packages/core/wallet"]
+    WalletCore --> StellarSdk["packages/core/stellar-sdk"]
+    WalletCore --> Contracts["packages/contracts/smart-wallet-account"]
 
-## 🔧 Core Components
+    Defi["packages/core/defi-protocols"] --> WalletCore
+    Defi --> StellarSdk
 
-### 1. Stellar SDK Core
+    Oracles["packages/core/oracles"] --> Automation["packages/core/automation"]
+    Automation --> WalletCore
+    Automation --> Defi
 
-**Purpose:** Provides Stellar network integration and wallet management.
+    Rest["packages/api/rest"] --> WalletCore
+    Rest --> Defi
+    Rest --> Automation
 
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Stellar SDK Core                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Wallet    │  │ Transaction │  │   Account   │        │
-│  │ Management  │  │ Processing  │  │ Management  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Network   │  │   Asset     │  │   Balance   │        │
-│  │ Management  │  │ Management  │  │ Management  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Payment   │  │   History    │  │   Utils    │        │
-│  │ Processing  │  │ Management  │  │ Functions  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+    Graphql["packages/api/graphql"] --> WalletCore
+    Websocket["packages/api/websocket"] --> WalletCore
+    Websocket --> Automation
 ```
 
-**Key Features:**
-- Wallet creation and management
-- Transaction processing
-- Account operations
-- Network switching (testnet/mainnet)
-- Asset management
-- Balance tracking
+## Smart Wallet Components
 
-### 2. Invisible Wallet Core
+```mermaid
+flowchart LR
+    Factory["Factory contract"] --> Wallet["Wallet contract"]
+    Common["Common contract crate"] --> Factory
+    Common --> Wallet
 
-**Purpose:** Provides seamless wallet experience without private key management.
-
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Invisible Wallet Core                      │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   User      │  │   Wallet    │  │   Security  │        │
-│  │ Management  │  │ Generation  │  │   Layer     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Encryption  │  │   Recovery  │  │   Backup    │        │
-│  │   Service   │  │   Service   │  │   Service   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+    WalletService["SmartWalletService"] --> Factory
+    WalletService --> Wallet
+    SessionKeys["SessionKeyManager"] --> WalletService
+    WebAuthn["WebAuthNProvider"] --> WalletService
 ```
 
-**Key Features:**
-- Email-based wallet creation
-- Encrypted private key storage
-- Recovery mechanisms
-- Multi-device support
-- Security compliance
+- The factory deploys deterministic wallet contracts keyed by the admin credential ID.
+- The wallet contract stores admin signers in persistent storage and session signers in temporary storage.
+- `SmartWalletService` now encapsulates factory deploy transaction construction and session signer revocation.
 
-### 3. Automation Core
+## Current Runtime Flows
 
-**Purpose:** Provides automated trading and DeFi operations.
+### Smart Wallet Auth Flow
 
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Automation Core                          │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Rule      │  │   Trigger   │  │   Action    │        │
-│  │ Management  │  │   Engine    │  │   Engine    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Scheduler │  │   Monitor   │  │   Analytics │        │
-│  │   Service   │  │   Service   │  │   Service   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
+The passkey-driven Soroban auth path is documented in [smart-wallet-auth-flow.md](./smart-wallet-auth-flow.md).
 
-**Key Features:**
-- Rule-based automation
-- Time-based triggers
-- Price-based triggers
-- Event-based triggers
-- Performance analytics
+### Session Key Lifecycle
 
-## 🌐 API Architecture
+The short-lived delegate signer flow is documented in [session-key-flow.md](./session-key-flow.md).
 
-### REST API Architecture
+### DeFi Aggregation
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      REST API Layer                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Wallet    │  │  Payment    │  │  Contract   │        │
-│  │   Routes    │  │   Routes    │  │   Routes    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Auth      │  │   Rate      │  │   Error     │        │
-│  │ Middleware  │  │ Limiting    │  │ Handling    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Request   │  │   Response │  │   Logging    │        │
-│  │ Validation  │  │   Formatting│  │   Service   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+The route selection and signing path is documented in [defi-aggregation-flow.md](./defi-aggregation-flow.md).
+
+### Oracle and Automation Loop
+
+```mermaid
+sequenceDiagram
+    participant Oracle as Oracle service
+    participant Automation as Automation engine
+    participant Wallet as SessionKeyManager
+    participant Service as SmartWalletService
+    participant Stellar as Stellar network
+
+    Oracle->>Automation: Publish price / threshold signal
+    Automation->>Wallet: Check active session or request one
+    Wallet->>Service: signWithSessionKey(...) or addSigner(...)
+    Service->>Stellar: Simulate and assemble XDR
+    Automation->>Stellar: Submit sponsored transaction
+    Stellar-->>Automation: Ledger result and events
 ```
 
-### GraphQL API Architecture
+## Complete Swap Data Flow
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    GraphQL API Layer                       │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Schema    │  │ Resolvers   │  │  Mutations  │        │
-│  │ Definition  │  │             │  │             │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Subscriptions│  │   Context   │  │   Directives│        │
-│  │             │  │ Management  │  │             │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
+```mermaid
+sequenceDiagram
+    participant App as App / bot
+    participant Defi as DeFi router
+    participant Wallet as SessionKeyManager
+    participant Service as SmartWalletService
+    participant Sponsor as Fee sponsor
+    participant Stellar as Stellar network
 
-### WebSocket API Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   WebSocket API Layer                      │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Connection │  │   Channel   │  │   Message   │        │
-│  │ Management │  │ Management  │  │ Processing  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Auth      │  │   Rate      │  │   Error     │        │
-│  │ Middleware  │  │ Limiting    │  │ Handling    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+    App->>Defi: Request quote for swap
+    Defi-->>App: Best route and Soroban call data
+    App->>Wallet: Sign route transaction
+    Wallet->>Service: signWithSessionKey(contract, tx, sessionCredentialId)
+    Service-->>Wallet: Fee-less signed XDR
+    App->>Sponsor: Send XDR for sponsorship
+    Sponsor->>Stellar: Submit fee-bumped transaction
+    Stellar-->>App: Transaction hash and status
 ```
 
-## 🛠️ CLI Architecture
-
-### CLI Component Structure
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      CLI Architecture                      │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Command   │  │   Template  │  │   Build     │        │
-│  │   Parser    │  │   Engine    │  │   System    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Project   │  │   Config    │  │   Deploy    │        │
-│  │   Manager   │  │   Manager   │  │   Manager   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Command Flow
-
-```
-User Input → Command Parser → Command Handler → Service Layer → Output
-     ↓              ↓              ↓              ↓            ↓
-  galaxy create → Parse Args → Create Handler → File System → Success
-  galaxy dev    → Parse Args → Dev Handler   → Dev Server  → Running
-  galaxy deploy → Parse Args → Deploy Handler→ Cloud APIs  → Deployed
-```
-
-## 🔗 Smart Contract Architecture
-
-### Contract Structure
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 Smart Contract Architecture                │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Token     │  │   Swap      │  │  Liquidity  │        │
-│  │ Contracts   │  │ Contracts  │  │  Contracts  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Security  │  │   Oracle    │  │   Governance│        │
-│  │ Contracts   │  │ Contracts  │  │  Contracts  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Contract Deployment Flow
-
-```
-Source Code → Compilation → Testing → Deployment → Verification
-     ↓            ↓           ↓          ↓            ↓
-  Rust/Soroban → WASM → Unit Tests → Stellar → Contract Address
-```
-
-## 🗄️ Database Architecture
-
-### Supabase Schema
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Database Schema                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Users     │  │  Wallets    │  │Transactions │        │
-│  │   Table     │  │   Table     │  │   Table     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Contracts  │  │Automation   │  │   Events    │        │
-│  │   Table     │  │   Rules     │  │   Table     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Data Flow
-
-```
-API Request → Validation → Business Logic → Database → Response
-     ↓            ↓            ↓            ↓          ↓
-  User Input → Schema Check → Process → Supabase → JSON Response
-```
-
-## 🔒 Security Architecture
-
-### Security Layers
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Security Layers                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   API       │  │   Data      │  │   Network   │        │
-│  │   Security  │  │ Encryption  │  │   Security  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Auth      │  │   Rate      │  │   Audit     │        │
-│  │   System    │  │ Limiting    │  │   Logging   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Security Measures
-
-1. **API Security**
-   - JWT authentication
-   - API key validation
-   - Rate limiting
-   - Input validation
-
-2. **Data Security**
-   - AES-256 encryption
-   - PBKDF2 key derivation
-   - Secure key storage
-   - Data anonymization
-
-3. **Network Security**
-   - TLS 1.3 encryption
-   - CORS configuration
-   - DDoS protection
-   - Firewall rules
-
-### Biometric Authentication Pattern
-
-Biometric authentication is implemented as a security layer integrated with the Invisible Wallet system. It provides enrollment, authentication, secure key storage, and fallback mechanisms.
-
-High-level components:
-
-- `BiometricAuth` (core manager) — `packages/core/wallet/auth/src/BiometricAuth.ts`
-- `BiometricAuthProvider` (abstract interface) — implemented by providers such as `WebAuthNProvider` and `MockBiometricProvider` in `packages/core/wallet/auth/src/providers/`
-- Secure key storage — provider-specific (e.g., WebAuthn-backed credential storage) invoked via `storeKey`/`retrieveKey` on the provider interface
-- Fallback auth — PIN/password fallback flows managed by `BiometricAuth` when biometrics are unavailable or locked
-
-Event/flow diagram (simplified):
-
-```
-User -> UI -> BiometricAuth (initialize) -> Provider.checkAvailability()
-         BiometricAuth.enroll() -> Provider.registerCredential()
-         BiometricAuth.authenticate() -> Provider.authenticate() -> success/fail
-         BiometricAuth.storeEncryptedKey() -> Provider.storeKey()
-         BiometricAuth.retrieveEncryptedKey() -> Provider.retrieveKey()
-```
-
-Security notes:
-
-- The provider is responsible for platform-specific secure storage and should avoid exporting raw private keys.
-- Encrypted keys stored via `storeKey` should be protected by platform hardware where available (TEE, Secure Enclave) and fallback to encrypted software storage otherwise.
-- UI should present clear fallback options (PIN/password) when biometric hardware is unavailable or the account is locked.
-
-Files to review when designing or auditing biometric flows:
-
-- `packages/core/wallet/auth/src/BiometricAuth.ts`
-- `packages/core/wallet/auth/src/providers/WebAuthNProvider.ts`
-- `packages/core/wallet/auth/src/providers/MockProvider.ts`
-- `packages/core/wallet/auth/src/tests/BiometricAuth.test.ts`
-
-
-## 🚀 Deployment Architecture
-
-### Production Environment
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 Production Environment                     │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Load      │  │   API        │  │   Database  │        │
-│  │   Balancer  │  │   Servers    │  │   Cluster   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   CDN       │  │   Monitoring │  │   Backup    │        │
-│  │   Network   │  │   System     │  │   System    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Deployment Flow
-
-```
-Code → Build → Test → Deploy → Monitor → Scale
- ↓      ↓      ↓      ↓        ↓        ↓
-Git → CI/CD → Tests → Cloud → Metrics → Auto-scaling
-```
-
-## 📊 Monitoring and Analytics
-
-### Monitoring Stack
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Monitoring Stack                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Metrics   │  │   Logs      │  │   Traces    │        │
-│  │ Collection  │  │ Collection  │  │ Collection  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Alerting  │  │   Dashboard │  │   Reports   │        │
-│  │   System    │  │   System    │  │   System    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Key Metrics
-
-1. **Performance Metrics**
-   - API response times
-   - Database query performance
-   - Smart contract execution time
-   - Network latency
-
-2. **Business Metrics**
-   - User registrations
-   - Transaction volume
-   - Wallet creations
-   - Contract deployments
-
-3. **Security Metrics**
-   - Failed authentication attempts
-   - Suspicious activities
-   - Rate limit violations
-   - Security incidents
-
-## 🔄 Scalability Architecture
-
-### Horizontal Scaling
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 Horizontal Scaling                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   API       │  │   API       │  │   API       │        │
-│  │   Server 1  │  │   Server 2  │  │   Server N  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Load      │  │   Database  │  │   Cache     │        │
-│  │   Balancer  │  │   Cluster   │  │   Cluster   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Auto-scaling Triggers
-
-1. **CPU Usage** > 70%
-2. **Memory Usage** > 80%
-3. **Request Rate** > 1000/min
-4. **Response Time** > 2s
-
-## 🎯 Performance Optimization
-
-### Caching Strategy
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Caching Strategy                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Redis     │  │   CDN       │  │   Database  │        │
-│  │   Cache     │  │   Cache     │  │   Cache     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Optimization Techniques
-
-1. **API Optimization**
-   - Response compression
-   - Query optimization
-   - Connection pooling
-   - Async processing
-
-2. **Database Optimization**
-   - Index optimization
-   - Query caching
-   - Connection pooling
-   - Read replicas
-
-3. **Frontend Optimization**
-   - Code splitting
-   - Lazy loading
-   - Image optimization
-   - CDN delivery
-
-## 🔧 Development Workflow
-
-### CI/CD Pipeline
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CI/CD Pipeline                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Code      │  │   Build     │  │   Test      │        │
-│  │   Commit    │  │   Process   │  │   Suite     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Security  │  │   Deploy    │  │   Monitor   │        │
-│  │   Scan      │  │   Process   │  │   Health    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Quality Gates
-
-1. **Code Quality**
-   - ESLint/Prettier
-   - TypeScript strict mode
-   - Code coverage > 80%
-   - Security scanning
-
-2. **Testing**
-   - Unit tests
-   - Integration tests
-   - E2E tests
-   - Performance tests
-
-3. **Security**
-   - Dependency scanning
-   - SAST analysis
-   - DAST analysis
-   - Penetration testing
-
-## 📈 Future Architecture
-
-### Planned Enhancements
-
-1. **Microservices Architecture**
-   - Service mesh implementation
-   - Event-driven architecture
-   - Domain-driven design
-
-2. **Advanced Analytics**
-   - Real-time analytics
-   - Machine learning integration
-   - Predictive analytics
-
-3. **Multi-chain Support**
-   - Ethereum integration
-   - Solana integration
-   - Cross-chain bridges
-
-4. **Enhanced Security**
-   - Zero-trust architecture
-   - Advanced threat detection
-   - Compliance automation
+## Related Docs
+
+- [Smart wallet auth flow](./smart-wallet-auth-flow.md)
+- [Session key flow](./session-key-flow.md)
+- [DeFi aggregation flow](./defi-aggregation-flow.md)
+- [Smart wallet contract guide](../contracts/smart-wallet-contract.md)
+- [Contract deployment guide](../contracts/deployment.md)

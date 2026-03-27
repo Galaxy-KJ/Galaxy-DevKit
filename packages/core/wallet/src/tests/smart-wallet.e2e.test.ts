@@ -41,7 +41,6 @@ import {
   Contract,
   BASE_FEE,
   xdr,
-  nativeToScVal,
   StrKey,
 } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
@@ -65,74 +64,47 @@ import {
 /** Decode a base64 (standard or base64url) string to Uint8Array. */
 function fromBase64(b64: string): Uint8Array {
   const standard = b64.replace(/-/g, '+').replace(/_/g, '/');
-  return Uint8Array.from(atob(standard), (c) => c.charCodeAt(0));
+  return Uint8Array.from(atob(standard), c => c.charCodeAt(0));
 }
 
-/**
- * Build the factory deploy invocation transaction.
- *
- * Calls `factory.deploy(deployer, credential_id, public_key)` on the factory
- * contract.  The deployer is the fee-sponsor account (it funds base reserves).
- */
-function buildFactoryDeployTx(
-  deployerKeypair: Keypair,
-  factoryContractId: string,
-  credentialId: string,
-  publicKey65Bytes: Uint8Array,
-  sequence: bigint,
-  networkPassphrase: string,
-): ReturnType<TransactionBuilder['build']> {
-  const sourceAccount = {
-    accountId: () => deployerKeypair.publicKey(),
-    sequenceNumber: () => String(sequence + 1n),
-    incrementSequenceNumber: () => {},
-  } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
+function ensureLocalStorage(): void {
+  if (typeof globalThis.localStorage !== 'undefined') {
+    return;
+  }
 
-  const factory = new Contract(factoryContractId);
-
-  return new TransactionBuilder(sourceAccount, {
-    fee: BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(
-      factory.call(
-        'deploy',
-        // deployer: Address
-        xdr.ScVal.scvAddress(
-          xdr.ScAddress.scAddressTypeAccount(
-            xdr.AccountID.publicKeyTypeEd25519(
-              StrKey.decodeEd25519PublicKey(deployerKeypair.publicKey()) as unknown as xdr.Uint256,
-            ),
-          ),
-        ),
-        // credential_id: Bytes
-        xdr.ScVal.scvBytes(Buffer.from(fromBase64(credentialId))),
-        // public_key: BytesN<65>
-        xdr.ScVal.scvBytes(Buffer.from(publicKey65Bytes)),
-      ),
-    )
-    .setTimeout(300)
-    .build();
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+  };
 }
 
 function createBrowserCredentialBackend(
   env: E2EEnv,
   credentialId: string,
-  rpId: string,
+  rpId: string
 ): CredentialBackend {
   return {
     get: async (options: CredentialRequestOptions) => {
-        const challenge = new Uint8Array(
-          options.publicKey!.challenge as ArrayBuffer,
-        );
-        const assertion = await getAssertion(
-          env.page,
-          rpId,
-          credentialId,
-          challenge,
-        );
-        return buildPublicKeyCredential(assertion);
-      }
+      const challenge = new Uint8Array(
+        options.publicKey!.challenge as ArrayBuffer
+      );
+      const assertion = await getAssertion(
+        env.page,
+        rpId,
+        credentialId,
+        challenge
+      );
+      return buildPublicKeyCredential(assertion);
+    },
   };
 }
 
@@ -172,24 +144,11 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
 
     test.skip(
       !cfg.feeSponsorSecretKey,
-      'FEE_SPONSOR_SECRET_KEY not set — skipping testnet deploy',
+      'FEE_SPONSOR_SECRET_KEY not set — skipping testnet deploy'
     );
 
     const cred = await registerCredential(env.page, 'localhost');
     const publicKey65Bytes = fromBase64(cred.publicKeyBase64);
-
-    const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
-    const rpcServer = new Server(cfg.rpcUrl);
-    const { sequence } = await rpcServer.getLatestLedger();
-
-    const factoryTx = buildFactoryDeployTx(
-      deployerKeypair,
-      cfg.factoryContractId,
-      cred.credentialId,
-      publicKey65Bytes,
-      BigInt(sequence),
-      cfg.networkPassphrase,
-    );
 
     // SmartWalletService.deploy() simulates the factory tx and extracts the
     // deployed contract address from the simulation return value.
@@ -197,10 +156,19 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       { relyingPartyId: 'localhost' },
       cfg.rpcUrl,
       cfg.factoryContractId,
-      Networks.TESTNET,
+      Networks.TESTNET
     );
 
-    const contractAddress = await service.deploy(publicKey65Bytes, factoryTx as any);
+    ensureLocalStorage();
+    localStorage.setItem(
+      'webauthn_credentials',
+      JSON.stringify([cred.credentialId])
+    );
+
+    const contractAddress = await service.deploy(
+      publicKey65Bytes,
+      cfg.factoryContractId
+    );
 
     expect(contractAddress).toBeTruthy();
     expect(typeof contractAddress).toBe('string');
@@ -214,7 +182,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
 
     test.skip(
       !cfg.feeSponsorSecretKey,
-      'FEE_SPONSOR_SECRET_KEY not set — skipping testnet signing test',
+      'FEE_SPONSOR_SECRET_KEY not set — skipping testnet signing test'
     );
 
     const cred = await registerCredential(env.page, 'localhost');
@@ -234,18 +202,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       (global as any).crypto = require('crypto').webcrypto;
     }
 
-    const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
     const rpcServer = new Server(cfg.rpcUrl);
-    const { sequence } = await rpcServer.getLatestLedger();
-
-    const factoryTx = buildFactoryDeployTx(
-      deployerKeypair,
-      cfg.factoryContractId,
-      cred.credentialId,
-      publicKey65Bytes,
-      BigInt(sequence),
-      cfg.networkPassphrase,
-    );
+    const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
 
     const service = new SmartWalletService(
       { relyingPartyId: 'localhost' },
@@ -255,7 +213,15 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       credentialBackend
     );
 
-    const contractAddress = await service.deploy(publicKey65Bytes, factoryTx as any);
+    ensureLocalStorage();
+    localStorage.setItem(
+      'webauthn_credentials',
+      JSON.stringify([cred.credentialId])
+    );
+    const contractAddress = await service.deploy(
+      publicKey65Bytes,
+      cfg.factoryContractId
+    );
 
     // Build a minimal Soroban invocation to sign (e.g. add_signer with a
     // dummy extra key — verifying signing mechanics, not business logic).
@@ -265,7 +231,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
 
     // Build a C-address from the hex contract address.
     const contractBech32 = StrKey.encodeContract(
-      Buffer.from(contractAddress.replace(/^0x/, ''), 'hex'),
+      Buffer.from(contractAddress.replace(/^0x/, ''), 'hex')
     );
 
     const latestLedger = await rpcServer.getLatestLedger();
@@ -284,8 +250,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
         walletContract.call(
           'add_signer',
           xdr.ScVal.scvBytes(Buffer.from(dummyCredId, 'base64')),
-          xdr.ScVal.scvBytes(Buffer.from(dummyPubKey)),
-        ),
+          xdr.ScVal.scvBytes(Buffer.from(dummyPubKey))
+        )
       )
       .setTimeout(300)
       .build();
@@ -293,7 +259,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     const signedXdr = await service.sign(
       contractBech32,
       sorobanTx as any,
-      cred.credentialId,
+      cred.credentialId
     );
 
     expect(typeof signedXdr).toBe('string');
@@ -312,11 +278,11 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
 
     test.skip(
       !cfg.feeSponsorSecretKey,
-      'FEE_SPONSOR_SECRET_KEY not set — skipping full lifecycle test',
+      'FEE_SPONSOR_SECRET_KEY not set — skipping full lifecycle test'
     );
     test.skip(
       !cfg.submitTxUrl || cfg.submitTxUrl.includes('localhost'),
-      'E2E_SUBMIT_TX_URL not pointing to a live server — skipping submission',
+      'E2E_SUBMIT_TX_URL not pointing to a live server — skipping submission'
     );
 
     const cred = await registerCredential(env.page, 'localhost');
@@ -332,18 +298,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       (global as any).crypto = require('crypto').webcrypto;
     }
 
-    const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
     const rpcServer = new Server(cfg.rpcUrl);
-    const { sequence } = await rpcServer.getLatestLedger();
-
-    const factoryTx = buildFactoryDeployTx(
-      deployerKeypair,
-      cfg.factoryContractId,
-      cred.credentialId,
-      publicKey65Bytes,
-      BigInt(sequence),
-      cfg.networkPassphrase,
-    );
+    const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
 
     const service = new SmartWalletService(
       { relyingPartyId: 'localhost' },
@@ -354,9 +310,17 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     );
 
     // Deploy
-    const contractAddress = await service.deploy(publicKey65Bytes, factoryTx as any);
+    ensureLocalStorage();
+    localStorage.setItem(
+      'webauthn_credentials',
+      JSON.stringify([cred.credentialId])
+    );
+    const contractAddress = await service.deploy(
+      publicKey65Bytes,
+      cfg.factoryContractId
+    );
     const contractBech32 = StrKey.encodeContract(
-      Buffer.from(contractAddress.replace(/^0x/, ''), 'hex'),
+      Buffer.from(contractAddress.replace(/^0x/, ''), 'hex')
     );
 
     expect(contractBech32.startsWith('C')).toBe(true);
@@ -380,8 +344,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       .addOperation(
         walletContract.call(
           'remove_signer',
-          xdr.ScVal.scvBytes(Buffer.from(dummyCredId, 'base64')),
-        ),
+          xdr.ScVal.scvBytes(Buffer.from(dummyCredId, 'base64'))
+        )
       )
       .setTimeout(300)
       .build();
@@ -389,7 +353,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     const signedXdr = await service.sign(
       contractBech32,
       sorobanTx as any,
-      cred.credentialId,
+      cred.credentialId
     );
 
     // Submit via fee-sponsor REST endpoint

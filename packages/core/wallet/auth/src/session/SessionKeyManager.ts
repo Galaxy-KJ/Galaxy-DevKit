@@ -5,13 +5,14 @@ import type { Transaction } from '@stellar/stellar-sdk';
 
 export interface SessionKey {
   publicKey: string; // Ed25519 public key (Stellar G-address)
+  credentialId: string; // Base64-encoded session signer credential ID
   expiresAt: number; // Unix timestamp (seconds)
 }
 
 export interface CreateSessionOptions {
   smartWalletAddress: string;
   passkeyCredentialId: string; // Base64-encoded WebAuthn credential ID
-  ttlSeconds: number;          // e.g. 3600 for 1 hour
+  ttlSeconds: number; // e.g. 3600 for 1 hour
 }
 
 // ─── Dependency interfaces ────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ export interface ISmartWalletService {
   removeSigner(params: {
     walletAddress: string;
     signerPublicKey: string;
+    credentialId: string;
     webAuthnAssertion: PublicKeyCredential;
   }): Promise<string>;
 
@@ -55,7 +57,7 @@ export interface ISmartWalletService {
     contractAddress: string,
     sorobanTx: Transaction,
     credentialId: string,
-    signFn: (authEntryHash: Buffer) => Buffer,
+    signFn: (authEntryHash: Buffer) => Buffer
   ): Promise<string>;
 }
 
@@ -135,9 +137,16 @@ export class SessionKeyManager {
     // Step 2 — fresh Ed25519 keypair (never secp256r1 for session keys)
     const keypair = StellarSdk.Keypair.random();
     this._privateKeyBytes = Buffer.from(keypair.rawSecretKey());
+    const credentialId = Buffer.from(
+      StellarSdk.StrKey.decodeEd25519PublicKey(keypair.publicKey())
+    ).toString('base64');
 
     const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
-    this._sessionKey = { publicKey: keypair.publicKey(), expiresAt };
+    this._sessionKey = {
+      publicKey: keypair.publicKey(),
+      credentialId,
+      expiresAt,
+    };
 
     try {
       // Step 3 — derive a deterministic challenge from the operation payload.
@@ -218,11 +227,18 @@ export class SessionKeyManager {
   async signTransaction(
     sorobanTx: Transaction,
     contractAddress: string,
-    credentialId: string,
+    credentialId?: string
   ): Promise<string> {
     if (!this.isActive()) {
       this._destroyPrivateKey();
       throw new Error('No active session. Call createSession() first.');
+    }
+
+    const resolvedCredentialId = credentialId ?? this._sessionKey?.credentialId;
+    if (!resolvedCredentialId) {
+      throw new Error(
+        'No active session credential ID. Call createSession() first.'
+      );
     }
 
     // Bind `this` so the private key reference is captured safely inside the
@@ -233,8 +249,8 @@ export class SessionKeyManager {
     return this._smartWalletService.signWithSessionKey(
       contractAddress,
       sorobanTx,
-      credentialId,
-      signFn,
+      resolvedCredentialId,
+      signFn
     );
   }
 
@@ -267,6 +283,7 @@ export class SessionKeyManager {
     if (!this._sessionKey) return;
 
     const publicKey = this._sessionKey.publicKey;
+    const credentialId = this._sessionKey.credentialId;
 
     // Zero BEFORE the network call — key is gone regardless of what follows.
     this._destroyPrivateKey();
@@ -285,6 +302,7 @@ export class SessionKeyManager {
     await this._smartWalletService.removeSigner({
       walletAddress: smartWalletAddress,
       signerPublicKey: publicKey,
+      credentialId,
       webAuthnAssertion: assertion,
     });
   }

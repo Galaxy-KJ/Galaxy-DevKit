@@ -78,29 +78,34 @@ afterEach(() => {
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-const MOCK_WALLET    = 'GABC1234SMARTWALLET';
-const MOCK_CRED_ID  = 'Y3JlZC1hYmMtMTIz'; // base64("cred-abc-123")
-const MOCK_OPTIONS   = {
-  smartWalletAddress:  MOCK_WALLET,
+const MOCK_WALLET = 'GABC1234SMARTWALLET';
+const MOCK_CRED_ID = 'Y3JlZC1hYmMtMTIz'; // base64("cred-abc-123")
+const MOCK_OPTIONS = {
+  smartWalletAddress: MOCK_WALLET,
   passkeyCredentialId: MOCK_CRED_ID,
-  ttlSeconds:          3600,
+  ttlSeconds: 3600,
 };
 
 function mockTxHash(): Buffer {
   return Buffer.alloc(32, 0xab);
 }
 
-function makeDependencies(overrides: {
-  rpId?:         string;
-  addSigner?:    jest.Mock;
-  removeSigner?: jest.Mock;
-} = {}) {
+function makeDependencies(
+  overrides: {
+    rpId?: string;
+    addSigner?: jest.Mock;
+    removeSigner?: jest.Mock;
+    signWithSessionKey?: jest.Mock;
+  } = {}
+) {
   const webAuthnProvider: IWebAuthnProvider = {
     rpId: overrides.rpId ?? 'localhost',
   };
   const smartWalletService: ISmartWalletService = {
-    addSigner:    overrides.addSigner    ?? jest.fn(async () => {}),
-    removeSigner: overrides.removeSigner ?? jest.fn(async () => {}),
+    addSigner: overrides.addSigner ?? jest.fn(async () => {}),
+    removeSigner: overrides.removeSigner ?? jest.fn(async () => 'SIGNED_XDR'),
+    signWithSessionKey:
+      overrides.signWithSessionKey ?? jest.fn(async () => 'SIGNED_XDR'),
   };
   return { webAuthnProvider, smartWalletService };
 }
@@ -124,7 +129,10 @@ describe('createSession()', () => {
     const after = Math.floor(Date.now() / 1000);
 
     expect(() => StellarSdk.Keypair.fromPublicKey(key.publicKey)).not.toThrow();
-    expect(key.expiresAt).toBeGreaterThanOrEqual(before + MOCK_OPTIONS.ttlSeconds);
+    expect(key.credentialId).toBeTruthy();
+    expect(key.expiresAt).toBeGreaterThanOrEqual(
+      before + MOCK_OPTIONS.ttlSeconds
+    );
     expect(key.expiresAt).toBeLessThanOrEqual(after + MOCK_OPTIONS.ttlSeconds);
   });
 
@@ -146,7 +154,8 @@ describe('createSession()', () => {
     await mgr.createSession(MOCK_OPTIONS);
 
     expect(mockCredentialsGet).toHaveBeenCalledTimes(1);
-    const callArg = mockCredentialsGet.mock.calls[0][0] as CredentialRequestOptions;
+    const callArg = mockCredentialsGet.mock
+      .calls[0][0] as CredentialRequestOptions;
     expect(callArg.publicKey?.rpId).toBe('wallet.example.com');
     expect(callArg.publicKey?.userVerification).toBe('required');
     expect(callArg.publicKey?.allowCredentials).toHaveLength(1);
@@ -161,9 +170,9 @@ describe('createSession()', () => {
     expect(addSigner).toHaveBeenCalledTimes(1);
     expect(addSigner).toHaveBeenCalledWith(
       expect.objectContaining({
-        walletAddress:    MOCK_WALLET,
+        walletAddress: MOCK_WALLET,
         sessionPublicKey: key.publicKey,
-        ttlSeconds:       MOCK_OPTIONS.ttlSeconds,
+        ttlSeconds: MOCK_OPTIONS.ttlSeconds,
         webAuthnAssertion: expect.objectContaining({ type: 'public-key' }),
       })
     );
@@ -174,7 +183,10 @@ describe('createSession()', () => {
     await mgr.createSession(MOCK_OPTIONS);
 
     expect(mockDigest).toHaveBeenCalledTimes(1);
-    const digestCall = mockDigest.mock.calls[0] as unknown as [string, ArrayBuffer];
+    const digestCall = mockDigest.mock.calls[0] as unknown as [
+      string,
+      ArrayBuffer,
+    ];
     expect(digestCall[0]).toBe('SHA-256');
     const payload = new TextDecoder().decode(digestCall[1]);
     // Challenge must encode all three operation parameters
@@ -186,16 +198,22 @@ describe('createSession()', () => {
     mockCredentialsGet.mockRejectedValueOnce(new Error('User cancelled'));
     const { mgr } = makeManager();
 
-    await expect(mgr.createSession(MOCK_OPTIONS)).rejects.toThrow('User cancelled');
+    await expect(mgr.createSession(MOCK_OPTIONS)).rejects.toThrow(
+      'User cancelled'
+    );
     expect(mgr.isActive()).toBe(false);
     expect((mgr as any)._privateKeyBytes).toBeNull();
   });
 
   it('zeros the private key and rethrows if addSigner() rejects', async () => {
-    const addSigner = jest.fn(async () => { throw new Error('Network error'); });
+    const addSigner = jest.fn(async () => {
+      throw new Error('Network error');
+    });
     const { mgr } = makeManager({ addSigner });
 
-    await expect(mgr.createSession(MOCK_OPTIONS)).rejects.toThrow('Network error');
+    await expect(mgr.createSession(MOCK_OPTIONS)).rejects.toThrow(
+      'Network error'
+    );
     expect(mgr.isActive()).toBe(false);
     expect((mgr as any)._privateKeyBytes).toBeNull();
   });
@@ -239,7 +257,7 @@ describe('sign()', () => {
     const { publicKey } = await mgr.createSession(MOCK_OPTIONS);
 
     const txHash = mockTxHash();
-    const sig    = mgr.sign(txHash);
+    const sig = mgr.sign(txHash);
 
     const keypair = StellarSdk.Keypair.fromPublicKey(publicKey);
     expect(keypair.verify(txHash, sig)).toBe(true);
@@ -309,8 +327,9 @@ describe('revoke()', () => {
 
     expect(removeSigner).toHaveBeenCalledWith(
       expect.objectContaining({
-        walletAddress:    MOCK_WALLET,
-        signerPublicKey:  publicKey,
+        walletAddress: MOCK_WALLET,
+        signerPublicKey: publicKey,
+        credentialId: expect.any(String),
         webAuthnAssertion: expect.objectContaining({ type: 'public-key' }),
       })
     );
@@ -323,7 +342,10 @@ describe('revoke()', () => {
     mockDigest.mockClear();
     await mgr.revoke(MOCK_WALLET, MOCK_CRED_ID);
 
-    const revokeDigestCall = mockDigest.mock.calls[0] as unknown as [string, ArrayBuffer];
+    const revokeDigestCall = mockDigest.mock.calls[0] as unknown as [
+      string,
+      ArrayBuffer,
+    ];
     const payload = new TextDecoder().decode(revokeDigestCall[1]);
     // Revoke challenges must end with :0 (sentinel for no TTL)
     expect(payload).toMatch(/:0$/);
@@ -332,7 +354,9 @@ describe('revoke()', () => {
   it('is a no-op when no session is active', async () => {
     const removeSigner = jest.fn();
     const { mgr } = makeManager({ removeSigner });
-    await expect(mgr.revoke(MOCK_WALLET, MOCK_CRED_ID)).resolves.toBeUndefined();
+    await expect(
+      mgr.revoke(MOCK_WALLET, MOCK_CRED_ID)
+    ).resolves.toBeUndefined();
     expect(removeSigner).not.toHaveBeenCalled();
     expect(mockCredentialsGet).not.toHaveBeenCalled();
   });
