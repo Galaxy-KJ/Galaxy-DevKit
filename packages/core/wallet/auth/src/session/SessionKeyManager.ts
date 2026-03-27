@@ -41,13 +41,14 @@ export interface ISmartWalletService {
     walletAddress: string;
     signerPublicKey: string;
     webAuthnAssertion: PublicKeyCredential;
-  }): Promise<string>;
+  }): Promise<void>;
 
   /**
    * Signs `sorobanTx` using the session key identified by `credentialId`.
    *
    * The service simulates the tx to obtain the auth-entry hash, calls
-   * `signFn` with that hash, builds the session-key signature ScVal, and
+   * `signFn` with that hash (this is the single place where the in-memory
+   * private key is used), builds `AccountSignature::SessionKey(...)`, and
    * returns the assembled fee-less XDR for the fee sponsor.
    */
   signWithSessionKey(
@@ -78,12 +79,15 @@ export interface ISmartWalletService {
  *   bound to this specific tx (prevents replay across different txs).
  *
  * ## Integration with SmartWalletService
- * SessionKeyManager derives the challenge, obtains the WebAuthn assertion once
+ * `createSession()` derives the challenge, obtains the WebAuthn assertion once
  * (the single biometric prompt per session), and forwards the raw
  * `PublicKeyCredential` to `SmartWalletService.addSigner()` via
  * `webAuthnAssertion`.  SmartWalletService then simulates the Soroban tx,
  * attaches the assertion to the auth entry, and returns the fee-less XDR for
  * the sponsor — no second prompt needed.
+ *
+ * `signTransaction()` uses the in-memory session key (no biometric) to sign
+ * subsequent txs via `SmartWalletService.signWithSessionKey()`.
  */
 export class SessionKeyManager {
   private readonly _webAuthnProvider: IWebAuthnProvider;
@@ -137,8 +141,6 @@ export class SessionKeyManager {
 
     try {
       // Step 3 — derive a deterministic challenge from the operation payload.
-      //   Hash of (walletAddress ‖ ":" ‖ sessionPublicKey ‖ ":" ‖ ttlSeconds)
-      //   binds the WebAuthn assertion to THIS add-signer tx only.
       const challenge = await this._deriveChallenge({
         smartWalletAddress,
         sessionPublicKey: keypair.publicKey(),
@@ -152,10 +154,6 @@ export class SessionKeyManager {
       });
 
       // Step 5 — register signer on-chain via SmartWalletService.addSigner()
-      //
-      // We pass `webAuthnAssertion` so SmartWalletService can skip its own
-      // navigator.credentials.get() call — the assertion was already obtained
-      // above and must not trigger a second biometric prompt.
       await this._smartWalletService.addSigner({
         walletAddress: smartWalletAddress,
         sessionPublicKey: keypair.publicKey(),
@@ -175,15 +173,18 @@ export class SessionKeyManager {
   /**
    * sign
    *
-   * Signs a Soroban transaction hash with the active in-memory session key.
+   * Signs a 32-byte hash (typically a Soroban auth-entry hash) with the
+   * active in-memory session key.
    *
-   * @param txHash  32-byte Soroban transaction hash
-   * @returns       64-byte Ed25519 signature
+   * This is a low-level primitive; prefer `signTransaction()` for the
+   * full Soroban tx-signing flow.
+   *
+   * @param txHash  32-byte buffer to sign (Soroban auth-entry hash).
+   * @returns       64-byte Ed25519 signature.
    * @throws        If no valid session exists or the session has expired.
    */
   sign(txHash: Buffer): Buffer {
     if (!this.isActive()) {
-      // Auto-zero on expiry so the dead key doesn't linger in memory.
       this._destroyPrivateKey();
       throw new Error('No active session. Call createSession() first.');
     }
@@ -193,6 +194,48 @@ export class SessionKeyManager {
     );
 
     return Buffer.from(keypair.sign(txHash));
+  }
+
+  /**
+   * signTransaction
+   *
+   * High-level convenience method: signs `sorobanTx` using the active
+   * session key and returns fee-less Soroban XDR for the fee sponsor.
+   *
+   * ## Flow
+   *  1. Verify the session is still active (throws if expired or missing).
+   *  2. Delegate to `SmartWalletService.signWithSessionKey()`, passing a
+   *     sign callback that uses the in-memory Ed25519 key.
+   *     The service simulates the tx, computes the auth-entry hash, calls
+   *     the callback, builds `AccountSignature::SessionKey(...)`, and
+   *     assembles the XDR — all without a biometric prompt.
+   *
+   * @param sorobanTx      The Soroban invocation transaction to sign.
+   * @param contractAddress Bech32 address of the smart wallet contract.
+   * @param credentialId   Base64-encoded session-key credential ID.
+   * @returns              Fee-less Soroban XDR (base64) for the fee sponsor.
+   */
+  async signTransaction(
+    sorobanTx: Transaction,
+    contractAddress: string,
+    credentialId: string,
+  ): Promise<string> {
+    if (!this.isActive()) {
+      this._destroyPrivateKey();
+      throw new Error('No active session. Call createSession() first.');
+    }
+
+    // Bind `this` so the private key reference is captured safely inside the
+    // callback.  The callback is called synchronously by signWithSessionKey
+    // after simulation, so the key is guaranteed to still be in scope.
+    const signFn = (authEntryHash: Buffer): Buffer => this.sign(authEntryHash);
+
+    return this._smartWalletService.signWithSessionKey(
+      contractAddress,
+      sorobanTx,
+      credentialId,
+      signFn,
+    );
   }
 
   /**
@@ -228,8 +271,6 @@ export class SessionKeyManager {
     // Zero BEFORE the network call — key is gone regardless of what follows.
     this._destroyPrivateKey();
 
-    // Derive a challenge for the remove-signer operation (ttlSeconds = 0
-    // acts as a sentinel so this assertion cannot be replayed as add-signer).
     const challenge = await this._deriveChallenge({
       smartWalletAddress,
       sessionPublicKey: publicKey,
@@ -250,15 +291,6 @@ export class SessionKeyManager {
 
   // ── Private helpers ─────────────────────────────────────────────────────────
 
-  /**
-   * Derives a 32-byte WebAuthn challenge from the operation parameters.
-   *
-   * Using a deterministic, operation-specific challenge means the WebAuthn
-   * assertion is cryptographically bound to THIS add-signer / remove-signer
-   * invocation, preventing replay attacks.
-   *
-   * Encoding: SHA-256( walletAddress ‖ ":" ‖ sessionPublicKey ‖ ":" ‖ ttlSeconds )
-   */
   private async _deriveChallenge(params: {
     smartWalletAddress: string;
     sessionPublicKey: string;
@@ -269,13 +301,8 @@ export class SessionKeyManager {
     return crypto.subtle.digest('SHA-256', encoded);
   }
 
-  /**
-   * Calls `navigator.credentials.get()` and returns the raw
-   * `PublicKeyCredential` so the Soroban contract can verify the
-   * authenticatorData + signature inside __check_auth.
-   */
   private async _assertCredential(params: {
-    credentialId: string;   // base64-encoded
+    credentialId: string;
     challenge: ArrayBuffer;
   }): Promise<PublicKeyCredential> {
     const credential = await navigator.credentials.get({
@@ -300,10 +327,6 @@ export class SessionKeyManager {
     return credential as PublicKeyCredential;
   }
 
-  /**
-   * Zeros the private key buffer and nulls out all session state.
-   * Safe to call multiple times (idempotent).
-   */
   private _destroyPrivateKey(): void {
     if (this._privateKeyBytes) {
       this._privateKeyBytes.fill(0);
