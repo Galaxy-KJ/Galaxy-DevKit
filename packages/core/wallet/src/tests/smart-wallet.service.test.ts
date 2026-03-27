@@ -1,7 +1,7 @@
 import { SmartWalletService, ttlSecondsToLedgers } from "../smart-wallet.service";
-import { WebAuthNProvider } from "../../auth/src/providers/WebAuthNProvider";
 import { Transaction, xdr } from "@stellar/stellar-sdk";
 import { Api } from "@stellar/stellar-sdk/rpc";
+import type { CredentialBackend } from "../types/smart-wallet.types";
 
 // ---------------------------------------------------------------------------
 // Shared assembled-tx mock (used by sign, addSigner)
@@ -120,7 +120,7 @@ describe("SmartWalletService", () => {
     simulateTransaction: jest.Mock;
     getLatestLedger: jest.Mock;
   };
-  let mockCredentialsGet: jest.Mock;
+  let mockCredentialBackend: jest.Mocked<CredentialBackend>;
   const sorobanTx = {} as unknown as Transaction;
   const factoryTx = {} as unknown as Transaction;
   const publicKey = new Uint8Array(65).fill(0x04);
@@ -133,21 +133,17 @@ describe("SmartWalletService", () => {
     };
     (Server as jest.Mock).mockImplementation(() => mockServer);
 
-    const mockProvider = { rpId: "localhost" } as unknown as WebAuthNProvider;
-    service = new SmartWalletService(mockProvider, "https://rpc.example.com");
-
-    mockCredentialsGet = jest.fn().mockResolvedValue({
-      response: {
-        authenticatorData: new ArrayBuffer(37),
-        clientDataJSON: new ArrayBuffer(100),
-        signature: new ArrayBuffer(72),
-      },
-    });
-
-    Object.defineProperty(global, "navigator", {
-      value: { credentials: { get: mockCredentialsGet } },
-      writable: true,
-    });
+    mockCredentialBackend = {
+      get: jest.fn().mockResolvedValue(makeAssertion()),
+      create: jest.fn(),
+    };
+    service = new SmartWalletService(
+      { relyingPartyId: "localhost" },
+      "https://rpc.example.com",
+      undefined,
+      undefined,
+      mockCredentialBackend
+    );
 
     Object.defineProperty(global, "crypto", {
       value: {
@@ -231,7 +227,7 @@ describe("SmartWalletService", () => {
       setupHappyPath();
       await service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, "Y3JlZElk");
 
-      const { challenge } = mockCredentialsGet.mock.calls[0][0].publicKey;
+      const { challenge } = mockCredentialBackend.get.mock.calls[0][0].publicKey!;
       expect(challenge.byteLength).toBe(32);
     });
 
@@ -239,14 +235,15 @@ describe("SmartWalletService", () => {
       setupHappyPath();
       await service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, "Y3JlZElk");
 
-      const { allowCredentials } = mockCredentialsGet.mock.calls[0][0].publicKey;
+      const { allowCredentials } =
+        mockCredentialBackend.get.mock.calls[0][0].publicKey!;
       expect(allowCredentials[0].type).toBe("public-key");
       expect(allowCredentials[0].id.byteLength).toBeGreaterThan(0);
     });
 
     it("throws if WebAuthn returns null (user cancelled)", async () => {
       setupHappyPath();
-      mockCredentialsGet.mockResolvedValue(null);
+      mockCredentialBackend.get.mockResolvedValue(null);
 
       await expect(
         service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, "Y3JlZElk")
@@ -264,7 +261,7 @@ describe("SmartWalletService", () => {
       setupHappyPath();
       await service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, "Y3JlZElk");
 
-      const { rpId } = mockCredentialsGet.mock.calls[0][0].publicKey;
+      const { rpId } = mockCredentialBackend.get.mock.calls[0][0].publicKey!;
       expect(rpId).toBe("localhost");
     });
 
@@ -274,6 +271,153 @@ describe("SmartWalletService", () => {
       await service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, "Y3JlZElk");
 
       expect(assembleTransaction).toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // signWithSessionKey()
+  // =========================================================================
+
+  describe("signWithSessionKey()", () => {
+    function setupHappyPath() {
+      const authEntry = makeAuthEntry();
+      mockServer.simulateTransaction.mockResolvedValue(makeSimResult(authEntry));
+      return authEntry;
+    }
+
+    it("returns a non-empty XDR string", async () => {
+      setupHappyPath();
+
+      const result = await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        () => Buffer.alloc(64, 0xaa)
+      );
+
+      expect(typeof result).toBe("string");
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("calls simulateTransaction with the provided transaction", async () => {
+      setupHappyPath();
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        () => Buffer.alloc(64, 0xaa)
+      );
+
+      expect(mockServer.simulateTransaction).toHaveBeenCalledWith(sorobanTx);
+    });
+
+    it("passes the 32-byte auth entry hash into signFn", async () => {
+      setupHappyPath();
+      const signFn = jest.fn(() => Buffer.alloc(64, 0xaa));
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        signFn
+      );
+
+      expect(signFn).toHaveBeenCalledTimes(1);
+      expect(Buffer.isBuffer(signFn.mock.calls[0][0])).toBe(true);
+      expect(signFn.mock.calls[0][0]).toHaveLength(32);
+    });
+
+    it("attaches the signed auth entry and assembles the transaction", async () => {
+      const authEntry = setupHappyPath();
+      const { assembleTransaction } = jest.requireMock("@stellar/stellar-sdk/rpc");
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        () => Buffer.alloc(64, 0xaa)
+      );
+
+      expect(authEntry.credentials).toHaveBeenCalled();
+      expect(assembleTransaction).toHaveBeenCalled();
+    });
+
+    it("throws if contractAddress is missing", async () => {
+      await expect(
+        service.signWithSessionKey(
+          "",
+          sorobanTx,
+          MOCK_CREDENTIAL_ID,
+          () => Buffer.alloc(64, 0xaa)
+        )
+      ).rejects.toThrow("contractAddress is required");
+    });
+
+    it("throws if credentialId is missing", async () => {
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS,
+          sorobanTx,
+          "",
+          () => Buffer.alloc(64, 0xaa)
+        )
+      ).rejects.toThrow("credentialId is required");
+    });
+
+    it("throws if simulation returns an error", async () => {
+      jest.spyOn(Api, "isSimulationError").mockReturnValue(true);
+      mockServer.simulateTransaction.mockResolvedValue({ error: "contract trap" });
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS,
+          sorobanTx,
+          MOCK_CREDENTIAL_ID,
+          () => Buffer.alloc(64, 0xaa)
+        )
+      ).rejects.toThrow("signWithSessionKey simulation failed");
+    });
+
+    it("throws if simulation returns no auth entries", async () => {
+      mockServer.simulateTransaction.mockResolvedValue({ result: { auth: [] } });
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS,
+          sorobanTx,
+          MOCK_CREDENTIAL_ID,
+          () => Buffer.alloc(64, 0xaa)
+        )
+      ).rejects.toThrow("signWithSessionKey simulation returned no auth entries");
+    });
+
+    it("throws if signFn returns a signature with the wrong length", async () => {
+      setupHappyPath();
+
+      await expect(
+        service.signWithSessionKey(
+          MOCK_CONTRACT_ADDRESS,
+          sorobanTx,
+          MOCK_CREDENTIAL_ID,
+          () => Buffer.alloc(63, 0xaa)
+        )
+      ).rejects.toThrow("signFn must return a 64-byte Ed25519 signature");
+    });
+
+    it("encodes the session key signature payload into Soroban auth credentials", async () => {
+      const authEntry = setupHappyPath();
+
+      await service.signWithSessionKey(
+        MOCK_CONTRACT_ADDRESS,
+        sorobanTx,
+        MOCK_CREDENTIAL_ID,
+        () => Buffer.alloc(64, 0xbb)
+      );
+
+      const credentialCalls = (authEntry.credentials as jest.Mock).mock.calls;
+      const credentialsArg = credentialCalls[credentialCalls.length - 1][0];
+      expect(credentialsArg).toBeDefined();
     });
   });
 
@@ -363,7 +507,7 @@ describe("SmartWalletService", () => {
 
     // ── Pre-obtained assertion path (SessionKeyManager integration) ───────────
 
-    it("skips navigator.credentials.get() when webAuthnAssertion is provided", async () => {
+    it("skips credential backend lookup when webAuthnAssertion is provided", async () => {
       setupHappyPath();
       const assertion = makeAssertion();
 
@@ -374,7 +518,7 @@ describe("SmartWalletService", () => {
         webAuthnAssertion: assertion,
       });
 
-      expect(mockCredentialsGet).not.toHaveBeenCalled();
+      expect(mockCredentialBackend.get).not.toHaveBeenCalled();
     });
 
     it("uses the pre-obtained assertion's response directly", async () => {
@@ -392,23 +536,23 @@ describe("SmartWalletService", () => {
       expect(authEntry.credentials).toHaveBeenCalled();
     });
 
-    it("calls navigator.credentials.get() when only credentialId is provided", async () => {
+    it("calls the credential backend when only credentialId is provided", async () => {
       setupHappyPath();
       await service.addSigner(baseParams());
-      expect(mockCredentialsGet).toHaveBeenCalledTimes(1);
+      expect(mockCredentialBackend.get).toHaveBeenCalledTimes(1);
     });
 
     it("passes rpId from webAuthnProvider to the credentials.get() call", async () => {
       setupHappyPath();
       await service.addSigner(baseParams());
 
-      const { rpId } = mockCredentialsGet.mock.calls[0][0].publicKey;
+      const { rpId } = mockCredentialBackend.get.mock.calls[0][0].publicKey!;
       expect(rpId).toBe("localhost");
     });
 
     it("throws if WebAuthn returns null (user cancelled)", async () => {
       setupHappyPath();
-      mockCredentialsGet.mockResolvedValue(null);
+      mockCredentialBackend.get.mockResolvedValue(null);
 
       await expect(service.addSigner(baseParams())).rejects.toThrow(
         "cancelled or timed out"
