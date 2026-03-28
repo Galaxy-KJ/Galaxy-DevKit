@@ -57,7 +57,12 @@ jest.mock('@stellar/stellar-sdk', () => {
   const txBuilderInstance = {
     addOperation: jest.fn().mockReturnThis(),
     setTimeout: jest.fn().mockReturnThis(),
-    build: jest.fn().mockReturnValue({ type: 'transaction' }),
+    build: jest.fn().mockReturnValue({
+      type: 'transaction',
+      toEnvelope: jest.fn().mockReturnValue({
+        toXDR: jest.fn(() => 'TRUSTLINE_XDR_BASE64'),
+      }),
+    }),
   };
   const TransactionBuilderMock = jest
     .fn()
@@ -68,6 +73,16 @@ jest.mock('@stellar/stellar-sdk', () => {
     Contract: ContractMock,
     TransactionBuilder: TransactionBuilderMock,
     nativeToScVal: jest.fn().mockReturnValue({ type: 'scvU32' }),
+    Asset: jest.fn().mockImplementation((code: string, issuer: string) => ({
+      code,
+      issuer,
+    })),
+    Operation: {
+      ...actual.Operation,
+      changeTrust: jest
+        .fn()
+        .mockReturnValue({ type: 'changeTrust' }),
+    },
     BASE_FEE: '100',
     StrKey: {
       ...actual.StrKey,
@@ -149,6 +164,7 @@ describe('SmartWalletService', () => {
   let mockServer: {
     simulateTransaction: jest.Mock;
     getLatestLedger: jest.Mock;
+    getAccount: jest.Mock;
   };
   let mockCredentialBackend: jest.Mocked<CredentialBackend>;
   const sorobanTx = {} as unknown as Transaction;
@@ -159,6 +175,11 @@ describe('SmartWalletService', () => {
     mockServer = {
       simulateTransaction: jest.fn(),
       getLatestLedger: jest.fn().mockResolvedValue({ sequence: 1000 }),
+      getAccount: jest.fn().mockResolvedValue({
+        accountId: () => 'GABC1234ACCOUNTID',
+        sequenceNumber: () => '100',
+        incrementSequenceNumber: () => {},
+      }),
     };
     (Server as jest.Mock).mockImplementation(() => mockServer);
 
@@ -854,6 +875,133 @@ describe('SmartWalletService', () => {
       await expect(
         service.deploy(new Uint8Array(64), MOCK_CONTRACT_ADDRESS)
       ).rejects.toThrow('must be 65 bytes');
+    });
+  });
+
+  // =========================================================================
+  // setupUSDCTrustline()
+  // =========================================================================
+
+  describe('setupUSDCTrustline()', () => {
+    const ACCOUNT_ID =
+      'GABC1EFGHIJKLMNOPQRSTUVWXYZABC1EFGHIJKLMNOPQRSTUVWXYZABC1EF';
+
+    it('returns XDR for a testnet USDC trustline', async () => {
+      const result = await service.setupUSDCTrustline(ACCOUNT_ID, 'testnet');
+      expect(typeof result).toBe('string');
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('returns XDR for a mainnet USDC trustline', async () => {
+      const result = await service.setupUSDCTrustline(ACCOUNT_ID, 'mainnet');
+      expect(typeof result).toBe('string');
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('calls server.getAccount with the given accountId', async () => {
+      await service.setupUSDCTrustline(ACCOUNT_ID, 'testnet');
+      expect(mockServer.getAccount).toHaveBeenCalledWith(ACCOUNT_ID);
+    });
+
+    it('creates USDC asset with the testnet issuer', async () => {
+      await service.setupUSDCTrustline(ACCOUNT_ID, 'testnet');
+      const { Asset } = jest.requireMock('@stellar/stellar-sdk');
+      expect(Asset).toHaveBeenCalledWith(
+        'USDC',
+        'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5'
+      );
+    });
+
+    it('creates USDC asset with the mainnet issuer', async () => {
+      await service.setupUSDCTrustline(ACCOUNT_ID, 'mainnet');
+      const { Asset } = jest.requireMock('@stellar/stellar-sdk');
+      expect(Asset).toHaveBeenCalledWith(
+        'USDC',
+        'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'
+      );
+    });
+
+    it('builds a ChangeTrust operation', async () => {
+      await service.setupUSDCTrustline(ACCOUNT_ID, 'testnet');
+      const { Operation } = jest.requireMock('@stellar/stellar-sdk');
+      expect(Operation.changeTrust).toHaveBeenCalledWith(
+        expect.objectContaining({ asset: expect.anything() })
+      );
+    });
+
+    it('throws if accountId is empty', async () => {
+      await expect(
+        service.setupUSDCTrustline('', 'testnet')
+      ).rejects.toThrow('setupUSDCTrustline: accountId is required');
+    });
+
+    it('throws if network is invalid', async () => {
+      await expect(
+        // @ts-expect-error — intentionally passing invalid value
+        service.setupUSDCTrustline(ACCOUNT_ID, 'devnet')
+      ).rejects.toThrow("setupUSDCTrustline: network must be 'testnet' or 'mainnet'");
+    });
+
+    it('throws if server.getAccount rejects', async () => {
+      mockServer.getAccount.mockRejectedValueOnce(new Error('account not found'));
+      await expect(
+        service.setupUSDCTrustline(ACCOUNT_ID, 'testnet')
+      ).rejects.toThrow('account not found');
+    });
+  });
+
+  // =========================================================================
+  // deploy() with autoTrustlineUSDC
+  // =========================================================================
+
+  describe('deploy() with autoTrustlineUSDC', () => {
+    const ACCOUNT_ID =
+      'GABC1EFGHIJKLMNOPQRSTUVWXYZABC1EFGHIJKLMNOPQRSTUVWXYZABC1EF';
+
+    beforeEach(() => {
+      mockServer.simulateTransaction.mockResolvedValue({
+        result: {
+          retval: {
+            address: () => ({
+              contractId: () => ({ toString: () => MOCK_CONTRACT_ADDRESS }),
+            }),
+          },
+        },
+      });
+    });
+
+    it('returns contractAddress and trustlineXdr when autoTrustlineUSDC is true', async () => {
+      const result = await service.deploy(
+        publicKey,
+        MOCK_CONTRACT_ADDRESS,
+        undefined,
+        { autoTrustlineUSDC: true, usdcNetwork: 'testnet', accountId: ACCOUNT_ID }
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          contractAddress: MOCK_CONTRACT_ADDRESS,
+          trustlineXdr: expect.any(String),
+        })
+      );
+    });
+
+    it('calls setupUSDCTrustline with the correct accountId and network', async () => {
+      const spy = jest.spyOn(service, 'setupUSDCTrustline');
+
+      await service.deploy(
+        publicKey,
+        MOCK_CONTRACT_ADDRESS,
+        undefined,
+        { autoTrustlineUSDC: true, usdcNetwork: 'mainnet', accountId: ACCOUNT_ID }
+      );
+
+      expect(spy).toHaveBeenCalledWith(ACCOUNT_ID, 'mainnet');
+    });
+
+    it('returns a plain string (contract address) when no options are passed', async () => {
+      const result = await service.deploy(publicKey, MOCK_CONTRACT_ADDRESS);
+      expect(result).toBe(MOCK_CONTRACT_ADDRESS);
     });
   });
 });

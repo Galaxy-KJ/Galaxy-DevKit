@@ -1,10 +1,12 @@
 import {
   Address,
+  Asset,
   Transaction,
   xdr,
   StrKey,
   Networks,
   Contract,
+  Operation,
   TransactionBuilder,
   BASE_FEE,
   nativeToScVal,
@@ -14,8 +16,12 @@ import { convertSignatureDERtoCompact } from '../auth/src/providers/WebAuthNProv
 import { BrowserCredentialBackend } from './credential-backends/browser.backend';
 import type {
   CredentialBackend,
+  DeployResult,
+  DeployWithTrustlineOptions,
   SmartWalletWebAuthnProvider,
+  USDCNetwork,
 } from './types/smart-wallet.types';
+import { USDC_ISSUERS } from './types/smart-wallet.types';
 
 // ---------------------------------------------------------------------------
 // TTL helpers
@@ -1042,15 +1048,38 @@ export class SmartWalletService {
   // deploy()
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // deploy() — overloads
+  // -------------------------------------------------------------------------
+
   /**
    * Builds the factory deploy invocation internally, simulates it, and returns
    * the deployed contract address.
    */
   async deploy(
     publicKey65Bytes: Uint8Array,
+    factory?: string,
+    network?: Networks | string
+  ): Promise<string>;
+
+  /**
+   * Deploys the smart wallet and additionally prepares a USDC trustline
+   * transaction for the given account, returning both the contract address
+   * and the unsigned fee-less trustline XDR for fee sponsorship.
+   */
+  async deploy(
+    publicKey65Bytes: Uint8Array,
+    factory: string | undefined,
+    network: Networks | string | undefined,
+    options: DeployWithTrustlineOptions
+  ): Promise<DeployResult>;
+
+  async deploy(
+    publicKey65Bytes: Uint8Array,
     factory: string = this.factoryContractId,
-    network: Networks | string = this.network
-  ): Promise<string> {
+    network: Networks | string = this.network,
+    options?: DeployWithTrustlineOptions
+  ): Promise<string | DeployResult> {
     if (!factory) {
       throw new Error('deploy: factory contract address is required');
     }
@@ -1105,6 +1134,65 @@ export class SmartWalletService {
       throw new Error('Factory did not return a contract address.');
     }
 
+    if (options?.autoTrustlineUSDC) {
+      const trustlineXdr = await this.setupUSDCTrustline(
+        options.accountId,
+        options.usdcNetwork
+      );
+      return { contractAddress, trustlineXdr };
+    }
+
     return contractAddress;
+  }
+
+  // -------------------------------------------------------------------------
+  // setupUSDCTrustline()
+  // -------------------------------------------------------------------------
+
+  /**
+   * Builds an unsigned fee-less ChangeTrust transaction that adds a USDC
+   * trustline to the given classic Stellar account.
+   *
+   * The returned XDR (base64) is intended for the fee sponsorship workflow:
+   * the account holder must sign the transaction before it can be submitted.
+   *
+   * ## Flow
+   *  1. Resolve the USDC issuer for the requested network.
+   *  2. Fetch the account's current sequence number from the RPC node.
+   *  3. Build a classic Stellar transaction with a single `ChangeTrust`
+   *     operation for the USDC asset at maximum limit.
+   *  4. Return the unsigned XDR for the caller to sign and submit.
+   *
+   * @param accountId  Classic Stellar G-address that will hold USDC.
+   * @param network    `'testnet'` or `'mainnet'` — selects the USDC issuer.
+   * @returns          Unsigned fee-less transaction XDR (base64).
+   */
+  async setupUSDCTrustline(
+    accountId: string,
+    network: USDCNetwork
+  ): Promise<string> {
+    if (!accountId) {
+      throw new Error('setupUSDCTrustline: accountId is required');
+    }
+    if (!network || !(network in USDC_ISSUERS)) {
+      throw new Error(
+        "setupUSDCTrustline: network must be 'testnet' or 'mainnet'"
+      );
+    }
+
+    const issuer = USDC_ISSUERS[network];
+    const usdcAsset = new Asset('USDC', issuer);
+
+    const account = await this.server.getAccount(accountId);
+
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.network,
+    })
+      .addOperation(Operation.changeTrust({ asset: usdcAsset }))
+      .setTimeout(300)
+      .build();
+
+    return tx.toEnvelope().toXDR('base64');
   }
 }
