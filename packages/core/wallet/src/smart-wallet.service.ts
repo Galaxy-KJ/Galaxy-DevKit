@@ -591,14 +591,40 @@ export class SmartWalletService {
    * The returned XDR is fee-less and intended to be submitted by a sponsor.
    */
   async removeSigner(params: RemoveSignerParams): Promise<string> {
-    const { walletAddress, credentialId, webAuthnAssertion } = params;
+    const {
+      walletAddress,
+      signerCredentialId,
+      signerPublicKey,
+      authCredentialId,
+      credentialId,
+      webAuthnAssertion,
+    } = params;
 
     if (!walletAddress) {
       throw new Error("removeSigner: walletAddress is required");
     }
-    if (!webAuthnAssertion && !credentialId) {
+
+    const authCredential =
+      authCredentialId ?? credentialId ?? undefined;
+    if (!webAuthnAssertion && !authCredential) {
       throw new Error(
-        "removeSigner: either webAuthnAssertion or credentialId must be provided"
+        "removeSigner: either webAuthnAssertion or authCredentialId/credentialId must be provided"
+      );
+    }
+
+    let removalCredentialBytes: Buffer;
+    if (signerCredentialId) {
+      removalCredentialBytes = Buffer.from(
+        base64UrlToUint8Array(signerCredentialId)
+      );
+    } else if (credentialId) {
+      removalCredentialBytes = Buffer.from(base64UrlToUint8Array(credentialId));
+    } else if (signerPublicKey) {
+      // SessionKeyManager registers session keys with an empty credential_id.
+      removalCredentialBytes = Buffer.alloc(0);
+    } else {
+      throw new Error(
+        "removeSigner: signerCredentialId, credentialId, or signerPublicKey is required"
       );
     }
 
@@ -610,9 +636,6 @@ export class SmartWalletService {
     };
 
     const contract = new Contract(walletAddress);
-    const credentialBytes = credentialId
-      ? Buffer.from(base64UrlToUint8Array(credentialId))
-      : Buffer.alloc(0);
 
     const invokeTx = new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
@@ -621,7 +644,7 @@ export class SmartWalletService {
       .addOperation(
         contract.call(
           "remove_signer",
-          xdr.ScVal.scvBytes(credentialBytes)
+          xdr.ScVal.scvBytes(removalCredentialBytes)
         )
       )
       .setTimeout(300)
@@ -640,9 +663,11 @@ export class SmartWalletService {
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
 
     let assertionResponse: AuthenticatorAssertionResponse;
+    let signingCredentialIdBytes: Uint8Array;
 
     if (webAuthnAssertion) {
       assertionResponse = getAssertionResponse(webAuthnAssertion);
+      signingCredentialIdBytes = base64UrlToUint8Array(webAuthnAssertion.id);
     } else {
       const authEntryHash = new Uint8Array(
         await crypto.subtle.digest(
@@ -659,7 +684,7 @@ export class SmartWalletService {
           allowCredentials: [
             {
               type: "public-key" as const,
-              id: Buffer.from(base64UrlToUint8Array(credentialId!)),
+              id: Buffer.from(base64UrlToUint8Array(authCredential!)),
             },
           ],
           userVerification: "required",
@@ -674,6 +699,7 @@ export class SmartWalletService {
       }
 
       assertionResponse = getAssertionResponse(pkCredential);
+      signingCredentialIdBytes = base64UrlToUint8Array(pkCredential.id);
     }
 
     const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
@@ -682,7 +708,7 @@ export class SmartWalletService {
     const signerSignature = buildWebAuthnSignatureScVal(
       authenticatorData,
       clientDataJSON,
-      credentialBytes,
+      signingCredentialIdBytes,
       compactSig
     );
 

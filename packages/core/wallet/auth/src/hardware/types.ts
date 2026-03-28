@@ -153,10 +153,16 @@ export function buildStellarPath(accountIndex: number = 0): string {
   return `44'/148'/${accountIndex}'`;
 }
 
+/** Canonical hardened BIP44 path for Stellar (slashes + `'` markers). */
+const STELLAR_BIP44_PATH_REGEX = /^44'\/148'\/[0-9]+'$/;
+
 /**
  * Validate BIP44 derivation path for Stellar
  */
 export function validateStellarPath(path: string): boolean {
+  if (!STELLAR_BIP44_PATH_REGEX.test(path)) {
+    return false;
+  }
   try {
     const parsed = parseBIP44Path(path);
     return parsed.purpose === 44 && parsed.coinType === STELLAR_COIN_TYPE;
