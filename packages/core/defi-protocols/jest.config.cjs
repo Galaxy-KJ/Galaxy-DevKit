@@ -20,6 +20,8 @@ module.exports = {
     },
   },
   coverageDirectory: 'coverage',
+  // CI reads coverage-summary.json (see .github/workflows/ci.yml)
+  coverageReporters: ['text', 'lcov', 'json', 'json-summary'],
   verbose: true,
   transform: {
     '^.+\\.ts$': ['ts-jest', {

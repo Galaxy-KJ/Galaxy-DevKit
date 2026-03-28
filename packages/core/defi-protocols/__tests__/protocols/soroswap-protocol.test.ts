@@ -245,6 +245,20 @@ describe('SoroswapProtocol', () => {
       expect(stats.utilizationRate).toBe(0);
       expect(stats.timestamp).toBeInstanceOf(Date);
     });
+
+    it('should handle errors in getStats gracefully', async () => {
+      // Force an error by corrupting the internal state
+      const originalNew = Date.prototype.getTime;
+      Date.prototype.getTime = (() => { throw new Error('Time error'); }) as any;
+
+      const stats = await soroswapProtocol.getStats();
+
+      // Should still return default stats due to error handling
+      expect(stats).toBeDefined();
+
+      // Restore original function
+      Date.prototype.getTime = originalNew;
+    });
   });
 
   // ==========================================
@@ -571,6 +585,21 @@ describe('SoroswapProtocol', () => {
         soroswapProtocol.swap('', testPrivateKey, tokenA, tokenB, '10', '9')
       ).rejects.toThrow(/Invalid wallet address/);
     });
+
+    it('should handle contract address (starts with C) in loadAccount fallback', async () => {
+      const contractAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+      const mockHorizonServer = (soroswapProtocol as any).horizonServer;
+
+      // Force loadAccount to fail for contract address
+      mockHorizonServer.loadAccount = jest.fn().mockRejectedValue(new Error('Account not found'));
+
+      const result = await soroswapProtocol.swap(
+        contractAddress, testPrivateKey, tokenA, tokenB, '10', '9'
+      );
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe('pending');
+    });
   });
 
   describe('addLiquidity()', () => {
@@ -641,6 +670,21 @@ describe('SoroswapProtocol', () => {
       await expect(
         uninitProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
       ).rejects.toThrow(/not initialized/);
+    });
+
+    it('should handle contract address (starts with C) in loadAccount fallback', async () => {
+      const contractAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+      const mockHorizonServer = (soroswapProtocol as any).horizonServer;
+
+      // Force loadAccount to fail for contract address
+      mockHorizonServer.loadAccount = jest.fn().mockRejectedValue(new Error('Account not found'));
+
+      const result = await soroswapProtocol.addLiquidity(
+        contractAddress, testPrivateKey, tokenA, tokenB, '100', '200'
+      );
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe('pending');
     });
   });
 

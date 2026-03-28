@@ -129,6 +129,8 @@ Comprehensive architecture documentation for Galaxy DevKit.
 - [User Guides](../guides/) - How to use Galaxy DevKit
 - [API Documentation](../api/) - Complete API reference
 - [Examples](../examples/) - Real-world examples
+- [Smart Wallet API Reference](../smart-wallet/api-reference.md) - Smart wallet methods and error handling
+- [Smart Wallet Integration Guide](../smart-wallet/integration-guide.md) - End-to-end smart wallet integration
 
 ---
 
