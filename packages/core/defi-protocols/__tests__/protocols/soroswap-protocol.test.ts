@@ -245,6 +245,20 @@ describe('SoroswapProtocol', () => {
       expect(stats.utilizationRate).toBe(0);
       expect(stats.timestamp).toBeInstanceOf(Date);
     });
+
+    it('should handle errors in getStats gracefully', async () => {
+      // Force an error by corrupting the internal state
+      const originalNew = Date.prototype.getTime;
+      Date.prototype.getTime = (() => { throw new Error('Time error'); }) as any;
+
+      const stats = await soroswapProtocol.getStats();
+
+      // Should still return default stats due to error handling
+      expect(stats).toBeDefined();
+
+      // Restore original function
+      Date.prototype.getTime = originalNew;
+    });
   });
 
   // ==========================================
@@ -775,6 +789,25 @@ describe('SoroswapProtocol', () => {
       const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
       expect(pool.address).toBe('');
     });
+
+    it('should handle fromScVal error when parsing pair address', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({
+        result: { retval: { type: 'address' } }
+      });
+      (Address.fromScVal as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('fromScVal parse error');
+      });
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
+    });
+
+    it('should throw on general errors in getLiquidityPool', async () => {
+      // Force an error by corrupting factoryContract
+      (soroswapProtocol as any).factoryContract = { call: () => { throw new Error('Contract error'); } };
+
+      await expect(soroswapProtocol.getLiquidityPool(tokenA, tokenB)).rejects.toThrow('Contract error');
+    });
   });
 
   // ==========================================
@@ -1034,6 +1067,17 @@ describe('SoroswapProtocol', () => {
 
       expect(analytics.feeApr).toBe(0);
     });
+
+    it('should throw on general errors in getPoolAnalytics', async () => {
+      // Force an error by making sorobanServer undefined
+      const originalServer = (soroswapProtocol as any).sorobanServer;
+      (soroswapProtocol as any).sorobanServer = undefined;
+
+      await expect(soroswapProtocol.getPoolAnalytics(poolAddress)).rejects.toThrow();
+
+      // Restore original server
+      (soroswapProtocol as any).sorobanServer = originalServer;
+    });
   });
 
   // ==========================================
@@ -1086,6 +1130,13 @@ describe('SoroswapProtocol', () => {
       const uninitProtocol = new SoroswapProtocol(mockConfig);
 
       await expect(uninitProtocol.getAllPoolsAnalytics()).rejects.toThrow(/not initialized/);
+    });
+
+    it('should throw on general errors in getAllPoolsAnalytics', async () => {
+      // Force an error by making getAllPairs throw an error
+      jest.spyOn(soroswapProtocol, 'getAllPairs').mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(soroswapProtocol.getAllPoolsAnalytics()).rejects.toThrow('Network error');
     });
   });
 });

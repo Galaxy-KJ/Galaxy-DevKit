@@ -355,6 +355,41 @@ describe('BlendProtocol - Operations Tests', () => {
         blendProtocol.supply(testAddress, testPrivateKey, invalidAsset, '1000000')
       ).rejects.toThrow('Invalid asset');
     });
+
+    it('should return pending transaction when privateKey is not provided', async () => {
+      // Mock transaction builder
+      const mockTx = {
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation success
+      const mockSimulation = {
+        result: { mock: 'result' }
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+
+      // Mock prepareTransaction
+      const mockPreparedTx = {
+        toXDR: jest.fn(() => 'prepared-xdr')
+      };
+      mockSorobanServer.prepareTransaction = jest.fn().mockResolvedValue(mockPreparedTx);
+
+      const result = await blendProtocol.supply(testAddress, null as any, testAsset, '1000000');
+
+      expect(result.status).toBe('pending');
+      expect(mockSorobanServer.prepareTransaction).toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -550,6 +585,41 @@ describe('BlendProtocol - Operations Tests', () => {
         blendProtocol.withdraw(testAddress, testPrivateKey, invalidAsset, '500000')
       ).rejects.toThrow('Invalid asset');
     });
+
+    it('should return pending transaction when privateKey is not provided', async () => {
+      // Mock transaction builder
+      const mockTx = {
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation success
+      const mockSimulation = {
+        result: { mock: 'result' }
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+
+      // Mock prepareTransaction
+      const mockPreparedTx = {
+        toXDR: jest.fn(() => 'prepared-xdr')
+      };
+      mockSorobanServer.prepareTransaction = jest.fn().mockResolvedValue(mockPreparedTx);
+
+      const result = await blendProtocol.withdraw(testAddress, null as any, testAsset, '500000');
+
+      expect(result.status).toBe('pending');
+      expect(mockSorobanServer.prepareTransaction).toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -682,6 +752,41 @@ describe('BlendProtocol - Operations Tests', () => {
         blendProtocol.borrow(testAddress, testPrivateKey, invalidAsset, '250000')
       ).rejects.toThrow('Invalid asset');
     });
+
+    it('should return pending transaction when privateKey is not provided', async () => {
+      // Mock transaction builder
+      const mockTx = {
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation success
+      const mockSimulation = {
+        result: { mock: 'result' }
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+
+      // Mock prepareTransaction
+      const mockPreparedTx = {
+        toXDR: jest.fn(() => 'prepared-xdr')
+      };
+      mockSorobanServer.prepareTransaction = jest.fn().mockResolvedValue(mockPreparedTx);
+
+      const result = await blendProtocol.borrow(testAddress, null as any, testAsset, '250000');
+
+      expect(result.status).toBe('pending');
+      expect(mockSorobanServer.prepareTransaction).toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -813,6 +918,41 @@ describe('BlendProtocol - Operations Tests', () => {
       await expect(
         blendProtocol.repay(testAddress, testPrivateKey, invalidAsset, '250000')
       ).rejects.toThrow('Invalid asset');
+    });
+
+    it('should return pending transaction when privateKey is not provided', async () => {
+      // Mock transaction builder
+      const mockTx = {
+        toXDR: jest.fn(() => 'mocked-xdr')
+      };
+      (TransactionBuilder as jest.MockedClass<typeof TransactionBuilder>).mockImplementation(
+        () =>
+          ({
+            addOperation: jest.fn().mockReturnThis(),
+            setTimeout: jest.fn().mockReturnThis(),
+            build: jest.fn(() => mockTx)
+          } as any)
+      );
+
+      // Mock simulation success
+      const mockSimulation = {
+        result: { mock: 'result' }
+      };
+      mockSorobanServer.simulateTransaction = jest
+        .fn()
+        .mockResolvedValue(mockSimulation);
+      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+
+      // Mock prepareTransaction
+      const mockPreparedTx = {
+        toXDR: jest.fn(() => 'prepared-xdr')
+      };
+      mockSorobanServer.prepareTransaction = jest.fn().mockResolvedValue(mockPreparedTx);
+
+      const result = await blendProtocol.repay(testAddress, null as any, testAsset, '250000');
+
+      expect(result.status).toBe('pending');
+      expect(mockSorobanServer.prepareTransaction).toHaveBeenCalled();
     });
   });
 

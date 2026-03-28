@@ -111,6 +111,7 @@ describe('BlendProtocol', () => {
   let mockHorizonServer: any;
 
   const testAddress = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+  const testBorrowerAddress = 'GDXFZ4UXBQPTPLQHZJ2IZ3MJRZ6G7CRGSKXM3XDMIFV4KQDLXP2KPXK5';
   const testPrivateKey = 'SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
   const testAsset: Asset = {
     code: 'USDC',
@@ -416,7 +417,7 @@ describe('BlendProtocol', () => {
       const result = await blendProtocol.liquidate(
         testAddress,
         testPrivateKey,
-        'borrower-address',
+        testBorrowerAddress,
         testAsset,
         debtAmount,
         testAsset
@@ -442,7 +443,7 @@ describe('BlendProtocol', () => {
       await expect(blendProtocol.liquidate(
         testAddress,
         testPrivateKey,
-        'borrower-address',
+        testBorrowerAddress,
         testAsset,
         '50',
         testAsset

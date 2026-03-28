@@ -1,0 +1,263 @@
+﻿node.exe : PASS __tests__/pro
+tocols/soroswap-protocol.test
+.ts
+En línea: 1 Carácter: 1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (PASS __  
+  tests__/...rotocol.test.   
+ ts:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+  SoroswapProtocol
+    Initialization
+      ÔêÜ should initialize 
+successfully (4 ms)
+      ÔêÜ should set 
+protocol type to DEX (1 ms)
+      ÔêÜ should set 
+protocol id to soroswap (1 
+ms)
+      ÔêÜ should set 
+protocol name to Soroswap (1 
+ms)
+      ÔêÜ should initialize 
+router and factory contracts 
+(1 ms)
+      ÔêÜ should not 
+re-initialize if already 
+initialized
+      ÔêÜ should throw if 
+contract addresses are 
+missing (15 ms)
+      ÔêÜ should throw if 
+router address is missing (2 
+ms)
+    Protocol Information
+      ÔêÜ should return 
+placeholder stats (1 ms)
+    Lending Operations (not 
+supported)
+      ÔêÜ should throw 
+InvalidOperationError on 
+supply() (24 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+borrow() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+repay() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+withdraw() (1 ms)
+      ÔêÜ should include 
+protocolId in 
+InvalidOperationError (1 ms)
+    Position Management (not 
+applicable)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getPosition() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getHealthFactor() (1 ms)
+    Lending-specific Info 
+(not applicable)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getSupplyAPY() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getBorrowAPY() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getTotalSupply() (1 ms)
+      ÔêÜ should throw 
+InvalidOperationError on 
+getTotalBorrow() (1 ms)
+    DEX Helper Methods
+      ÔêÜ should return pair 
+info placeholder (1 ms)
+      ÔêÜ should return 
+empty pairs array (1 ms)
+      ÔêÜ should throw if 
+factory contract is null in 
+getPairInfo (1 ms)
+      ÔêÜ should throw if 
+factory contract is null in 
+getAllPairs (2 ms)
+      ÔêÜ should throw if 
+not initialized in 
+getPairInfo (1 ms)
+      ÔêÜ should throw if 
+not initialized in 
+getAllPairs (1 ms)
+    getSwapQuote()
+      ÔêÜ should return a 
+valid SwapQuote (2 ms)
+      ÔêÜ should apply 5% 
+slippage to minimumReceived 
+(1 ms)
+      ÔêÜ should throw if 
+router contract is null (1 
+ms)
+      ÔêÜ should handle 
+simulation failure fallback
+      ÔêÜ should handle 
+source account load failure 
+for simulation (1 ms)
+      ÔêÜ should throw if 
+simulation result is invalid 
+(1 ms)
+      ÔêÜ should throw if 
+return value is not an array 
+(1 ms)
+      ÔêÜ should throw if 
+amounts array is too short 
+(1 ms)
+      ÔêÜ should throw on 
+non-numeric amountIn
+    swap()
+      ÔêÜ should return a 
+TransactionResult with 
+status pending (2 ms)
+      ÔêÜ should include 
+swap metadata (4 ms)
+      ÔêÜ should throw if 
+prepareTransaction fails
+      ÔêÜ should throw if 
+router contract is null
+      ÔêÜ should throw on 
+invalid wallet address (1 ms)
+    addLiquidity()
+      ÔêÜ should return a 
+TransactionResult with 
+status pending (1 ms)
+      ÔêÜ should include 
+addLiquidity metadata (1 ms)
+      ÔêÜ should apply 5% 
+slippage tolerance to min 
+amounts
+      ÔêÜ should throw if 
+router contract is null
+      ÔêÜ should throw on 
+invalid wallet address (1 ms)
+      ÔêÜ should throw on 
+invalid amount (1 ms)
+      ÔêÜ should throw on 
+invalid asset
+      ÔêÜ should throw if 
+not initialized (1 ms)
+    removeLiquidity()
+      ÔêÜ should return a 
+TransactionResult with 
+status pending (1 ms)
+      ÔêÜ should include 
+removeLiquidity metadata
+      ÔêÜ should apply 5% 
+slippage to default min 
+amounts
+      ÔêÜ should accept 
+explicit min amounts (1 ms)
+      ÔêÜ should throw if 
+router contract is null (1 
+ms)
+      ÔêÜ should throw on 
+invalid wallet address
+      ÔêÜ should throw on 
+empty pool address (1 ms)
+      ÔêÜ should throw on 
+invalid liquidity amount
+      ÔêÜ should throw if 
+not initialized (1 ms)
+    getLiquidityPool()
+      ÔêÜ should return a 
+LiquidityPool with correct 
+shape (2 ms)
+      ÔêÜ should return the 
+correct tokens
+      ÔêÜ should return the 
+default fee
+      ÔêÜ should handle case 
+where address.fromScVal 
+throws (1 ms)
+      ÔêÜ should handle 
+invalid reserve simulation 
+result
+      ÔêÜ should handle 
+non-array native reserve 
+value (1 ms)
+      ÔêÜ should throw if 
+factory contract is null
+      ÔêÜ should throw on 
+invalid asset (empty code)
+      ÔêÜ should throw on 
+non-native asset missing 
+issuer (1 ms)
+      ÔêÜ should throw if 
+not initialized (1 ms)
+      ÔêÜ should handle case 
+where horizon account load 
+fails for placeholder
+      ÔêÜ should cover 
+resolveTokenAddress native 
+branch (1 ms)
+      ÔêÜ should handle 
+reserved amounts array too 
+short
+      ÔêÜ should handle 
+simulation error in 
+getLiquidityPool (get_pair)
+      ÔêÜ should throw on 
+negative amount in 
+amountToI128ScVal (1 ms)
+    Uninitialized State
+      ÔêÜ should throw on 
+getStats() when not 
+initialized (1 ms)
+      ÔêÜ should report not 
+initialized
+    Liquidity Operations 
+Defaults
+      ÔêÜ should use default 
+min amounts in addLiquidity 
+(1 ms)
+      ÔêÜ should use default 
+min amounts in 
+removeLiquidity
+      ÔêÜ should handle null 
+simulation in 
+getLiquidityPool
+      ÔêÜ should handle 
+simulation without result in 
+getLiquidityPool (1 ms)
+      ÔêÜ should handle 
+simulation without retval in 
+getLiquidityPool
+
+----------------------|---------|----------|---------|---------|-------------------------
+File                  | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s       
+----------------------|---------|----------|---------|---------|-------------------------
+All files             |    96.7 |    92.85 |   80.64 |   96.68 |                         
+ soroswap-protocol.ts |    96.7 |    92.85 |   80.64 |   96.68 | 108,497-498,514,755-756 
+----------------------|---------|----------|---------|---------|-------------------------
+Jest: "global" coverage 
+threshold for functions 
+(90%) not met: 80.64%
+Test Suites: 1 passed, 1 
+total
+Tests:       79 passed, 79 
+total
+Snapshots:   0 total
+Time:        1.301 s
+Ran all test suites matching 
+soroswap-protocol.test.ts.
+

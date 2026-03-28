@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { Horizon, Keypair } from '@stellar/stellar-sdk';
+import { Horizon, Keypair, StrKey } from '@stellar/stellar-sdk';
 import { IDefiProtocol } from '../types/protocol-interface.js';
 import {
   Asset,
@@ -229,7 +229,13 @@ export abstract class BaseProtocol implements IDefiProtocol {
     }
 
     try {
-      Keypair.fromPublicKey(address);
+      if (address.startsWith('G')) {
+        Keypair.fromPublicKey(address);
+      } else if (address.startsWith('C')) {
+        StrKey.decodeContract(address);
+      } else {
+        throw new Error('Address must start with G or C');
+      }
     } catch {
       throw new Error(`Invalid Stellar address: ${address}`);
     }
