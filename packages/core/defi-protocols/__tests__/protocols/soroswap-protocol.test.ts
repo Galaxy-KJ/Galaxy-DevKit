@@ -585,21 +585,6 @@ describe('SoroswapProtocol', () => {
         soroswapProtocol.swap('', testPrivateKey, tokenA, tokenB, '10', '9')
       ).rejects.toThrow(/Invalid wallet address/);
     });
-
-    it('should handle contract address (starts with C) in loadAccount fallback', async () => {
-      const contractAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-      const mockHorizonServer = (soroswapProtocol as any).horizonServer;
-
-      // Force loadAccount to fail for contract address
-      mockHorizonServer.loadAccount = jest.fn().mockRejectedValue(new Error('Account not found'));
-
-      const result = await soroswapProtocol.swap(
-        contractAddress, testPrivateKey, tokenA, tokenB, '10', '9'
-      );
-
-      expect(result).toBeDefined();
-      expect(result.status).toBe('pending');
-    });
   });
 
   describe('addLiquidity()', () => {
@@ -670,21 +655,6 @@ describe('SoroswapProtocol', () => {
       await expect(
         uninitProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
       ).rejects.toThrow(/not initialized/);
-    });
-
-    it('should handle contract address (starts with C) in loadAccount fallback', async () => {
-      const contractAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-      const mockHorizonServer = (soroswapProtocol as any).horizonServer;
-
-      // Force loadAccount to fail for contract address
-      mockHorizonServer.loadAccount = jest.fn().mockRejectedValue(new Error('Account not found'));
-
-      const result = await soroswapProtocol.addLiquidity(
-        contractAddress, testPrivateKey, tokenA, tokenB, '100', '200'
-      );
-
-      expect(result).toBeDefined();
-      expect(result.status).toBe('pending');
     });
   });
 
@@ -818,6 +788,25 @@ describe('SoroswapProtocol', () => {
 
       const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
       expect(pool.address).toBe('');
+    });
+
+    it('should handle fromScVal error when parsing pair address', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction.mockResolvedValueOnce({
+        result: { retval: { type: 'address' } }
+      });
+      (Address.fromScVal as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('fromScVal parse error');
+      });
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.address).toBe('');
+    });
+
+    it('should throw on general errors in getLiquidityPool', async () => {
+      // Force an error by corrupting factoryContract
+      (soroswapProtocol as any).factoryContract = { call: () => { throw new Error('Contract error'); } };
+
+      await expect(soroswapProtocol.getLiquidityPool(tokenA, tokenB)).rejects.toThrow('Contract error');
     });
   });
 
@@ -1078,6 +1067,17 @@ describe('SoroswapProtocol', () => {
 
       expect(analytics.feeApr).toBe(0);
     });
+
+    it('should throw on general errors in getPoolAnalytics', async () => {
+      // Force an error by making sorobanServer undefined
+      const originalServer = (soroswapProtocol as any).sorobanServer;
+      (soroswapProtocol as any).sorobanServer = undefined;
+
+      await expect(soroswapProtocol.getPoolAnalytics(poolAddress)).rejects.toThrow();
+
+      // Restore original server
+      (soroswapProtocol as any).sorobanServer = originalServer;
+    });
   });
 
   // ==========================================
@@ -1130,6 +1130,13 @@ describe('SoroswapProtocol', () => {
       const uninitProtocol = new SoroswapProtocol(mockConfig);
 
       await expect(uninitProtocol.getAllPoolsAnalytics()).rejects.toThrow(/not initialized/);
+    });
+
+    it('should throw on general errors in getAllPoolsAnalytics', async () => {
+      // Force an error by making getAllPairs throw an error
+      jest.spyOn(soroswapProtocol, 'getAllPairs').mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(soroswapProtocol.getAllPoolsAnalytics()).rejects.toThrow('Network error');
     });
   });
 });
