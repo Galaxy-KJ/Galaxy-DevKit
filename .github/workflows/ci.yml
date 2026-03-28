@@ -121,12 +121,18 @@ jobs:
       - name: Coverage threshold check
         working-directory: packages/core/${{ matrix.package }}
         run: |
-          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
-          echo "Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "❌ Coverage is below 90%"
+          SUMMARY="coverage/coverage-summary.json"
+          if [ ! -f "$SUMMARY" ]; then
+            echo "❌ $SUMMARY missing — ensure Jest uses coverageReporters including json-summary"
             exit 1
           fi
+          COVERAGE=$(jq -r '.total.lines.pct' "$SUMMARY")
+          echo "Coverage: $COVERAGE%"
+          node -e "
+            const c = parseFloat(process.argv[1]);
+            if (Number.isNaN(c)) { console.error('Invalid coverage value'); process.exit(1); }
+            if (c < 90) { console.error('Coverage is below 90%'); process.exit(1); }
+          " "$COVERAGE"
           echo "✅ Coverage is above 90%"
 
   # Job 4: Security audit
