@@ -45,6 +45,18 @@ export default tseslint.config(
         },
     },
     {
+        files: ['packages/core/wallet/src/smart-wallet.service.ts'],
+        languageOptions: {
+            parserOptions: {
+                projectService: true,
+                tsconfigRootDir: import.meta.dirname,
+            },
+        },
+        rules: {
+            '@typescript-eslint/no-unsafe-type-assertion': 'error',
+        },
+    },
+    {
         ignores: [
             '**/node_modules/**',
             '**/dist/**',

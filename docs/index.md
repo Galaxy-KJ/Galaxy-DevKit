@@ -118,6 +118,12 @@ Want to contribute to Galaxy DevKit? Check out our [Contributing Guide](../CONTR
 
 Galaxy DevKit is licensed under the MIT License. See [LICENSE](../LICENSE) for details.
 
+## Smart Wallet Docs
+
+- [Smart Wallet API Reference](./smart-wallet/api-reference.md)
+- [Smart Wallet Integration Guide](./smart-wallet/integration-guide.md)
+- [Smart Wallet Flow](./architecture/smart-wallet-flow.md)
+
 ---
 
 **Built with ❤️ for the Stellar ecosystem** 🌟
