@@ -177,16 +177,8 @@ describe('LedgerWallet', () => {
   });
 
   describe('Event Emitter', () => {
-    it('should emit error events', (done) => {
-      ledgerWallet.on('error', (error) => {
-        expect(error).toBeInstanceOf(LedgerError);
-        done();
-      });
-
-      // Trigger error by trying to get public key without connection
-      ledgerWallet.getPublicKey().catch(() => {
-        // Expected to fail
-      });
+    it('should reject getPublicKey with LedgerError when not connected', async () => {
+      await expect(ledgerWallet.getPublicKey()).rejects.toThrow(LedgerError);
     });
 
     it('should emit disconnected event', (done) => {

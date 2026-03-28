@@ -49,7 +49,13 @@ function toBase64Url(bytes: Uint8Array): string {
 
 function base64UrlToUint8Array(base64url: string): Uint8Array {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 }
 
 // ---------------------------------------------------------------------------
@@ -247,22 +253,39 @@ function getContractAddressFromSimulation(
 export interface AddSignerParams {
   /** Bech32 smart-wallet contract address (C…) */
   walletAddress: string;
-  /** Stellar G-address of the Ed25519 session key to register */
-  sessionPublicKey: string;
-  /** Desired session lifetime in wall-clock seconds */
-  ttlSeconds: number;
-  /** Base64-encoded WebAuthn credential id used for signing */
-  credentialId?: string;
+  /** Base64url credential ID of the new signer to register */
+  signerCredentialId: string;
+  /** Base64-encoded 65-byte uncompressed SEC-1 P-256 public key */
+  signerPublicKey: string;
+  /** Base64url credential ID of an existing authorized signer */
+  authCredentialId?: string;
   /**
-   * Pre-obtained WebAuthn assertion from SessionKeyManager.
+   * Pre-obtained WebAuthn assertion from an existing authorized signer.
    * When provided, skips the internal navigator.credentials.get() call.
    */
+  webAuthnAssertion?: PublicKeyCredential;
+  /**
+   * Backward-compatible session signer fields. If present, `addSigner` routes
+   * to `addSessionSigner`.
+   */
+  sessionPublicKey?: string;
+  ttlSeconds?: number;
+  credentialId?: string;
+}
+
+export interface AddSessionSignerParams {
+  walletAddress: string;
+  sessionPublicKey: string;
+  ttlSeconds: number;
+  credentialId?: string;
   webAuthnAssertion?: PublicKeyCredential;
 }
 
 export interface RemoveSignerParams {
   walletAddress: string;
+  signerCredentialId?: string;
   signerPublicKey?: string;
+  authCredentialId?: string;
   credentialId?: string;
   webAuthnAssertion?: PublicKeyCredential;
 }
@@ -296,9 +319,10 @@ export class SmartWalletService {
   // -------------------------------------------------------------------------
 
   /**
-   * Registers a session key as an on-chain `SessionSigner` inside the smart
-   * wallet contract by invoking `add_session_signer(credential_id,
-   * session_public_key, ttl_ledgers)`.
+   * Registers an additional admin signer by invoking
+   * `add_signer(credential_id, public_key)`.
+   *
+   * The action is authorized by any already-registered signer.
    *
    * ## Flow
    *  1. Build a Soroban invocation transaction (fee-less, for simulation).
@@ -317,6 +341,128 @@ export class SmartWalletService {
    * @returns Fully-signed Soroban transaction XDR (base64) for the fee sponsor
    */
   async addSigner(params: AddSignerParams): Promise<string> {
+    const isLegacySessionPath =
+      params.sessionPublicKey !== undefined ||
+      params.ttlSeconds !== undefined ||
+      params.credentialId !== undefined;
+    if (isLegacySessionPath) {
+      try {
+        return await this.addSessionSigner({
+          walletAddress: params.walletAddress,
+          sessionPublicKey: params.sessionPublicKey ?? "",
+          ttlSeconds: params.ttlSeconds ?? 0,
+          credentialId: params.credentialId,
+          webAuthnAssertion: params.webAuthnAssertion,
+        });
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error(error.message.replace(/addSessionSigner/g, "addSigner"));
+        }
+        throw error;
+      }
+    }
+
+    const {
+      walletAddress,
+      signerCredentialId,
+      signerPublicKey,
+      authCredentialId,
+      webAuthnAssertion,
+    } = params;
+
+    if (!walletAddress) throw new Error("addSigner: walletAddress is required");
+    if (!signerCredentialId) throw new Error("addSigner: signerCredentialId is required");
+    if (!signerPublicKey) throw new Error("addSigner: signerPublicKey is required");
+    if (!webAuthnAssertion && !authCredentialId) {
+      throw new Error("addSigner: either webAuthnAssertion or authCredentialId must be provided");
+    }
+
+    const signerPublicKeyBytes = base64ToUint8Array(signerPublicKey);
+    if (signerPublicKeyBytes.byteLength !== 65 || signerPublicKeyBytes[0] !== 0x04) {
+      throw new Error("addSigner: signerPublicKey must be a base64-encoded 65-byte uncompressed SEC-1 key");
+    }
+
+    const { sequence } = await this.server.getLatestLedger();
+    const sourceAccount = {
+      accountId: () => walletAddress,
+      sequenceNumber: () => String(BigInt(sequence) + 1n),
+      incrementSequenceNumber: () => {},
+    } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
+
+    const invokeTx = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.network,
+    })
+      .addOperation(
+        new Contract(walletAddress).call(
+          "add_signer",
+          xdr.ScVal.scvBytes(Buffer.from(base64UrlToUint8Array(signerCredentialId))),
+          xdr.ScVal.scvBytes(Buffer.from(signerPublicKeyBytes))
+        )
+      )
+      .setTimeout(300)
+      .build();
+
+    const simResult = await this.server.simulateTransaction(invokeTx);
+    if (Api.isSimulationError(simResult)) {
+      throw new Error(`addSigner simulation failed: ${simResult.error}`);
+    }
+    if (!simResult.result?.auth?.length) {
+      throw new Error("addSigner simulation returned no auth entries.");
+    }
+
+    const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+    const authEntryBytes = authEntry.toXDR();
+    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
+      authEntryBytes.byteOffset,
+      authEntryBytes.byteOffset + authEntryBytes.byteLength
+    ) as ArrayBuffer;
+    const authEntryHash = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", authEntryArrayBuffer)
+    );
+    const challenge = toBase64Url(authEntryHash);
+
+    let assertion: PublicKeyCredential | null = webAuthnAssertion ?? null;
+    if (!assertion) {
+      assertion = (await navigator.credentials.get({
+        publicKey: {
+          challenge: Buffer.from(base64UrlToUint8Array(challenge)),
+          rpId: (this.webAuthnProvider as any).rpId,
+          allowCredentials: [
+            {
+              type: "public-key" as const,
+              id: Buffer.from(base64UrlToUint8Array(authCredentialId!)),
+            },
+          ],
+          userVerification: "required",
+          timeout: 60_000,
+        },
+      })) as PublicKeyCredential | null;
+    }
+    if (!assertion) {
+      throw new Error("addSigner: WebAuthn authentication was cancelled or timed out.");
+    }
+
+    const resolvedAuthCredentialId = authCredentialId ?? assertion.id;
+    if (!resolvedAuthCredentialId) {
+      throw new Error("addSigner: unable to resolve auth credential id");
+    }
+
+    const assertionResponse = assertion.response as AuthenticatorAssertionResponse;
+    const signerSignature = buildWebAuthnSignatureScVal(
+      new Uint8Array(assertionResponse.authenticatorData),
+      new Uint8Array(assertionResponse.clientDataJSON),
+      base64UrlToUint8Array(resolvedAuthCredentialId),
+      convertSignatureDERtoCompact(assertionResponse.signature)
+    );
+
+    attachSignatureToAuthEntry(authEntry, walletAddress, signerSignature);
+    simResult.result.auth[0] = authEntry;
+    const signedTx = assembleTransaction(invokeTx, simResult).build();
+    return signedTx.toEnvelope().toXDR("base64");
+  }
+
+  async addSessionSigner(params: AddSessionSignerParams): Promise<string> {
     const {
       walletAddress,
       sessionPublicKey,
@@ -326,29 +472,22 @@ export class SmartWalletService {
     } = params;
 
     if (!walletAddress) {
-      throw new Error("addSigner: walletAddress is required");
+      throw new Error("addSessionSigner: walletAddress is required");
     }
     if (!sessionPublicKey) {
-      throw new Error("addSigner: sessionPublicKey is required");
+      throw new Error("addSessionSigner: sessionPublicKey is required");
     }
     if (ttlSeconds <= 0) {
-      throw new Error(`addSigner: ttlSeconds must be positive, got ${ttlSeconds}`);
+      throw new Error(`addSessionSigner: ttlSeconds must be positive, got ${ttlSeconds}`);
     }
     if (!webAuthnAssertion && !credentialId) {
       throw new Error(
-        "addSigner: either webAuthnAssertion or credentialId must be provided"
+        "addSessionSigner: either webAuthnAssertion or credentialId must be provided"
       );
     }
 
-    // Decode G-address → raw 32-byte Ed25519 public key
     const sessionPublicKeyBytes = StrKey.decodeEd25519PublicKey(sessionPublicKey);
-
     const ttlLedgers = ttlSecondsToLedgers(ttlSeconds);
-
-    // ------------------------------------------------------------------
-    // 1. Build the Soroban invocation transaction
-    // ------------------------------------------------------------------
-
     const { sequence } = await this.server.getLatestLedger();
     const sourceAccount: ConstructorParameters<typeof TransactionBuilder>[0] = {
       accountId: () => walletAddress,
@@ -357,7 +496,6 @@ export class SmartWalletService {
     };
 
     const contract = new Contract(walletAddress);
-
     const credentialBytes = credentialId
       ? Buffer.from(base64UrlToUint8Array(credentialId))
       : Buffer.alloc(0);
@@ -369,53 +507,40 @@ export class SmartWalletService {
       .addOperation(
         contract.call(
           "add_session_signer",
-          // credential_id: Bytes
           xdr.ScVal.scvBytes(credentialBytes),
-          // session_public_key: Bytes (32-byte Ed25519 raw key)
           xdr.ScVal.scvBytes(Buffer.from(sessionPublicKeyBytes)),
-          // ttl_ledgers: u32
           nativeToScVal(ttlLedgers, { type: "u32" })
         )
       )
       .setTimeout(300)
       .build();
 
-    // ------------------------------------------------------------------
-    // 2. Simulate to get the auth entry
-    // ------------------------------------------------------------------
-
     const simResult = await this.server.simulateTransaction(invokeTx);
-
     if (Api.isSimulationError(simResult)) {
-      throw new Error(`addSigner simulation failed: ${simResult.error}`);
+      throw new Error(`addSessionSigner simulation failed: ${simResult.error}`);
     }
-
     if (!simResult.result?.auth?.length) {
-      throw new Error("addSigner simulation returned no auth entries.");
+      throw new Error("addSessionSigner simulation returned no auth entries.");
     }
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
-
-    // ------------------------------------------------------------------
-    // 3. Obtain the WebAuthn assertion
-    // ------------------------------------------------------------------
+    const authEntryBytes = authEntry.toXDR();
+    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
+      authEntryBytes.byteOffset,
+      authEntryBytes.byteOffset + authEntryBytes.byteLength
+    ) as ArrayBuffer;
+    const authEntryHash = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", authEntryArrayBuffer)
+    );
+    const challenge = toBase64Url(authEntryHash);
 
     let assertionResponse: AuthenticatorAssertionResponse;
     let resolvedCredentialId: string;
 
     if (webAuthnAssertion) {
       assertionResponse = getAssertionResponse(webAuthnAssertion);
-      resolvedCredentialId = credentialId ?? "";
+      resolvedCredentialId = credentialId ?? webAuthnAssertion.id ?? "";
     } else {
-      const authEntryHash = new Uint8Array(
-        await crypto.subtle.digest(
-          "SHA-256",
-          getAuthEntryArrayBuffer(authEntry)
-        )
-      );
-
-      const challenge = toBase64Url(authEntryHash);
-
       const pkCredential = await this.credentialBackend.get({
         publicKey: {
           challenge: Buffer.from(base64UrlToUint8Array(challenge)),
@@ -433,7 +558,7 @@ export class SmartWalletService {
 
       if (!pkCredential) {
         throw new Error(
-          "addSigner: WebAuthn authentication was cancelled or timed out."
+          "addSessionSigner: WebAuthn authentication was cancelled or timed out."
         );
       }
 
@@ -441,32 +566,17 @@ export class SmartWalletService {
       resolvedCredentialId = credentialId!;
     }
 
-    // ------------------------------------------------------------------
-    // 4. Build AccountSignature::WebAuthn ScVal and attach to auth entry
-    // ------------------------------------------------------------------
-
-    const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
-    const clientDataJSON = new Uint8Array(assertionResponse.clientDataJSON);
-    const compactSig = convertSignatureDERtoCompact(assertionResponse.signature);
-
-    const credIdBytes = resolvedCredentialId
-      ? base64UrlToUint8Array(resolvedCredentialId)
-      : new Uint8Array(0);
-
     const signerSignature = buildWebAuthnSignatureScVal(
-      authenticatorData,
-      clientDataJSON,
-      credIdBytes,
-      compactSig
+      new Uint8Array(assertionResponse.authenticatorData),
+      new Uint8Array(assertionResponse.clientDataJSON),
+      resolvedCredentialId
+        ? base64UrlToUint8Array(resolvedCredentialId)
+        : new Uint8Array(0),
+      convertSignatureDERtoCompact(assertionResponse.signature)
     );
 
     attachSignatureToAuthEntry(authEntry, walletAddress, signerSignature);
     simResult.result.auth[0] = authEntry;
-
-    // ------------------------------------------------------------------
-    // 5. Assemble and return fee-less XDR for the sponsor
-    // ------------------------------------------------------------------
-
     const signedTx = assembleTransaction(invokeTx, simResult).build();
     return signedTx.toEnvelope().toXDR("base64");
   }
@@ -481,14 +591,40 @@ export class SmartWalletService {
    * The returned XDR is fee-less and intended to be submitted by a sponsor.
    */
   async removeSigner(params: RemoveSignerParams): Promise<string> {
-    const { walletAddress, credentialId, webAuthnAssertion } = params;
+    const {
+      walletAddress,
+      signerCredentialId,
+      signerPublicKey,
+      authCredentialId,
+      credentialId,
+      webAuthnAssertion,
+    } = params;
 
     if (!walletAddress) {
       throw new Error("removeSigner: walletAddress is required");
     }
-    if (!webAuthnAssertion && !credentialId) {
+
+    const authCredential =
+      authCredentialId ?? credentialId ?? undefined;
+    if (!webAuthnAssertion && !authCredential) {
       throw new Error(
-        "removeSigner: either webAuthnAssertion or credentialId must be provided"
+        "removeSigner: either webAuthnAssertion or authCredentialId/credentialId must be provided"
+      );
+    }
+
+    let removalCredentialBytes: Buffer;
+    if (signerCredentialId) {
+      removalCredentialBytes = Buffer.from(
+        base64UrlToUint8Array(signerCredentialId)
+      );
+    } else if (credentialId) {
+      removalCredentialBytes = Buffer.from(base64UrlToUint8Array(credentialId));
+    } else if (signerPublicKey) {
+      // SessionKeyManager registers session keys with an empty credential_id.
+      removalCredentialBytes = Buffer.alloc(0);
+    } else {
+      throw new Error(
+        "removeSigner: signerCredentialId, credentialId, or signerPublicKey is required"
       );
     }
 
@@ -500,9 +636,6 @@ export class SmartWalletService {
     };
 
     const contract = new Contract(walletAddress);
-    const credentialBytes = credentialId
-      ? Buffer.from(base64UrlToUint8Array(credentialId))
-      : Buffer.alloc(0);
 
     const invokeTx = new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
@@ -511,7 +644,7 @@ export class SmartWalletService {
       .addOperation(
         contract.call(
           "remove_signer",
-          xdr.ScVal.scvBytes(credentialBytes)
+          xdr.ScVal.scvBytes(removalCredentialBytes)
         )
       )
       .setTimeout(300)
@@ -530,9 +663,11 @@ export class SmartWalletService {
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
 
     let assertionResponse: AuthenticatorAssertionResponse;
+    let signingCredentialIdBytes: Uint8Array;
 
     if (webAuthnAssertion) {
       assertionResponse = getAssertionResponse(webAuthnAssertion);
+      signingCredentialIdBytes = base64UrlToUint8Array(webAuthnAssertion.id);
     } else {
       const authEntryHash = new Uint8Array(
         await crypto.subtle.digest(
@@ -549,7 +684,7 @@ export class SmartWalletService {
           allowCredentials: [
             {
               type: "public-key" as const,
-              id: Buffer.from(base64UrlToUint8Array(credentialId!)),
+              id: Buffer.from(base64UrlToUint8Array(authCredential!)),
             },
           ],
           userVerification: "required",
@@ -564,6 +699,7 @@ export class SmartWalletService {
       }
 
       assertionResponse = getAssertionResponse(pkCredential);
+      signingCredentialIdBytes = base64UrlToUint8Array(pkCredential.id);
     }
 
     const authenticatorData = new Uint8Array(assertionResponse.authenticatorData);
@@ -572,7 +708,7 @@ export class SmartWalletService {
     const signerSignature = buildWebAuthnSignatureScVal(
       authenticatorData,
       clientDataJSON,
-      credentialBytes,
+      signingCredentialIdBytes,
       compactSig
     );
 
