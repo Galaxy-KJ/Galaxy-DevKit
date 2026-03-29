@@ -1,50 +1,55 @@
 # DEX Aggregator Guide
 
 ## Overview
-`DexAggregatorService` queries multiple liquidity sources (SDEX via Horizon, Soroswap AMM) simultaneously to find the best execution price for a given asset pair. It currently supports routing and price comparison, culminating in an unsigned XDR transaction for client-side signing.
+`DexAggregatorService` in `@galaxy-kj/core-defi-protocols` queries Soroswap and SDEX simultaneously to find the best execution price for a given asset pair. It also supports explicit split execution, returning a route breakdown plus savings versus the best single venue.
 
 ## Routing Strategies and Quote Flow
-When `getAggregatedQuote` is called:
+When `getBestQuote` is called:
 1. **Request:** The service takes an `assetIn`, `assetOut`, and `amountIn`.
-2. **Route:** It concurrently queries all configured `LiquiditySource`s (`sdex`, `soroswap`).
-3. **Selection:** Results are filtered and sorted best-first (highest `amountOut`), returning an `AggregatedQuote`.
+2. **Route:** It concurrently queries Soroswap and SDEX.
+3. **Split evaluation:** It evaluates default split candidates across both venues.
+4. **Selection:** It returns the execution plan with the highest `totalAmountOut`.
 
 ### Quote Example
 ```typescript
-import { DexAggregatorService } from '@galaxy-kj/core-defi';
+import { DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
 
-const aggregator = new DexAggregatorService(horizonServer, soroswapConfig);
+const aggregator = new DexAggregatorService(soroswapConfig);
 
-const quote = await aggregator.getAggregatedQuote({
-  assetIn: { code: 'XLM', type: 'native' },
-  assetOut: { code: 'USDC', issuer: 'GA...', type: 'credit_alphanum4' },
-  amountIn: '100',
-});
+const quote = await aggregator.getBestQuote(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GA...', type: 'credit_alphanum4' },
+  '100'
+);
 
-console.log('Best source:', quote.bestRoute.source);
-console.log('Expected out:', quote.bestRoute.amountOut);
+console.log('Expected out:', quote.totalAmountOut);
+console.log('Execution routes:', quote.routes);
 ```
 
-## Executing a Swap
-From a quote, you can construct an unsigned transaction using `executeAggregatedSwap`.
+## Explicit Split Quotes
+Use `getSplitQuote` when you want to force an allocation across venues.
 
 ```typescript
-const swapResult = await aggregator.executeAggregatedSwap({
-  signerPublicKey: 'GA...',
-  assetIn: { code: 'XLM', type: 'native' },
-  assetOut: { code: 'USDC', issuer: 'GA...', type: 'credit_alphanum4' },
-  amountIn: '100',
-  minAmountOut: '95', // Slippage protection
-});
+const quote = await aggregator.getSplitQuote(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GA...', type: 'credit_alphanum4' },
+  '100',
+  [60, 40]
+);
 
-console.log('XDR to sign:', swapResult.xdr);
+console.log(quote.routes);
 ```
 
-### Smart Wallet Integration
-The resulting `xdr` is left unsigned by design. It can be passed to the Smart Wallet integration (via passkey signatures) to authorize the swap transaction safely on behalf of the user.
+## REST API
+
+`GET /api/v1/defi/aggregator/quote?assetIn=XLM&assetOut=USDC:GA...&amountIn=100`
+
+Optionally, force a split:
+
+`GET /api/v1/defi/aggregator/quote?assetIn=XLM&assetOut=USDC:GA...&amountIn=100&splits=60,40`
 
 ## Error Handling
 The aggregator manages several constraints:
-- **Price Impact:** `highImpactWarning` is flagged if the chosen route has a price impact >= 5%.
-- **Slippage Exceeded:** Controlled by passing `minAmountOut` during execution. If the actual return is lower, the transaction fails on-chain.
-- **Insufficient Liquidity / Network Errors:** Individual source quote failures are swallowed during aggregation, allowing the service to fallback to the remaining functioning sources. If no sources succeed, it throws an error.
+- **Price Impact:** Soroswap price impact is estimated from the constant-product reserve curve.
+- **Split validation:** Split weights must contain exactly two non-negative values, in `[soroswap, sdex]` order.
+- **Insufficient Liquidity / Network Errors:** Individual source failures are tolerated during best-route discovery when another venue still returns a quote. If no venue succeeds, the service throws an error.

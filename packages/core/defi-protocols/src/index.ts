@@ -14,6 +14,10 @@ export * from './types/operations.js';
 // Base Protocol
 export { BaseProtocol } from './protocols/base-protocol.js';
 
+// Aggregator
+export { DexAggregatorService } from './aggregator/DexAggregatorService.js';
+export * from './aggregator/types.js';
+
 // Protocol Implementations
 export * from './protocols/blend/index.js';
 export * from './protocols/soroswap/index.js';

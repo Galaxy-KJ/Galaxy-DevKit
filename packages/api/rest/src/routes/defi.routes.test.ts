@@ -1,13 +1,54 @@
 import request from 'supertest';
 import express from 'express';
 import { setupDefiRoutes } from './defi.routes';
-import { ProtocolFactory } from '@galaxy-kj/core-defi-protocols';
+import { DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
 
 // Mock ProtocolFactory and the protocols
 jest.mock('@galaxy-kj/core-defi-protocols', () => {
     const originalModule = jest.requireActual('@galaxy-kj/core-defi-protocols');
     return {
         ...originalModule,
+        DexAggregatorService: jest.fn().mockImplementation(() => ({
+            getBestQuote: jest.fn().mockResolvedValue({
+                assetIn: { code: 'XLM', type: 'native' },
+                assetOut: { code: 'USDC', issuer: 'GA5Z...', type: 'credit_alphanum4' },
+                amountIn: '100',
+                routes: [{
+                    venue: 'soroswap',
+                    amountIn: '100',
+                    amountOut: '98',
+                    priceImpact: 0.5,
+                    path: ['native', 'USDC:GA5Z...']
+                }],
+                totalAmountOut: '98',
+                effectivePrice: 0.98,
+                savingsVsBestSingle: 0
+            }),
+            getSplitQuote: jest.fn().mockResolvedValue({
+                assetIn: { code: 'XLM', type: 'native' },
+                assetOut: { code: 'USDC', issuer: 'GA5Z...', type: 'credit_alphanum4' },
+                amountIn: '100',
+                routes: [
+                    {
+                        venue: 'soroswap',
+                        amountIn: '60',
+                        amountOut: '59',
+                        priceImpact: 0.4,
+                        path: ['native', 'USDC:GA5Z...']
+                    },
+                    {
+                        venue: 'sdex',
+                        amountIn: '40',
+                        amountOut: '40',
+                        priceImpact: 0,
+                        path: []
+                    }
+                ],
+                totalAmountOut: '99',
+                effectivePrice: 0.99,
+                savingsVsBestSingle: 1.02
+            })
+        })),
         ProtocolFactory: {
             getInstance: jest.fn().mockReturnValue({
                 createProtocol: jest.fn().mockImplementation((config) => {
@@ -105,6 +146,37 @@ describe('DeFi Routes', () => {
 
             expect(response.status).toBe(400);
             expect(response.body.error).toBeDefined();
+        });
+    });
+
+    describe('Aggregator Routes', () => {
+        it('GET /api/v1/defi/aggregator/quote should return best quote', async () => {
+            const response = await request(app)
+                .get('/api/v1/defi/aggregator/quote')
+                .query({ assetIn: 'XLM', assetOut: 'USDC', amountIn: '100' });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('totalAmountOut', '98');
+            expect(DexAggregatorService).toHaveBeenCalled();
+        });
+
+        it('GET /api/v1/defi/aggregator/quote should support explicit splits', async () => {
+            const response = await request(app)
+                .get('/api/v1/defi/aggregator/quote')
+                .query({ assetIn: 'XLM', assetOut: 'USDC', amountIn: '100', splits: '60,40' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.routes).toHaveLength(2);
+            expect(response.body.totalAmountOut).toBe('99');
+        });
+
+        it('GET /api/v1/defi/aggregator/quote should validate malformed splits', async () => {
+            const response = await request(app)
+                .get('/api/v1/defi/aggregator/quote')
+                .query({ assetIn: 'XLM', assetOut: 'USDC', amountIn: '100', splits: '100' });
+
+            expect(response.status).toBe(400);
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
         });
     });
 
