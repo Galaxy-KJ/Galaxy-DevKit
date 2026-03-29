@@ -6,6 +6,7 @@ This document shows how quote selection, wallet authorization, and submission fi
 
 ```mermaid
 flowchart LR
+    Oracle["OracleAggregator\n(CoinGecko / CMC)"] --> Router
     Request["Swap / route request"] --> Router["Aggregator or protocol router"]
     Router --> Soroswap["Soroswap adapter"]
     Router --> Blend["Blend / lending adapter"]
@@ -16,6 +17,8 @@ flowchart LR
     Best --> Wallet["Smart wallet signing path"]
     Wallet --> Sponsor["Fee sponsor"]
     Sponsor --> Stellar["Stellar network"]
+    Oracle -.->|"price feeds"| Automation["AutomationService\n(price triggers)"]
+    Automation -.->|"triggers swap rule"| Request
 ```
 
 ## End-to-End Sequence
@@ -42,3 +45,12 @@ sequenceDiagram
 - High-frequency flows should avoid a biometric prompt on every swap.
 - Session keys let bots or automations sign repeated transactions within a bounded TTL.
 - Revocation and expiry keep those delegated rights time-limited.
+
+## Oracle node
+
+The `OracleAggregator` (shown at the top of the routing diagram) feeds two consumers:
+
+1. **Direct price queries** — applications call `aggregator.getAggregatedPrice('XLM/USD')` to get the current validated price before routing a swap.
+2. **Automation price triggers** — `AutomationService` polls the oracle on each evaluation cycle; when a `PRICE` condition threshold is crossed the rule fires and injects a new swap request into the routing path.
+
+See the [Oracle Integration Guide](../guides/oracle-integration.md) for implementation details.

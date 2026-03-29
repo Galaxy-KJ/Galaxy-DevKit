@@ -95,5 +95,6 @@ sequenceDiagram
 ## Related Docs
 
 - [Contract reference](./smart-wallet-contract.md)
+- [Deployment runbook](./deployment-runbook.md) — full step-by-step guide including fee-bump sponsor setup and mainnet promotion checklist
 - [Package README](../../packages/contracts/smart-wallet-account/README.md)
 - [Stellar testnet docs](https://developers.stellar.org/docs/networks/testnet)

@@ -92,7 +92,39 @@ flowchart LR
 - `SmartWalletService.addSigner()` and `removeSigner()` build Soroban invocations and return fee-less XDR for sponsorship.
 - The session credential ID should be stable across registration, signing, and revocation. In the TypeScript integration this is derived from the raw session public key bytes.
 
+## Fee-bump sponsor architecture
+
+Galaxy DevKit uses a **fee-bump sponsor** pattern so users never need to hold XLM to pay transaction fees.
+
+```
+Client (browser)                        Server (Galaxy DevKit API)
+──────────────────                      ─────────────────────────
+SmartWalletService.sign()               POST /api/v1/wallets/submit-tx
+  │                                       │
+  │  1. Simulate tx → authEntry           │
+  │  2. WebAuthn assertion                │
+  │  3. Attach signature to authEntry     │
+  │  4. Build fee-less XDR (fee = 0)      │
+  │                                       │
+  └──── signedTxXdr ───────────────────►  │
+                                          │  5. Parse inner tx
+                                          │  6. buildFeeBumpTransaction(sponsorKeypair, fee, innerTx)
+                                          │  7. feeBumpTx.sign(sponsorKeypair)
+                                          │  8. Submit to Soroban RPC
+                                          │  9. Poll until confirmed
+                                          │
+                                         ◄── { transactionHash, ledger }
+```
+
+**Security properties:**
+- The backend signs only the outer fee-bump envelope with `FEE_SPONSOR_SECRET_KEY`.
+- The backend never sees, derives, or touches the user's private key.
+- The inner transaction (user's signed operation) is unmodified.
+
+See the [Deployment Runbook](./deployment-runbook.md) for sponsor account setup and the [REST API Reference](../api/api-reference.md) for the `submit-tx` endpoint.
+
 ## Useful External References
 
 - [Stellar smart contracts docs](https://developers.stellar.org/docs/build/smart-contracts/overview)
 - [Soroban CLI docs](https://developers.stellar.org/docs/tools/soroban-cli)
+- [Deployment runbook](./deployment-runbook.md) — step-by-step deploy guide with fee-bump sponsor setup

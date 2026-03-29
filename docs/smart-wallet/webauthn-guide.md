@@ -149,3 +149,4 @@ Object.defineProperty(global.navigator, 'credentials', {
 - `packages/core/wallet/src/tests/smart-wallet.service.test.ts`
 - [FEATURE] Multi-device Passkey Support (#164)
 - [DOCS] Smart Wallet Service API reference (#178)
+- [Social Login Integration Guide](../guides/social-login-integration.md) — OAuth + WebAuthn two-layer model, full Supabase onboarding example
