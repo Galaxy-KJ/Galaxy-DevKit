@@ -21,7 +21,7 @@ import type {
   SmartWalletWebAuthnProvider,
   USDCNetwork,
 } from './types/smart-wallet.types';
-import { USDC_ISSUERS } from './types/smart-wallet.types';
+import { USDC_ISSUERS, SignatureExpiredException } from './types/smart-wallet.types';
 
 // ---------------------------------------------------------------------------
 // TTL helpers
@@ -373,12 +373,35 @@ export class SmartWalletService {
     private rpcUrl: string,
     factoryId?: string,
     private network: string = Networks.TESTNET,
-    credentialBackend: CredentialBackend = new BrowserCredentialBackend()
+    credentialBackend: CredentialBackend = new BrowserCredentialBackend(),
+    private expirationBufferLedgers: number = 10
   ) {
     this.server = new Server(rpcUrl);
     this.credentialBackend = credentialBackend;
     if (factoryId) {
       this.factoryContractId = factoryId;
+    }
+  }
+
+  /**
+   * Validates that a Soroban auth entry's signatureExpirationLedger is not
+   * already expired or within the configured expiration buffer.
+   *
+   * @throws {SignatureExpiredException} when expiration is too close or passed.
+   */
+  private validateSignatureExpiration(
+    authEntry: xdr.SorobanAuthorizationEntry,
+    currentLedger: number
+  ): void {
+    const credentials = authEntry.credentials();
+    // Only address credentials carry a signatureExpirationLedger.
+    // Source-account credentials use no expiry, so skip them.
+    if (credentials.switch().name !== 'sorobanCredentialsAddress') {
+      return;
+    }
+    const expirationLedger = credentials.address().signatureExpirationLedger();
+    if (expirationLedger <= currentLedger + this.expirationBufferLedgers) {
+      throw new SignatureExpiredException(expirationLedger, currentLedger);
     }
   }
 
@@ -493,6 +516,7 @@ export class SmartWalletService {
     }
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+    this.validateSignatureExpiration(authEntry, sequence);
     const authEntryBytes = authEntry.toXDR();
     const authEntryArrayBuffer = authEntryBytes.buffer.slice(
       authEntryBytes.byteOffset,
@@ -611,6 +635,7 @@ export class SmartWalletService {
     }
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+    this.validateSignatureExpiration(authEntry, sequence);
     const authEntryBytes = authEntry.toXDR();
     const authEntryArrayBuffer = authEntryBytes.buffer.slice(
       authEntryBytes.byteOffset,
@@ -749,6 +774,7 @@ export class SmartWalletService {
     }
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
+    this.validateSignatureExpiration(authEntry, sequence);
 
     let assertionResponse: AuthenticatorAssertionResponse;
     let signingCredentialIdBytes: Uint8Array;
@@ -839,11 +865,16 @@ export class SmartWalletService {
       throw new Error('Simulation returned no auth entries.');
     }
 
+    const { sequence: currentLedger } = await this.server.getLatestLedger();
+
     // Process all authorization entries
     for (let i = 0; i < simResult.result.auth.length; i++) {
       const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[i];
 
-      // 1. Validate DeFi authorization entries (Soroswap, etc.)
+      // 1. Validate signature expiration before signing
+      this.validateSignatureExpiration(authEntry, currentLedger);
+
+      // 2. Validate DeFi authorization entries (Soroswap, etc.)
       this.validateDeFiAuthorization(authEntry, contractAddress);
 
       // 2. Obtain Passkey signature
@@ -1015,12 +1046,16 @@ export class SmartWalletService {
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
 
-    // 2. Compute the 32-byte auth-entry hash (= signature_payload in __check_auth)
+    // 2. Validate signature expiration before signing
+    const { sequence: currentLedger } = await this.server.getLatestLedger();
+    this.validateSignatureExpiration(authEntry, currentLedger);
+
+    // 3. Compute the 32-byte auth-entry hash (= signature_payload in __check_auth)
     const authEntryHash = Buffer.from(
       await crypto.subtle.digest('SHA-256', getAuthEntryArrayBuffer(authEntry))
     );
 
-    // 3. Invoke the caller's sign callback with the hash
+    // 4. Invoke the caller's sign callback with the hash
     const ed25519Sig = signFn(authEntryHash);
 
     if (!ed25519Sig || ed25519Sig.byteLength !== 64) {
@@ -1029,14 +1064,14 @@ export class SmartWalletService {
       );
     }
 
-    // 4. Build AccountSignature::SessionKey ScVal
+    // 5. Build AccountSignature::SessionKey ScVal
     const credentialIdBytes = base64UrlToUint8Array(credentialId);
     const signerSignature = buildSessionKeySignatureScVal(
       credentialIdBytes,
       ed25519Sig
     );
 
-    // 5. Attach to auth entry and assemble XDR
+    // 6. Attach to auth entry and assemble XDR
     attachSignatureToAuthEntry(authEntry, contractAddress, signerSignature);
     simResult.result.auth[0] = authEntry;
 
