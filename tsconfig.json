@@ -21,6 +21,9 @@
     "baseUrl": ".",
     "paths": {
       "@galaxy/core/*": ["packages/core/*/src"],
+      "@galaxy/core-stellar-sdk": ["packages/core/stellar-sdk/src"],
+      "@galaxy/core-wallet": ["packages/core/wallet/src"],
+      "@galaxy/core-defi-protocols": ["packages/core/defi-protocols/src"],
       "@galaxy/contracts/*": ["packages/contracts/*/src"],
       "@galaxy/api/*": ["packages/api/*/src"],
       "@galaxy/sdk/*": ["packages/sdk/*/src"],

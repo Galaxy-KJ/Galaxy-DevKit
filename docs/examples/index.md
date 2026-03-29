@@ -7,6 +7,7 @@ Real-world examples and use cases for Galaxy DevKit.
 - [Examples Overview](./examples.md) - Complete examples documentation
 - [Payment Apps](./payment-apps.md) - Payment processing examples
 - [DeFi Platforms](./defi-platforms.md) - DeFi application examples
+- [Oracle Aggregation](./oracles/) - Oracle price aggregation examples
 - [NFT Marketplaces](./nft-marketplaces.md) - NFT platform examples
 - [Gaming Applications](./gaming-apps.md) - Gaming integration examples
 
@@ -58,6 +59,11 @@ galaxy dev
 - **Liquidity Pools** - Automated market makers
 - **Yield Farming** - Staking and rewards
 - **Lending Protocols** - Borrowing and lending
+
+### Oracle Aggregation
+- **Aggregator Setup** - Basic aggregator configuration
+- **Custom Sources** - Implementing custom oracle sources
+- **Aggregation Strategies** - Using median, weighted average, and TWAP
 
 ### NFT Marketplaces
 - **NFT Minting** - Create and deploy NFTs

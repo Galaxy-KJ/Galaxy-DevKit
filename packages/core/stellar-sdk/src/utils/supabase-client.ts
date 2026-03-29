@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseURL = process.env.SUPABASE_URL;

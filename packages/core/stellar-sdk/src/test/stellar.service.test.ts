@@ -1,14 +1,21 @@
-import { StellarService } from '../services/stellar-service';
-import * as bip39 from 'bip39';
+import { StellarService } from '../services/stellar-service.js';
+import { WalletConfig, AccountInfo } from '../types/stellar-types.js';
 import { Keypair } from '@stellar/stellar-sdk';
-import { mock } from 'node:test';
+import * as bip39 from 'bip39';
 
 // Mock dependencies
 jest.mock('../utils/encryption.utils', () => ({
-  encryptPrivateKey: jest.fn((key, pwd) => `encrypted_${key}_with_${pwd}`),
+  encryptPrivateKey: jest.fn((key, pwd) => Promise.resolve(`encrypted_${key}_with_${pwd}`)),
   decryptPrivateKey: jest.fn((encrypted, pwd) =>
-    encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, '')
+    Promise.resolve(Buffer.from(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, '')))
   ),
+  decryptPrivateKeyToString: jest.fn((encrypted, pwd) =>
+    Promise.resolve(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, ''))
+  ),
+  withDecryptedKey: jest.fn(async (encrypted, pwd, cb) => {
+    const buf = Buffer.from(encrypted.replace(`encrypted_`, '').replace(`_with_${pwd}`, ''));
+    try { return await cb(buf); } finally { buf.fill(0); }
+  }),
 }));
 
 jest.mock('../utils/supabase-client', () => ({
@@ -87,8 +94,12 @@ jest.mock('@stellar/stellar-sdk', () => ({
 }));
 
 describe('StellarService - Deep Tests', () => {
-  const mockNetworkConfig = {
-    network: 'testnet' as const,
+  const mockNetworkConfig: {
+    network: 'testnet' | 'mainnet';
+    horizonUrl: string;
+    passphrase: string;
+  } = {
+    network: 'testnet',
     horizonUrl: 'https://horizon-testnet.stellar.org',
     passphrase: 'Test SDF Network ; September 2015',
   };
@@ -185,7 +196,7 @@ describe('StellarService - Deep Tests', () => {
       debug('createWallet with Metadata - Input', { metadata });
 
       const result = await service.createWallet(
-        { metadata } as any,
+        { metadata } as Partial<WalletConfig>,
         'password'
       );
 
@@ -358,7 +369,7 @@ describe('StellarService - Deep Tests', () => {
       const wallet = await service.createWalletFromMnemonic(
         validMnemonic,
         'password',
-        { metadata } as any
+        { metadata } as Partial<WalletConfig>
       );
 
       debug('Mnemonic Wallet Result', {
@@ -688,7 +699,7 @@ describe('StellarService - Deep Tests', () => {
           { asset: 'USDC', balance: '500.0000000' },
         ],
         subentryCount: '2',
-      } as any);
+      } as AccountInfo);
 
       debug('getBalance - XLM Request', { publicKey: mockPublicKey });
 
@@ -712,7 +723,7 @@ describe('StellarService - Deep Tests', () => {
           { asset: 'USDC', balance: '750.2500000' },
         ],
         subentryCount: '2',
-      } as any);
+      } as AccountInfo);
 
       const balance = await service.getBalance(mockPublicKey, 'USDC');
 
@@ -731,7 +742,7 @@ describe('StellarService - Deep Tests', () => {
         sequence: '123',
         balances: [{ asset: 'XLM', balance: '1000.0000000' }],
         subentryCount: '1',
-      } as any);
+      } as AccountInfo);
 
       debug('getBalance - Asset Not Found Test', {
         requestedAsset: 'USDC',
@@ -749,7 +760,7 @@ describe('StellarService - Deep Tests', () => {
         sequence: '123',
         balances: [{ asset: 'XLM', balance: '500.0000000' }],
         subentryCount: '1',
-      } as any);
+      } as AccountInfo);
 
       debug('getBalance - Default Asset Test', { defaultAsset: 'XLM' });
 
@@ -1458,8 +1469,12 @@ describe('StellarService - Deep Tests', () => {
 
   describe('switchNetwork', () => {
     it('should switch to mainnet configuration', () => {
-      const mainnetConfig = {
-        network: 'mainnet' as const,
+      const mainnetConfig: {
+        network: 'testnet' | 'mainnet';
+        horizonUrl: string;
+        passphrase: string;
+      } = {
+        network: 'mainnet',
         horizonUrl: 'https://horizon.stellar.org',
         passphrase: 'Public Global Stellar Network ; September 2015',
       };
@@ -1480,8 +1495,12 @@ describe('StellarService - Deep Tests', () => {
     });
 
     it('should switch to testnet configuration', () => {
-      const testnetConfig = {
-        network: 'testnet' as const,
+      const testnetConfig: {
+        network: 'testnet' | 'mainnet';
+        horizonUrl: string;
+        passphrase: string;
+      } = {
+        network: 'testnet',
         horizonUrl: 'https://horizon-testnet.stellar.org',
         passphrase: 'Test SDF Network ; September 2015',
       };
@@ -1501,8 +1520,12 @@ describe('StellarService - Deep Tests', () => {
 
       debug('switchNetwork - Original Config', originalConfig);
 
-      const newConfig = {
-        network: 'mainnet' as const,
+      const newConfig: {
+        network: 'testnet' | 'mainnet';
+        horizonUrl: string;
+        passphrase: string;
+      } = {
+        network: 'mainnet',
         horizonUrl: 'https://horizon.stellar.org',
         passphrase: 'Public Global Stellar Network ; September 2015',
       };

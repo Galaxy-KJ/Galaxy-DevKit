@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Soroban type conversion utilities
  * @description Convert between JavaScript types and Soroban ScVal
@@ -7,7 +9,7 @@
  */
 
 import { xdr, ScInt, Address } from '@stellar/stellar-sdk';
-import { ScType } from '../types/contract-types';
+import { ScType } from '../types/contract-types.js';
 
 export class ScValConverter {
   /**

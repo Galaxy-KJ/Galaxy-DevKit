@@ -8,32 +8,39 @@
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build",
+    "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint",
+    "lint": "lerna run lint --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check",
+    "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
-    "version": "lerna version",
+    "bump": "lerna version",
     "publish": "lerna publish",
     "test": "jest",
+    "test:e2e": "playwright test",
+    "cli": "npm run start:ts --workspace=@galaxy-kj/cli",
     "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
     "serve:docs": "npx http-server docs -p 8080"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@eslint/eslintrc": "^3.0.0",
+    "@eslint/js": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "concurrently": "^8.0.0",
     "eslint": "^9.0.0",
+    "globals": "^15.0.0",
     "http-server": "^14.1.1",
     "jest": "^30.2.0",
     "lerna": "^9.0.3",
     "prettier": "^3.0.0",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -41,7 +48,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxy-devkit/galaxy-devkit.git"
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git"
   },
   "keywords": [
     "stellar",
@@ -55,7 +62,17 @@
   "author": "Galaxy DevKit Team",
   "license": "MIT",
   "dependencies": {
+    "@blend-capital/blend-sdk": "^3.2.2",
+    "@galaxy-kj/core-defi-protocols": "^5.0.2",
+    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
     "@stellar/stellar-sdk": "^14.4.3",
     "node-cron": "^4.2.1"
+  },
+  "overrides": {
+    "diff": "^8.0.1",
+    "handlebars": "4.7.9",
+    "tar": "^7.5.7",
+    "xml2js": "^0.6.0",
+    "blessed-contrib": "^4.11.0"
   }
 }

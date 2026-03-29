@@ -6,7 +6,7 @@
  * @since 2024-01-15
  */
 
-import { NetworkConfig } from '../types/defi-types';
+import { NetworkConfig } from '../types/defi-types.js';
 
 /**
  * Testnet network configuration

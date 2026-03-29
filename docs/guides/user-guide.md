@@ -13,7 +13,22 @@ Complete guide for using Galaxy DevKit to build Stellar applications.
 
 ## 🚀 Installation
 
-### Install CLI Globally
+### Option 1: Local Development (From Monorepo)
+
+If you're working on Galaxy DevKit itself:
+
+```bash
+# Build the CLI
+npm run build
+
+# Run directly
+node tools/cli/dist/tools/cli/src/index.js [command]
+
+# Or link globally
+cd tools/cli && npm run build && npm link
+```
+
+### Option 2: Install CLI Globally (Published Package)
 ```bash
 npm install -g @galaxy/cli
 ```
@@ -349,11 +364,139 @@ galaxy generate contract --name TokenSwap --type swap
 galaxy generate component --name PaymentForm --type form
 ```
 
+#### Wallet Management
+```bash
+galaxy wallet <command>
+```
+
+**Available Commands:**
+- `create` - Create a new wallet
+- `import` - Import an existing wallet
+- `list` - List all wallets
+- `balance` - Check wallet balance
+- `send` - Send a payment
+
+**Examples:**
+```bash
+# Create new wallet
+galaxy wallet create --name my-wallet --network testnet
+
+# Import wallet
+galaxy wallet import --secret SXXX...
+
+# Check balance
+galaxy wallet balance GXXX... --network testnet
+
+# Send payment
+galaxy wallet send --from GXXX... --to GYYY... --amount 100 --asset XLM
+```
+
+#### Blend Protocol (DeFi)
+```bash
+galaxy blend <command>
+```
+
+**Available Commands:**
+- `stats` - View protocol statistics
+- `supply` - Supply assets to lending pool
+- `borrow` - Borrow assets from pool
+- `withdraw` - Withdraw supplied assets
+- `repay` - Repay borrowed assets
+
+**Examples:**
+```bash
+# View stats
+galaxy blend stats --network testnet
+
+# Supply USDC
+galaxy blend supply --asset USDC --amount 1000
+
+# Borrow XLM
+galaxy blend borrow --asset XLM --amount 500
+```
+
+#### Oracle Price Data
+```bash
+galaxy oracle <command>
+```
+
+**Available Commands:**
+- `price <symbol>` - Query current price
+- `history <symbol>` - Get price history with TWAP
+- `sources list` - List oracle sources
+- `validate <symbol>` - Validate price data
+
+**Examples:**
+```bash
+# Get current price
+galaxy oracle price XLM/USD
+
+# Get price history
+galaxy oracle history XLM/USD --period 1m
+
+# Validate prices
+galaxy oracle validate XLM/USD --threshold 5
+```
+
+#### Watch Mode (Real-time Monitoring)
+```bash
+galaxy watch <command>
+```
+
+**Available Commands:**
+- `account <address>` - Monitor account activity
+- `transaction <hash>` - Track transaction
+- `oracle <symbol>` - Stream price updates
+- `contract <id>` - Monitor contract events
+- `network` - View network stats
+- `dashboard` - Combined dashboard view
+
+**Examples:**
+```bash
+# Watch account
+galaxy watch account GXXX...
+
+# Track transaction
+galaxy watch transaction 7a8b...123f
+
+# Monitor prices
+galaxy watch oracle XLM
+
+# View dashboard
+galaxy watch dashboard
+```
+
+#### Interactive Mode
+```bash
+galaxy interactive
+# or simply
+galaxy
+```
+
+**Features:**
+- Tab completion
+- Command history
+- Session management
+- Guided workflows
+
+**Example:**
+```console
+$ galaxy
+
+🌌 Galaxy DevKit Interactive Mode
+
+galaxy> wallet create
+galaxy> oracle price XLM/USD
+galaxy> exit
+```
+
 #### Help
 ```bash
 galaxy help
 galaxy help create
 galaxy help deploy
+galaxy help wallet
+galaxy help oracle
 ```
 
 ### Project Templates

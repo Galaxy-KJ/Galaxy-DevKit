@@ -5,6 +5,7 @@
 ## 🎯 Project Overview
 
 **Galaxy DevKit** is a comprehensive development framework for the Stellar blockchain ecosystem that provides:
+
 - **Invisible Wallet System**: User-friendly wallet management without exposing private keys
 - **DeFi Protocol Integration**: Blend, Soroswap, and other Stellar DeFi protocols
 - **Oracle Integration**: Price feeds and data oracles for Stellar
@@ -22,6 +23,9 @@ galaxy-devkit/
 │   ├── core/                          # Core functionality
 │   │   ├── stellar-sdk/              # Stellar operations wrapper
 │   │   ├── invisible-wallet/         # Wallet management system
+│   │   ├── wallet/                   # Wallet core (auth, biometric, key storage)
+│   │   │   ├── auth/                 # Authentication primitives (BiometricAuth, providers)
+│   │   │   └── README.md             # Wallet README (biometric guidance)
 │   │   ├── automation/               # DeFi automation engine
 │   │   ├── defi-protocols/           # 🆕 DeFi integrations (Blend, Soroswap)
 │   │   └── oracles/                  # 🆕 Oracle integrations
@@ -45,44 +49,358 @@ galaxy-devkit/
 ## 🧠 Key Concepts
 
 ### 1. Invisible Wallet System
+
 Wallets are created with email/password only. Private keys are encrypted (AES-256-GCM) and stored securely. Users never see or manage private keys directly.
 
 **Files to understand:**
+
 - `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts`
 - `packages/core/invisible-wallet/src/services/key-managment.service.ts`
 - `packages/core/invisible-wallet/src/types/wallet.types.ts`
+- `packages/core/invisible-wallet/src/types/smart-wallet.types.ts` 🆕
 
 ### 2. Stellar SDK Wrapper
+
 Abstraction layer over `@stellar/stellar-sdk` providing simplified interfaces for:
+
 - Wallet creation (random or from mnemonic BIP39/BIP44)
 - Account operations (balance, info, history)
 - Payments and transactions
 - Trustlines for custom assets
+- Claimable balances
 - Network switching (testnet/mainnet)
+- **Sponsored Reserves**: Allow sponsors to pay base reserves for other accounts
 
 **Files to understand:**
+
 - `packages/core/stellar-sdk/src/services/stellar-service.ts`
 - `packages/core/stellar-sdk/src/types/stellar-types.ts`
+- `packages/core/stellar-sdk/src/claimable-balances/` - Claimable balance implementation
+
+**Claimable Balance Patterns:**
+
+**Creating Claimable Balances:**
+```typescript
+import { StellarService, Asset, beforeAbsoluteTime, unconditional } from '@galaxy/core-stellar-sdk';
+
+const service = new StellarService(networkConfig);
+
+// Create unconditional balance
+await service.createClaimableBalance(wallet, {
+  asset: Asset.native(),
+  amount: '100.0000000',
+  claimants: [{
+    destination: 'G...',
+    predicate: unconditional()
+  }]
+}, password);
+
+// Create time-locked balance
+const unlockDate = new Date('2025-12-31');
+await service.createClaimableBalance(wallet, {
+  asset: Asset.native(),
+  amount: '1000.0000000',
+  claimants: [{
+    destination: 'G...',
+    predicate: beforeAbsoluteTime(unlockDate)
+  }]
+}, password);
+```
+
+**Predicate Usage:**
+- `unconditional()` - Can claim anytime
+- `beforeAbsoluteTime(date)` - Must claim before timestamp
+- `beforeRelativeTime(seconds)` - Must claim within seconds
+- `and(pred1, pred2)` - Both conditions must be true
+- `or(pred1, pred2)` - Either condition must be true
+- `not(predicate)` - Negation
+
+**Common Use Cases:**
+
+**Vesting Schedule:**
+```typescript
+import { createVestingSchedule } from '@galaxy/core-stellar-sdk';
+
+const operations = createVestingSchedule(sourceAccount, {
+  asset: Asset.native(),
+  totalAmount: '10000.0000000',
+  claimant: 'G...',
+  vestingPeriods: [
+    { date: new Date('2025-01-01'), percentage: 25 },
+    { date: new Date('2025-04-01'), percentage: 25 },
+    { date: new Date('2025-07-01'), percentage: 25 },
+    { date: new Date('2025-10-01'), percentage: 25 }
+  ]
+});
+```
+
+**Escrow:**
+```typescript
+import { createEscrow } from '@galaxy/core-stellar-sdk';
+
+const operation = createEscrow({
+  asset: Asset.native(),
+  amount: '5000.0000000',
+  parties: ['G...', 'G...'],
+  releaseDate: new Date('2025-06-01'),
+  arbitrator: 'G...' // Optional
+});
+```
+
+**Querying Claimable Balances:**
+```typescript
+// Get balances for account
+const balances = await service.getClaimableBalancesForAccount(publicKey, 10);
+
+// Get balances by asset
+const xlmBalances = await service.getClaimableBalancesByAsset(Asset.native(), 10);
+
+// Get specific balance
+const balance = await service.getClaimableBalance(balanceId);
+```
+
+**Path Payments (Path Finding & Swap):**
+- **PathPaymentManager** – find paths (strict send / strict receive), get best path, execute swaps, estimate output, slippage protection, price impact, path cache, swap analytics.
+- **Strict send**: Fixed source amount; Horizon returns paths with varying destination amount.
+- **Strict receive**: Fixed destination amount; Horizon returns paths with varying source amount.
+- **Path ranking**: Best path by price (max destination for strict send, min source for strict receive).
+- **Slippage**: `minDestinationAmount`, `maxSendAmount`, `maxSlippage`; validate before execution.
+- **Price impact**: Per-path `priceImpact`; warn when ≥ `HIGH_PRICE_IMPACT_THRESHOLD` (5%).
+- **Path cache**: TTL cache for path results; clear with `clearPathCache()`.
+- **Examples**: `docs/examples/stellar-sdk/18-simple-swap.ts`, `19-path-finding.ts`, `20-multi-hop-swap.ts`, `21-slippage-protection.ts`.
+
+**Key files:**
+- `packages/core/stellar-sdk/src/path-payments/path-payment-manager.ts`
+- `packages/core/stellar-sdk/src/path-payments/types.ts`
+
+**Liquidity Pool Operations:**
+
+**Pool Operations Workflow:**
+1. Find liquidity pools for asset pairs
+2. Estimate deposit/withdrawal before executing
+3. Execute with slippage protection
+4. Monitor pool analytics and user positions
+
+**Depositing Liquidity:**
+```typescript
+import { StellarService, Asset } from '@galaxy/core-stellar-sdk';
+
+const service = new StellarService(networkConfig);
+
+// Find pools for asset pair
+const xlm = Asset.native();
+const usdc = new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5');
+const pools = await service.getPoolsForAssets(xlm, usdc);
+
+// Estimate deposit
+const estimate = await service.estimatePoolDeposit(
+  poolId,
+  '100.0000000', // Amount A
+  '500.0000000'  // Amount B
+);
+console.log('Expected shares:', estimate.shares);
+console.log('Price impact:', estimate.priceImpact, '%');
+
+// Deposit with slippage protection
+await service.depositLiquidity(wallet, {
+  poolId: pools[0].id,
+  maxAmountA: '100.0000000',
+  maxAmountB: '500.0000000',
+  slippageTolerance: '0.01', // 1% slippage
+  memo: 'LP deposit'
+}, password);
+```
+
+**Withdrawing Liquidity:**
+```typescript
+// Estimate withdrawal
+const withdrawEstimate = await service.estimatePoolWithdraw(
+  poolId,
+  '10.0000000' // Shares to withdraw
+);
+
+// Withdraw with slippage protection
+await service.withdrawLiquidity(wallet, {
+  poolId: poolId,
+  shares: '10.0000000',
+  slippageTolerance: '0.01',
+  memo: 'LP withdrawal'
+}, password);
+```
+
+**Pool Analytics:**
+```typescript
+import { calculateShareValue, calculateImpermanentLoss, formatPoolAssets } from '@galaxy/core-stellar-sdk';
+
+// Get pool details
+const pool = await service.getLiquidityPool(poolId);
+const analytics = await service.getPoolAnalytics(poolId);
+
+console.log('Pool:', formatPoolAssets(pool));
+console.log('TVL:', analytics.tvl);
+console.log('Share Price:', analytics.sharePrice);
+
+// Calculate user's share value
+const userShares = await service.getLiquidityPoolShares(publicKey, poolId);
+const { valueA, valueB } = calculateShareValue(userShares, pool);
+
+// Calculate impermanent loss
+const initialPrice = '5.0000000';
+const currentPrice = calculateSpotPrice(pool.reserveA, pool.reserveB);
+const il = calculateImpermanentLoss(initialPrice, currentPrice);
+console.log('Impermanent Loss:', il, '%');
+```
+
+**Price Calculation Formulas:**
+```typescript
+// Constant Product: x * y = k
+k = reserveA * reserveB
+
+// Spot Price: P = y / x
+price = reserveB / reserveA
+
+// Deposit Shares (first deposit): sqrt(amountA * amountB)
+shares = Math.sqrt(amountA * amountB)
+
+// Deposit Shares (subsequent): min(amountA/reserveA, amountB/reserveB) * totalShares
+ratio = Math.min(amountA/reserveA, amountB/reserveB)
+shares = ratio * totalShares
+
+// Withdraw Amounts: (shares/totalShares) * reserves
+amountA = (shares / totalShares) * reserveA
+amountB = (shares / totalShares) * reserveB
+```
+
+**Slippage Protection:**
+```typescript
+import { calculateMinimumAmounts, calculatePriceBounds } from '@galaxy/core-stellar-sdk';
+
+// Calculate minimum amounts with slippage
+const { minAmountA, minAmountB } = calculateMinimumAmounts(
+  expectedAmountA,
+  expectedAmountB,
+  '0.01' // 1% slippage
+);
+
+// Calculate price bounds
+const { minPrice, maxPrice } = calculatePriceBounds(
+  currentPrice,
+  '0.02' // 2% tolerance
+);
+
+// Deposit with price bounds
+await service.depositLiquidity(wallet, {
+  poolId: poolId,
+  maxAmountA: '100.0000000',
+  maxAmountB: '500.0000000',
+  minPrice: minPrice,
+  maxPrice: maxPrice,
+}, password);
+```
+
+**AI Notes:**
+- Always check pool exists before deposit/withdrawal
+- Use `estimatePoolDeposit()` and `estimatePoolWithdraw()` before executing
+- Apply slippage protection (default: 1%)
+- Warn if price impact > 5%
+- Pool IDs are 64-character hex strings generated by Stellar network
+- Use `calculateShareValue()` to get user's position value
+- Calculate impermanent loss with `calculateImpermanentLoss()`
+- All amounts use 7 decimal precision (Stellar standard)
+- Round down for deposits, round up for minimums
+- 
+### 2.1 Sponsored Reserves System
+Allows sponsor accounts to pay base reserves for another account's ledger entries. Essential for user onboarding without requiring new users to hold XLM.
+
+**Supported Entry Types:**
+- Accounts (2 base reserves = 1 XLM)
+- Trustlines (1 base reserve = 0.5 XLM)
+- Offers (1 base reserve = 0.5 XLM)
+- Data entries (1 base reserve = 0.5 XLM)
+- Signers (1 base reserve = 0.5 XLM)
+- Claimable balances (1 base reserve = 0.5 XLM)
+
+**Files to understand:**
+- `packages/core/stellar-sdk/src/sponsored-reserves/services/sponsored-reserves-manager.ts` - Main manager class
+- `packages/core/stellar-sdk/src/sponsored-reserves/types/sponsored-reserves-types.ts` - Type definitions
+- `packages/core/stellar-sdk/src/sponsored-reserves/builders/` - Operation builders
+- `packages/core/stellar-sdk/src/sponsored-reserves/templates/` - Common patterns
+
+**Usage Example:**
+```typescript
+import {
+  SponsoredReservesManager,
+  UserOnboardingTemplate,
+  calculateOnboardingCost
+} from '@galaxy/core-stellar-sdk';
+
+// Create manager
+const manager = new SponsoredReservesManager(networkConfig);
+
+// Calculate cost before sponsoring
+const config = {
+  sponsorPublicKey: 'GSPONSOR...',
+  newUserPublicKey: 'GNEWUSER...',
+  trustlines: [{ assetCode: 'USDC', assetIssuer: 'GUSDC...' }],
+};
+const cost = calculateOnboardingCost(config);
+console.log('Total cost:', cost.totalCost, 'XLM');
+
+// Check sponsor eligibility
+const eligibility = await manager.checkSponsorshipEligibility(
+  'GSPONSOR...',
+  { sponsorPublicKey: 'GSPONSOR...', sponsoredPublicKey: 'GNEWUSER...', entryType: 'account' }
+);
+
+// Onboard user with sponsored account + trustlines
+const template = new UserOnboardingTemplate(networkConfig);
+const result = await template.onboardUser(config, sponsorSecret, newUserSecret);
+console.log('Transaction:', result.hash);
+```
+
+**Transaction Structure (Stellar requirement):**
+```typescript
+// Sponsor signs the whole transaction
+// Sponsored account is source for endSponsoringFutureReserves
+new TransactionBuilder(sponsorAccount, { fee, networkPassphrase })
+  .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: sponsored }))
+  .addOperation(/* sponsored operation with source: sponsored */)
+  .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored }))
+  .build();
+// Sign with both sponsor AND sponsored keypairs
+```
+
+**Security Considerations:**
+- Private keys passed to methods but never stored
+- Both sponsor and sponsored must sign transactions
+- Sponsors can revoke sponsorship (transfers reserve back to sponsored)
+- Use `checkSponsorshipEligibility()` before operations
 
 ### 3. Automation Engine
+
 Event-driven system for DeFi automation with:
+
 - **Triggers**: CRON, price, volume, blockchain events
 - **Conditions**: Complex logic with AND/OR operators
 - **Actions**: Payments, swaps, contract calls, notifications
 - **Metrics**: Success rate, execution time, fees spent
 
 **Files to understand:**
+
 - `packages/core/automation/src/services/automation.service.ts`
 - `packages/core/automation/src/types/automation-types.ts`
 
 ### 4. DeFi Protocol Integration
+
 Integration layer for Stellar DeFi protocols providing unified interfaces for:
+
 - **Blend Protocol**: Lending and borrowing
 - **Soroswap**: Decentralized exchange
 - **Aquarius**: Liquidity pools
 - **Custom DEX aggregators**
 
 **Architecture Pattern**: Factory pattern with abstract base class
+
 - All protocols implement `IDefiProtocol` interface
 - Common functionality in `BaseProtocol` abstract class
 - Protocol-specific implementations in separate classes
@@ -91,20 +409,27 @@ Integration layer for Stellar DeFi protocols providing unified interfaces for:
 **Key Components:**
 
 **Base Interface & Types:**
+
 - `packages/core/defi-protocols/src/types/protocol-interface.ts` - IDefiProtocol interface
 - `packages/core/defi-protocols/src/types/defi-types.ts` - Type definitions
 - `packages/core/defi-protocols/src/protocols/base-protocol.ts` - Abstract base class
 
 **Services:**
+
 - `packages/core/defi-protocols/src/services/protocol-factory.ts` - Factory for protocol instantiation
 
 **Utilities:**
+
 - `packages/core/defi-protocols/src/utils/validation.ts` - Input validation helpers
 - `packages/core/defi-protocols/src/constants/` - Network configs and constants
 
 **Usage Example:**
+
 ```typescript
-import { getProtocolFactory, ProtocolConfig } from '@galaxy/core-defi-protocols';
+import {
+  getProtocolFactory,
+  ProtocolConfig,
+} from '@galaxy/core-defi-protocols';
 
 // Create protocol configuration
 const config: ProtocolConfig = {
@@ -112,9 +437,9 @@ const config: ProtocolConfig = {
   name: 'Blend Protocol',
   network: TESTNET_CONFIG,
   contractAddresses: {
-    pool: 'CBLEND_POOL_ADDRESS'
+    pool: 'CBLEND_POOL_ADDRESS',
   },
-  metadata: {}
+  metadata: {},
 };
 
 // Get protocol instance from factory
@@ -139,6 +464,7 @@ console.log('Health Factor:', position.healthFactor);
 
 **Protocol Implementation Pattern:**
 When adding a new protocol (e.g., Blend, Soroswap):
+
 1. Create protocol directory: `src/protocols/[protocol-name]/`
 2. Extend `BaseProtocol` abstract class
 3. Implement required abstract methods
@@ -147,25 +473,337 @@ When adding a new protocol (e.g., Blend, Soroswap):
 6. Write comprehensive tests
 
 **Security Considerations:**
+
 - Private keys are passed to methods but never stored
 - All inputs are validated (addresses, amounts, assets)
 - Transaction building includes slippage protection
 - Health factor checks before risky operations
 
-### 5. Oracle System (🆕 To be implemented)
-Price and data oracles for Stellar:
-- On-chain oracle contracts (Soroban)
-- Off-chain oracle aggregators
-- Price feeds for XLM, USDC, and other assets
-- TWAP (Time-Weighted Average Price) calculations
+**Operation Types (Discriminated Unions):**
 
-**Target files:**
-- `packages/core/oracles/src/services/oracle-service.ts`
-- `packages/contracts/oracle-aggregator/src/lib.rs`
+Protocol operations use discriminated unions for type-safe handling. Available types: `SupplyOperation`, `WithdrawOperation`, `BorrowOperation`, `RepayOperation`, `SwapOperation`, `AddLiquidityOperation`, `RemoveLiquidityOperation`.
+
+**Error Classes:** `ProtocolError`, `ProtocolInitError`, `InsufficientBalanceError`, `InvalidOperationError`, `ContractError`, `SlippageExceededError`, `HealthFactorError`
+
+**Type Guards:** `isSupplyOperation()`, `isSwapOperation()`, `isLendingOperation()`, `isDexOperation()`, `isAsset()`, `isStellarAddress()`, `isValidAmount()`
+
+**Files:** `src/types/operations.ts`, `src/errors/errors.ts`, `src/utils/type-guards.ts`, `docs/examples/defi-protocols/03-custom-protocol.ts`, `docs/examples/defi-protocols/04-operations.ts`
+
+### 5. Oracle System
+Price and data oracles for Stellar with aggregation capabilities:
+- **IOracleSource Interface** - Standard interface for oracle sources
+- **OracleAggregator** - Aggregates prices from multiple sources
+- **Multiple Strategies** - Median, Weighted Average, TWAP
+- **Outlier Detection** - Statistical methods (IQR, Z-score)
+- **Validation** - Staleness, deviation, minimum sources checks
+- **Caching** - In-memory cache with TTL
+- **Circuit Breaker** - Automatic source health monitoring
+
+**Key Files:**
+- `packages/core/oracles/src/types/IOracleSource.ts` - Oracle source interface
+- `packages/core/oracles/src/aggregator/OracleAggregator.ts` - Main aggregator
+- `packages/core/oracles/src/aggregator/strategies/` - Aggregation strategies
+- `packages/core/oracles/src/validation/price-validator.ts` - Validation logic
+- `packages/core/oracles/src/cache/price-cache.ts` - Caching layer
+- `packages/core/oracles/src/utils/outlier-detection.ts` - Outlier detection
+
+**Oracle Source Implementation Pattern:**
+When implementing a new oracle source (e.g., CoinGecko, CoinMarketCap):
+1. Implement `IOracleSource` interface
+2. Implement `getPrice(symbol)` and `getPrices(symbols[])` methods
+3. Implement `getSourceInfo()` for metadata
+4. Implement `isHealthy()` for health checks
+5. Add to aggregator: `aggregator.addSource(source, weight)`
+
+**Example Oracle Source:**
+```typescript
+class CoinGeckoSource implements IOracleSource {
+  readonly name = 'coingecko';
+
+  async getPrice(symbol: string): Promise<PriceData> {
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${symbol}&vs_currencies=usd`);
+    const data = await response.json();
+    return {
+      symbol,
+      price: data[symbol].usd,
+      timestamp: new Date(),
+      source: this.name,
+    };
+  }
+
+  async getPrices(symbols: string[]): Promise<PriceData[]> {
+    return Promise.all(symbols.map(s => this.getPrice(s)));
+  }
+
+  getSourceInfo(): SourceInfo {
+    return {
+      name: this.name,
+      description: 'CoinGecko price feed',
+      version: '1.0.0',
+      supportedSymbols: [],
+    };
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      await this.getPrice('bitcoin');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+**Aggregation Strategies:**
+1. **MedianStrategy** - Uses median price, robust against outliers
+   - Best for: General use, when outlier resistance is important
+   - Usage: `aggregator.setStrategy(new MedianStrategy())`
+
+2. **WeightedAverageStrategy** - Weighted average based on source weights
+   - Best for: When you want to prioritize certain sources
+   - Usage: `aggregator.setStrategy(new WeightedAverageStrategy())`
+   - Weights: Set when adding sources: `aggregator.addSource(source, 2.0)`
+
+3. **TWAPStrategy** - Time-weighted average price
+   - Best for: When recency matters, reduces impact of stale prices
+   - Usage: `aggregator.setStrategy(new TWAPStrategy(cache, timeWindowMs))`
+   - Requires: PriceCache instance for historical data
+
+**Validation Rules:**
+- **Staleness Check**: Prices must be within `maxStalenessMs` (default: 60 seconds)
+- **Minimum Sources**: Requires at least `minSources` valid prices (default: 2)
+- **Deviation Check**: Filters prices that deviate more than `maxDeviationPercent` from median (default: 10%)
+- **Outlier Detection**: Uses Z-score or IQR method to filter statistical outliers (default: Z-score with threshold 2.0)
+
+### 6. Social Recovery System
+
+Social recovery allows users to recover wallet access through trusted guardians if they lose their primary credentials. This provides a balance between security and recoverability, similar to Argent wallet's approach.
+
+**Key Components:**
+- **SocialRecovery** - Main class managing recovery process
+- **Guardian Management** - Add/remove/verify guardians
+- **Recovery Process** - Initiate, approve, complete, cancel recovery
+- **Time-Lock Mechanism** - Configurable delay before execution (default: 48 hours)
+- **Notification System** - Alerts for guardians and wallet owner
+- **Fraud Detection** - Multi-factor verification and risk scoring
+- **Emergency Contacts** - Additional recovery contacts
+- **Recovery Testing** - Dry-run mode for testing without execution
+
+**Key Files:**
+- `packages/core/wallet/src/recovery/SocialRecovery.ts` - Main recovery class
+- `packages/core/wallet/src/recovery/types.ts` - Type definitions
+- `packages/core/wallet/src/recovery/NotificationService.ts` - Notification handling
+- `packages/core/wallet/src/recovery/__tests__/SocialRecovery.test.ts` - Unit tests
+- `packages/core/wallet/src/recovery/__tests__/SocialRecovery.integration.test.ts` - Integration tests
+
+**Guardian Selection Best Practices:**
+1. **Minimum 3 guardians recommended** - Provides redundancy and security
+2. **Diverse guardian set** - Mix of family, friends, and trusted contacts
+3. **Active guardians** - Choose people who will respond promptly
+4. **Geographic diversity** - Reduces risk of simultaneous unavailability
+5. **Technical capability** - Guardians should understand the recovery process
+6. **Trust relationship** - Only select people you trust with wallet recovery
+
+**Recovery Workflow:**
+1. **Setup Phase:**
+   - Add guardians (minimum 3, recommended 5-7)
+   - Configure threshold (default: 60% of guardians)
+   - Set time-lock delay (default: 48 hours)
+   - Verify all guardians
+
+2. **Recovery Initiation:**
+   - User initiates recovery with new owner key
+   - System verifies request for fraud indicators
+   - Notifications sent to all guardians
+   - Time-lock period starts
+
+3. **Guardian Approval:**
+   - Guardians receive approval requests
+   - Each guardian independently approves
+   - System tracks approvals
+   - Threshold reached triggers time-lock countdown
+
+4. **Time-Lock Period:**
+   - Configurable delay (default: 48 hours)
+   - Wallet owner receives warnings
+   - Owner can cancel during this period
+   - Early warning at 24 hours before execution
+
+5. **Recovery Execution:**
+   - After time-lock expires, recovery executes
+   - Uses Stellar multi-sig to transfer control
+   - New owner key gains wallet access
+   - All parties notified of completion
+
+**Security Considerations:**
+- **Encrypted Guardian Contacts** - Contact information stored encrypted
+- **Multi-Factor Verification** - Cryptographic signatures for approvals
+- **Fraud Detection** - Risk scoring and fraud indicator detection
+- **Recovery Attempt Logging** - All actions logged for audit
+- **Time-Lock Protection** - Prevents immediate execution
+- **Cancellation Rights** - Owner can cancel before execution
+- **Test Mode** - Dry-run testing without network execution
+
+**Usage Example:**
+```typescript
+import { SocialRecovery } from '@galaxy/core-wallet/recovery';
+import { Server, Networks } from '@stellar/stellar-sdk';
+
+const server = new Server('https://horizon-testnet.stellar.org');
+const encryptionKey = 'your-encryption-key-32-chars';
+
+// Initialize recovery system
+const recovery = new SocialRecovery(
+  {
+    guardians: [
+      { publicKey: 'G...', name: 'Guardian 1' },
+      { publicKey: 'G...', name: 'Guardian 2' },
+      { publicKey: 'G...', name: 'Guardian 3' },
+    ],
+    threshold: 2, // Need 2 out of 3
+    timeLockHours: 48,
+    enableTesting: true,
+  },
+  server,
+  Networks.TESTNET,
+  encryptionKey
+);
+
+// Add guardian
+await recovery.addGuardian(
+  guardianPublicKey,
+  'New Guardian',
+  'guardian@example.com'
+);
+
+// Initiate recovery
+const request = await recovery.initiateRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+
+// Guardian approves
+await recovery.guardianApprove(
+  request.id,
+  guardianPublicKey,
+  guardianSecretKey
+);
+
+// Complete recovery (after time-lock)
+const result = await recovery.completeRecovery(
+  request.id,
+  currentOwnerSecretKey
+);
+```
+
+**Recovery Testing:**
+```typescript
+// Run dry-run test
+const testResult = await recovery.testRecovery(
+  walletPublicKey,
+  newOwnerPublicKey
+);
+
+console.log('Test successful:', testResult.success);
+console.log('Guardians notified:', testResult.guardiansNotified);
+console.log('Threshold reached:', testResult.thresholdReached);
+```
+
+**Architecture Decisions:**
+- **Minimum 3 guardians** - Provides redundancy
+- **Default threshold: 60%** - Balance between security and accessibility
+- **Time-lock delay: 48 hours** - Gives owner time to cancel
+- **Stellar multi-sig** - Uses native Stellar multi-signature for recovery
+- **Encrypted storage** - Guardian contacts encrypted at rest
+- **Event-driven** - Emits events for integration with notification systems
+
+**Configuration Example:**
+```typescript
+const aggregator = new OracleAggregator({
+  minSources: 3,              // Require 3 sources
+  maxDeviationPercent: 5,    // Stricter deviation (5%)
+  maxStalenessMs: 30000,     // 30 seconds max age
+  enableOutlierDetection: true,
+  outlierThreshold: 2.5,     // Stricter outlier detection
+});
+```
+
+**Best Practices:**
+- Always use multiple sources (at least 2-3) for redundancy
+- Set appropriate weights for more reliable sources
+- Monitor source health regularly: `await aggregator.getSourceHealth()`
+- Handle aggregation errors gracefully with fallback logic
+- Use caching to reduce API calls and provide fallback during outages
+
+# 7. Multi-Signature Wallet System
+
+The Multi-Signature system enables secure transaction coordination for high-value accounts. It uses a hybrid approach: On-chain enforcement (Stellar multisig) + Off-chain coordination (Proposal system).
+
+## Key Components
+
+* **MultiSigWallet** - Main controller for proposals and execution
+* **TransactionProposal** - Wrapper for pending transactions
+* **SignatureCollector** - Validates and aggregates signatures
+* **NotificationService** - Alerts signers of new proposals
+
+## Files to Understand
+
+* `packages/core/wallet/src/multisig/MultiSigWallet.ts`
+* `packages/core/wallet/src/multisig/TransactionProposal.ts`
+* `packages/core/wallet/src/multisig/types.ts`
+* `packages/core/wallet/src/multisig/NotificationService.ts`
+
+## Multi-Sig Workflow
+
+1. **Setup**: Configure signers and thresholds on-chain.
+2. **Proposal**: Creator proposes a transaction XDR.
+3. **Collection**: Signers validate and sign the proposal off-chain.
+4. **Execution**: Once the weight threshold is met, the transaction is submitted to Stellar.
+
+## Usage Example
+
+```javascript
+import { MultiSigWallet } from '@galaxy/core-wallet/multisig';
+
+const wallet = new MultiSigWallet(server, config);
+
+// Propose
+const proposal = await wallet.proposeTransaction(creatorPub, xdr, 'Payment');
+
+// Sign
+await wallet.signProposal(proposal.id, signerPub, signature);
+
+// Execute
+await wallet.executeProposal(proposal.id);
+```
+
+### 8. Smart Wallet Migration Pattern (Issue #125)
+
+The system is migrating towards a non-custodial smart wallet architecture. 
+
+**Key Changes:**
+1.  **New Table**: `smart_wallets` stores passkey-based wallet metadata.
+2.  **Deprecation**: The `encrypted_private_key` column in `invisible_wallets` has been renamed to `_deprecated_encrypted_private_key`.
+3.  **Mapping**: TypeScript services have been updated to map `_deprecated_encrypted_private_key` to internal `encryptedPrivateKey` properties to maintain backward compatibility.
+
+**SmartWallet Interface:**
+```typescript
+export interface SmartWallet {
+  id: string;
+  user_id: string;
+  contract_address: string;
+  passkey_credential_id: string;
+  public_key_65bytes: string;
+  network: 'testnet' | 'mainnet';
+  created_at: string;
+}
+```
 
 ## 🛠️ Tech Stack
 
 ### Backend
+
 - **Language**: TypeScript 5.9+
 - **Runtime**: Node.js 18+
 - **Framework**: Express.js, Apollo Server
@@ -174,6 +812,7 @@ Price and data oracles for Stellar:
 - **Smart Contracts**: Rust (Soroban SDK)
 
 ### Libraries
+
 - `@stellar/stellar-sdk`: Stellar operations
 - `bip39`: Mnemonic generation
 - `ed25519-hd-key`: Key derivation
@@ -184,6 +823,7 @@ Price and data oracles for Stellar:
 ## 📋 Development Workflow
 
 ### 1. Setup Development Environment
+
 ```bash
 # Clone repository
 git clone https://github.com/galaxy-devkit/galaxy-devkit.git
@@ -203,6 +843,7 @@ npm test
 ```
 
 ### 2. Working with Monorepo
+
 ```bash
 # Build specific package
 cd packages/core/stellar-sdk
@@ -216,6 +857,7 @@ npm run clean
 ```
 
 ### 3. CLI Development
+
 ```bash
 cd tools/cli
 npm run build
@@ -224,6 +866,7 @@ galaxy help
 ```
 
 ### 4. Contract Development (Rust)
+
 ```bash
 cd packages/contracts/smart-swap
 cargo build --target wasm32-unknown-unknown --release
@@ -233,6 +876,7 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/smart_swap.
 ## 🎨 Code Style Guidelines
 
 ### TypeScript
+
 - Use **strict mode**
 - Prefer `interface` over `type` for object shapes
 - Use `async/await` over promises
@@ -240,12 +884,20 @@ stellar contract deploy --wasm target/wasm32-unknown-unknown/release/smart_swap.
 - Use descriptive variable names
 
 **Example:**
+
 ```typescript
 // ✅ Good
-async function createWallet(config: WalletConfig, password: string): Promise<Wallet> {
+async function createWallet(
+  config: WalletConfig,
+  password: string
+): Promise<Wallet> {
   const keypair = Keypair.random();
   const encryptedKey = await encryptPrivateKey(keypair.secret(), password);
-  return { id: generateId(), publicKey: keypair.publicKey(), privateKey: encryptedKey };
+  return {
+    id: generateId(),
+    publicKey: keypair.publicKey(),
+    privateKey: encryptedKey,
+  };
 }
 
 // ❌ Bad
@@ -256,6 +908,7 @@ async function create(c: any, p: any) {
 ```
 
 ### Rust (Soroban Contracts)
+
 - Follow official Soroban style guide
 - Use descriptive enum variants
 - Add documentation comments (`///`)
@@ -263,6 +916,7 @@ async function create(c: any, p: any) {
 - Test all public functions
 
 **Example:**
+
 ```rust
 /// Creates a new swap condition
 ///
@@ -284,6 +938,7 @@ pub fn create_swap_condition(
 ## 🔍 Common Tasks
 
 ### Adding a new DeFi protocol integration
+
 1. Create protocol directory: `packages/core/defi-protocols/src/protocols/[protocol-name]/`
 2. Create protocol class extending `BaseProtocol` abstract class
 3. Implement all required abstract methods from `IDefiProtocol` interface
@@ -294,6 +949,7 @@ pub fn create_swap_condition(
 8. Add example to `docs/examples/defi-protocols/`
 
 **Example Protocol Implementation:**
+
 ```typescript
 // src/protocols/blend/blend-protocol.ts
 import { BaseProtocol } from '../base-protocol';
@@ -330,6 +986,7 @@ export class BlendProtocol extends BaseProtocol {
 ```
 
 ### Adding a new CLI command
+
 1. Create command file: `tools/cli/src/commands/[command-name].ts`
 2. Use Commander.js pattern
 3. Register command in `tools/cli/src/index.ts`
@@ -337,6 +994,7 @@ export class BlendProtocol extends BaseProtocol {
 5. Test command: `galaxy [command-name] --help`
 
 ### Adding a new smart contract
+
 1. Create contract directory: `packages/contracts/[contract-name]/`
 2. Add `Cargo.toml` with Soroban dependencies
 3. Implement contract in `src/lib.rs`
@@ -345,6 +1003,7 @@ export class BlendProtocol extends BaseProtocol {
 6. Deploy to testnet for testing
 
 ### Extending the automation engine
+
 1. Add new trigger type to `TriggerType` enum
 2. Add new execution type to `ExecutionType` enum
 3. Implement trigger logic in `CronManager` or new manager
@@ -355,12 +1014,14 @@ export class BlendProtocol extends BaseProtocol {
 ## 🐛 Debugging Tips
 
 ### Wallet Issues
+
 - Check encryption/decryption: Verify password and salt
 - Check Horizon connectivity: `curl https://horizon-testnet.stellar.org`
 - Verify account is funded: Testnet friendbot or manual funding required
 - Check Supabase connection: Verify `.env` variables
 
 ### Transaction Failures
+
 - Insufficient balance: Check XLM balance for fees
 - Sequence number: Account sequence may be outdated
 - Network mismatch: Verify testnet vs mainnet
@@ -368,6 +1029,7 @@ export class BlendProtocol extends BaseProtocol {
 - Trustline missing: Custom assets require trustlines
 
 ### Contract Errors
+
 - Check contract deployment: Verify WASM was deployed
 - Function signature: Ensure correct parameters
 - Authorization: Check if function requires auth
@@ -376,24 +1038,78 @@ export class BlendProtocol extends BaseProtocol {
 ## 📚 Important Files for AI Context
 
 ### Core Services
+
 - `packages/core/stellar-sdk/src/services/stellar-service.ts` - Main Stellar operations
 - `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts` - Wallet management
 - `packages/core/automation/src/services/automation.service.ts` - Automation engine
 
 ### Type Definitions
+
 - `packages/core/stellar-sdk/src/types/stellar-types.ts` - Stellar types
 - `packages/core/invisible-wallet/src/types/wallet.types.ts` - Wallet types
 - `packages/core/automation/src/types/automation-types.ts` - Automation types
 
+## 🔐 Wallet Auth (core/wallet/auth)
+
+The wallet authentication module provides biometric and fallback authentication primitives used by the Invisible Wallet and wallet UI.
+
+Key files:
+
+- `packages/core/wallet/auth/src/BiometricAuth.ts` — `BiometricAuth` class: enrollment, authentication flows, credential metadata, key storage, and fallback handling.
+- `packages/core/wallet/auth/src/providers/WebAuthNProvider.ts` — WebAuthn provider implementation for browser-based secure credential storage.
+- `packages/core/wallet/auth/src/providers/MockProvider.ts` — Mock provider used in unit tests and local development.
+- `packages/core/wallet/auth/src/tests/BiometricAuth.test.ts` — Unit tests demonstrating enrollment, auth, key storage, and lockout/fallback handling.
+
+Usage notes:
+
+- Use the `BiometricAuth` abstraction in UI flows to initialize, enroll, authenticate, and manage encrypted keys.
+- Providers implement secure storage methods (`storeKey`, `retrieveKey`, `deleteKey`) and platform-specific credential management.
+- To increase docstring coverage, add TSDoc comments to the listed files.
+
 ### Smart Contracts
+
 - `packages/contracts/smart-swap/src/lib.rs` - Smart swap contract
 - `packages/contracts/security-limits/src/lib.rs` - Security limits contract
 
 ### CLI
+
 - `tools/cli/src/index.ts` - CLI entry point
-- `tools/cli/src/commands/` - CLI commands
+- `tools/cli/src/commands/create.ts` - Project creation command
+- `tools/cli/src/commands/oracle/` - Oracle price data commands
+- `tools/cli/src/commands/wallet/` - Wallet management commands
+- `tools/cli/src/commands/blend/` - Blend Protocol DeFi commands
+- `tools/cli/src/commands/watch/` - Real-time network monitoring commands
+- `tools/cli/src/commands/interactive/` - Interactive REPL mode
+
+**Available CLI Commands:**
+- `galaxy create <name>` - Create new Stellar DApp project
+- `galaxy wallet <command>` - Manage Stellar wallets (create, import, list, balance, send)
+- `galaxy blend <command>` - Interact with Blend Protocol (stats, supply, borrow, withdraw, repay)
+- `galaxy oracle <command>` - Query oracle price data (price, history, sources, validate)
+- `galaxy watch <command>` - Monitor network activity (account, transaction, oracle, contract, network, dashboard)
+- `galaxy interactive` - Launch interactive REPL mode with autocomplete and command history
+- `galaxy init` - Initialize Galaxy DevKit in current directory
+- `galaxy build` - Build the project
+- `galaxy dev` - Start development server
+- `galaxy deploy` - Deploy to production
+
+**How to Run the CLI:**
+```bash
+# Option 1: From monorepo (development)
+npm run build
+node tools/cli/dist/tools/cli/src/index.js [command]
+
+# Option 2: Link globally (local testing)
+cd tools/cli && npm run build && npm link
+galaxy [command]
+
+# Option 3: Published package (end users)
+npm install -g @galaxy/cli
+galaxy [command]
+```
 
 ### APIs
+
 - `packages/api/rest/src/` - REST API implementation
 - `packages/api/graphql/src/` - GraphQL API implementation
 - `packages/api/websocket/src/` - WebSocket API implementation
@@ -403,24 +1119,33 @@ export class BlendProtocol extends BaseProtocol {
 Galaxy DevKit follows a **4-phase development roadmap** with 20 issues per phase:
 
 ### Phase 1: Foundation & Core (Issues #1-#20)
+
 - DeFi protocol integration architecture
 - Oracle system foundation
 - Enhanced wallet features
 - CLI improvements
+**Progress**: 15/21 issues completed (71% ✅)
+**Remaining**: 2 open issues + 4 CLI improvements pending
+**Next Milestones**:
+- Smart Wallet Implementation (#125 ✅)
+- Setup integration tests infrastructure (#72)
 
 ### Phase 2: DeFi Integration (Issues #21-#40)
+
 - Blend protocol integration
 - Soroswap integration
 - DEX aggregator
 - Oracle contracts
 
 ### Phase 3: Advanced Features (Issues #41-#60)
+
 - Yield strategies
 - Advanced automation
 - Risk management
 - Analytics dashboard
 
 ### Phase 4: Enterprise & Scale (Issues #61-#80)
+
 - Multi-sig wallets
 - Team accounts
 - Audit logging
@@ -431,12 +1156,14 @@ Galaxy DevKit follows a **4-phase development roadmap** with 20 issues per phase
 ## 🤝 Contributing Guidelines
 
 ### Issue Creation
+
 - Use issue templates (feature, bug, documentation)
 - Add appropriate labels (phase-1, defi, oracle, wallet, etc.)
 - Reference related issues with `#issue-number`
 - Assign to project milestone
 
 ### Pull Request Process
+
 1. Create feature branch: `git checkout -b feature/issue-123-description`
 2. Make changes and commit: `git commit -m "feat: description (#123)"`
 3. Push and create PR: Reference issue in PR description
@@ -444,6 +1171,7 @@ Galaxy DevKit follows a **4-phase development roadmap** with 20 issues per phase
 5. Wait for review and address feedback
 
 ### Commit Message Format
+
 ```
 <type>(<scope>): <description> (#issue-number)
 
@@ -456,6 +1184,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 Scopes: `wallet`, `stellar-sdk`, `automation`, `cli`, `contracts`, `defi`, `oracle`
 
 **Examples:**
+
 ```
 feat(defi): add Blend protocol integration (#25)
 fix(wallet): resolve encryption issue with special characters (#42)
@@ -465,16 +1194,19 @@ docs(oracle): add oracle service documentation (#33)
 ## 🔗 External Resources
 
 ### Stellar Documentation
+
 - Stellar Docs: https://developers.stellar.org/
 - Soroban Docs: https://soroban.stellar.org/
 - Horizon API: https://developers.stellar.org/api/horizon
 
 ### DeFi Protocols
+
 - Blend Protocol: https://blend.capital/
 - Soroswap: https://soroswap.finance/
 - Aquarius: https://aquarius.network/
 
 ### Tools
+
 - Stellar Laboratory: https://laboratory.stellar.org/
 - Stellar Expert: https://stellar.expert/
 - StellarChain: https://stellarchain.io/
@@ -482,18 +1214,23 @@ docs(oracle): add oracle service documentation (#33)
 ## ❓ FAQ for AI Development
 
 ### Q: How do I test wallet creation without Supabase?
+
 A: Mock Supabase client or use in-memory storage. See `__tests__/setup.ts` for examples.
 
 ### Q: How do I simulate Stellar network for testing?
+
 A: Use `stellar-sdk` test utilities or run local Stellar quickstart docker.
 
 ### Q: Where do I add new DeFi protocol integrations?
+
 A: Create directory in `packages/core/defi-protocols/src/protocols/[protocol]/` following `IDefiProtocol` interface.
 
 ### Q: How do I add new oracle sources?
+
 A: Implement `IOracleSource` interface in `packages/core/oracles/src/sources/`.
 
 ### Q: How do I extend automation triggers?
+
 A: Add to `TriggerType` enum and implement in respective manager (CronManager, EventManager, etc.).
 
 ---
@@ -501,3 +1238,345 @@ A: Add to `TriggerType` enum and implement in respective manager (CronManager, E
 **Last Updated**: 2024-01-15
 **Maintained By**: Galaxy DevKit Team
 **For Questions**: Open an issue with label `question`
+
+## ✅ Documentation Updates Checklist
+
+- [x] `docs/AI.md` — Added documentation updates checklist, AI-friendly documentation section, and final pre-merge checklist confirmation.
+- [x] `docs/architecture/architecture.md` — Added biometric authentication architecture section and diagram placeholder.
+- [x] `packages/core/wallet/README.md` — Added biometric setup guide, usage examples, and references to implementation files.
+- [ ] Add or improve TSDoc/JSDoc comments for biometric-related source files to reach docstring coverage >= 80% (see TODO below).
+
+## 🧭 AI-friendly Documentation — Biometric Authentication (quick reference)
+
+Core code and classes to review when working on biometric authentication features:
+
+- `packages/core/wallet/auth/src/BiometricAuth.ts` — `BiometricAuth` class, `BiometricAuthProvider` abstract base, config/types, and key storage helpers.
+- `packages/core/wallet/auth/src/providers/WebAuthNProvider.ts` — `WebAuthNProvider` implementation for WebAuthn flows and secure key storage.
+- `packages/core/wallet/auth/src/providers/MockProvider.ts` — `MockBiometricProvider` used in tests and local development.
+- `packages/core/wallet/auth/src/tests/BiometricAuth.test.ts` — Unit tests and usage examples for enrollment, authentication, key storage, and fallback behavior.
+
+If you are updating or auditing biometric behavior, focus on these files first; they contain the primary flows for availability detection, enrollment, authentication, encrypted key storage, and fallback handling.
+
+## 🔐 Hardware Wallet Integration (Ledger)
+
+The hardware wallet module provides integration with Ledger devices for secure key management and transaction signing.
+
+### Architecture
+
+Hardware wallets provide the highest level of security by keeping private keys on a dedicated hardware device that never exposes them to the computer or network.
+
+**Key Components:**
+
+- `packages/core/wallet/auth/src/hardware/LedgerWallet.ts` — Main `LedgerWallet` class for device connection, signing, and account management
+- `packages/core/wallet/auth/src/hardware/types.ts` — Type definitions, BIP44 path utilities, and interfaces
+- `packages/core/wallet/auth/src/hardware/ledger-errors.ts` — Error handling utilities and user-friendly error messages
+- `packages/core/wallet/auth/src/hardware/index.ts` — Public API exports
+
+**Test Files:**
+
+- `packages/core/wallet/auth/src/hardware/__tests__/LedgerWallet.test.ts` — Comprehensive test suite with 95%+ coverage
+- `packages/core/wallet/auth/src/hardware/__tests__/MockLedgerTransport.ts` — Mock transport for testing without hardware
+
+**Example Files:**
+
+- `docs/examples/wallet/08-ledger-setup.ts` — Connect to Ledger and retrieve device info
+- `docs/examples/wallet/09-ledger-sign.ts` — Sign transactions with Ledger
+- `docs/examples/wallet/10-ledger-accounts.ts` — Manage multiple accounts with BIP44 paths
+
+### Usage Pattern
+
+**1. Connection Flow:**
+
+```typescript
+import { LedgerWallet, isLedgerSupported, detectLedgerDevices } from '@galaxy/core-wallet/hardware';
+
+// Check support
+if (!isLedgerSupported()) {
+  throw new Error('Ledger not supported in this environment');
+}
+
+// Detect devices
+const hasDevices = await detectLedgerDevices();
+
+// Create and connect
+const ledger = new LedgerWallet({
+  transport: 'usb',
+  timeout: 30000,
+  autoReconnect: true,
+});
+
+await ledger.connect();
+```
+
+**2. Get Public Key:**
+
+```typescript
+// Get default account public key
+const publicKey = await ledger.getPublicKey("44'/148'/0'");
+
+// Display on device for verification
+const verified = await ledger.displayAddress("44'/148'/0'");
+```
+
+**3. Sign Transaction:**
+
+```typescript
+// Sign Stellar transaction hash
+const signature = await ledger.signTransaction(
+  transactionHash,
+  "44'/148'/0'"
+);
+
+// signature.signature - 64-byte ED25519 signature
+// signature.publicKey - public key used for signing
+```
+
+**4. Multiple Accounts:**
+
+```typescript
+import { buildStellarPath, validateStellarPath } from '@galaxy/core-wallet/hardware';
+
+// Get multiple accounts
+const accounts = await ledger.getAccounts(0, 5);
+// Returns accounts 0-4 with public keys and derivation paths
+
+// Custom account
+const path = buildStellarPath(10); // "44'/148'/10'"
+const publicKey = await ledger.getPublicKey(path);
+```
+
+**5. Event Handling:**
+
+```typescript
+ledger.on('connecting', () => console.log('Connecting...'));
+ledger.on('connected', (info) => console.log('Connected:', info));
+ledger.on('disconnected', () => console.log('Disconnected'));
+ledger.on('error', (error) => console.error('Error:', error.message));
+ledger.on('prompt-user', ({ message }) => console.log(message));
+```
+
+### BIP44 Derivation Paths
+
+Stellar uses BIP44 with coin type 148:
+
+- **Format**: `m / purpose' / coin_type' / account' / change / address_index`
+- **Stellar**: `m / 44' / 148' / account' / 0 / 0`
+- **Examples**:
+  - Account 0: `44'/148'/0'` (default)
+  - Account 1: `44'/148'/1'`
+  - Account 2: `44'/148'/2'`
+
+**Utilities:**
+
+```typescript
+import { buildStellarPath, validateStellarPath, parseBIP44Path } from '@galaxy/core-wallet/hardware';
+
+// Build path
+const path = buildStellarPath(5); // "44'/148'/5'"
+
+// Validate path
+const isValid = validateStellarPath("44'/148'/0'"); // true
+const isInvalid = validateStellarPath("44'/0'/0'"); // false (wrong coin type)
+
+// Parse path
+const parsed = parseBIP44Path("44'/148'/5'");
+// { purpose: 44, coinType: 148, account: 5 }
+```
+
+### Error Handling
+
+**Error Codes:**
+
+- `DEVICE_NOT_CONNECTED` - Device not connected or disconnected
+- `APP_NOT_OPEN` - Stellar app not open on device
+- `USER_REJECTED` - User rejected transaction on device
+- `INVALID_DERIVATION_PATH` - Invalid BIP44 path for Stellar
+- `CONNECTION_TIMEOUT` - Connection or operation timeout
+- `TRANSPORT_ERROR` - USB/Bluetooth transport error
+- `DEVICE_LOCKED` - Device is locked (PIN not entered)
+- `UNSUPPORTED_FIRMWARE` - Firmware version not supported
+- `INVALID_TRANSACTION` - Transaction data is invalid
+
+**Error Handling Pattern:**
+
+```typescript
+import { LedgerError, parseLedgerError, requiresUserAction, getSuggestedAction } from '@galaxy/core-wallet/hardware';
+
+try {
+  await ledger.signTransaction(hash);
+} catch (error) {
+  const ledgerError = parseLedgerError(error);
+
+  console.error('Error:', ledgerError.message);
+  console.error('Code:', ledgerError.code);
+
+  if (requiresUserAction(ledgerError)) {
+    const action = getSuggestedAction(ledgerError);
+    console.log('Suggestion:', action);
+  }
+}
+```
+
+### Connection Management
+
+**Auto-Reconnect:**
+
+```typescript
+const ledger = new LedgerWallet({
+  autoReconnect: true,
+  maxReconnectAttempts: 3,
+});
+
+ledger.on('reconnecting', (attempt) => {
+  console.log(`Reconnecting... attempt ${attempt}`);
+});
+
+ledger.on('reconnect-failed', (error) => {
+  console.error('Reconnect failed:', error);
+});
+
+ledger.on('reconnect-exhausted', () => {
+  console.error('Max reconnection attempts reached');
+});
+```
+
+**Manual Disconnect:**
+
+```typescript
+// Check status
+if (ledger.isConnected()) {
+  const status = ledger.getConnectionStatus();
+  console.log('Connected:', status.connected);
+  console.log('Last connected:', status.lastConnectedAt);
+}
+
+// Disconnect
+await ledger.disconnect();
+```
+
+### Account Caching
+
+```typescript
+// Accounts are cached automatically after retrieval
+const accounts = await ledger.getAccounts(0, 5);
+
+// Get from cache (no device interaction)
+const cached = ledger.getCachedAccount("44'/148'/0'");
+
+// Clear cache
+ledger.clearAccountCache();
+```
+
+### Security Considerations
+
+**Best Practices:**
+
+1. **Private keys never leave the device** - All signing happens on Ledger
+2. **User confirmation required** - Transactions must be approved on device
+3. **Display verification** - Always verify addresses on device screen
+4. **Sequential accounts** - Use accounts 0, 1, 2, ... in order
+5. **Derivation path validation** - Always validate paths before use
+6. **Error handling** - Handle all error cases gracefully
+7. **Connection management** - Properly connect/disconnect
+8. **Timeout configuration** - Set appropriate timeouts for user interaction
+
+**Security Features:**
+
+- Hardware-based key storage
+- PIN protection on device
+- Transaction preview on device screen
+- ED25519 signatures (64 bytes)
+- BIP44 hierarchical deterministic derivation
+- Firmware attestation
+- Secure element storage
+
+### Integration with Stellar SDK
+
+```typescript
+import { LedgerWallet } from '@galaxy/core-wallet/hardware';
+import { StellarService } from '@galaxy/core-stellar-sdk';
+
+// 1. Get public key from Ledger
+const ledger = new LedgerWallet();
+await ledger.connect();
+const publicKey = await ledger.getPublicKey();
+
+// 2. Build transaction with Stellar SDK
+const stellarService = new StellarService(networkConfig);
+const transaction = await stellarService.buildTransaction({
+  source: publicKey,
+  destination: 'G...',
+  amount: '100',
+});
+
+// 3. Get transaction hash
+const txHash = transaction.hash();
+
+// 4. Sign with Ledger
+const signature = await ledger.signTransaction(txHash);
+
+// 5. Add signature to transaction
+transaction.addSignature(publicKey, signature.signature);
+
+// 6. Submit to network
+const result = await stellarService.submitTransaction(transaction);
+```
+
+### Testing
+
+Tests use mock transport to simulate Ledger device without hardware:
+
+```typescript
+import { LedgerWallet } from '../LedgerWallet';
+import { MockLedgerTransport } from '../__tests__/MockLedgerTransport';
+
+// Mock is configured in jest.config.js
+const ledger = new LedgerWallet();
+await ledger.connect(); // Uses mock transport in tests
+
+// Simulate user rejection
+mockTransport.simulateUserRejection();
+await expect(ledger.signTransaction(hash)).rejects.toThrow();
+
+// Simulate app not open
+mockTransport.simulateAppNotOpen();
+await expect(ledger.getPublicKey()).rejects.toThrow();
+```
+
+### Troubleshooting Guide
+
+**Device Not Detected:**
+1. Check USB connection
+2. Try different USB port/cable
+3. Update Ledger firmware
+4. Install Ledger Live app
+5. Check browser WebUSB support
+
+**Stellar App Issues:**
+1. Open Stellar app on device
+2. Update Stellar app via Ledger Live
+3. Check app version compatibility
+4. Reinstall Stellar app if needed
+
+**Transaction Signing Fails:**
+1. Ensure device is unlocked
+2. Check timeout settings (increase if needed)
+3. Verify transaction data on device screen
+4. Check derivation path is correct
+5. Ensure sufficient time for user review
+
+**Connection Drops:**
+1. Enable auto-reconnect
+2. Check USB power management settings
+3. Use high-quality USB cable
+4. Avoid USB hubs if possible
+5. Update transport drivers
+
+## ✅ Final Pre-merge Checklist
+
+- [x] Documentation files updated: `docs/AI.md`, `docs/architecture/architecture.md`, `packages/core/wallet/README.md`.
+- [ ] Docstring coverage: Increase to >= 80% by adding TSDoc/JSDoc comments to biometric-related classes and functions (`BiometricAuth`, providers); marked as TODO.
+- [x] Architecture doc includes biometric pattern and diagram placeholder.
+- [x] Wallet README includes biometric setup and examples.
+
+TODO: I can add TSDoc/JSDoc comments to the biometric files listed above to raise docstring coverage — confirm and I'll implement those changes and run tests.

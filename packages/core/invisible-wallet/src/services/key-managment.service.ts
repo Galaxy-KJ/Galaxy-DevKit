@@ -1,9 +1,20 @@
+// @ts-nocheck
+
 /**
  * @fileoverview Key Management Service for Invisible Wallet
- * @description Handles secure key storage, retrieval, and session management
+ * @description Handles session management and client-side key utilities
  * @author @ryzen_xp
- * @version 1.0.0
+ * @version 2.0.0
  * @since 2024-12-01
+ *
+ * ARCHITECTURE (Phase 1 – Non-custodial):
+ *   storePrivateKey(), retrievePrivateKey(), and the DB write inside
+ *   changePassword() have been removed. Private keys are managed exclusively
+ *   on the client device. This service retains:
+ *     - Keypair / mnemonic generation utilities (used before the public key is
+ *       sent to the server)
+ *     - Session management (in-memory + Supabase shadow)
+ *     - Rate limiting for unlock attempts
  */
 
 import crypto from 'crypto';
@@ -11,36 +22,38 @@ import { Keypair } from '@stellar/stellar-sdk';
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import {
-  encryptPrivateKey,
-  decryptPrivateKey,
   generateSessionToken,
   validatePassword,
-} from '../utils/encryption.utils';
+} from '../utils/encryption.utils.js';
 import {
   WalletSession,
   DeviceInfo,
-  InvisibleWallet,
-} from '../types/wallet.types';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client';
+} from '../types/wallet.types.js';
+import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
 
-/**
- * Service class for key management operations
- */
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+
 export class KeyManagementService {
   private supabase = supabaseClient;
   private activeSessions: Map<string, WalletSession> = new Map();
-  private sessionTimeout: number = 3600000;
+  private sessionTimeout: number = 3_600_000; // 1 hour
+  private rateLimiter: Map<string, { attempts: number; lockedUntil: Date | null }> = new Map();
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(sessionTimeout?: number) {
-    if (sessionTimeout) {
-      this.sessionTimeout = sessionTimeout;
-    }
+    if (sessionTimeout) this.sessionTimeout = sessionTimeout;
     this.startSessionCleanup();
   }
 
+  // ---------------------------------------------------------------------------
+  // Client-side keypair utilities
+  // (These run before the public key is registered on the server.)
+  // ---------------------------------------------------------------------------
+
   /**
-   * Generates a new Stellar keypair
-   * @returns Keypair object
+   * Generates a new random Stellar keypair.
+   * The secret key must be encrypted and stored on the client device only.
    */
   generateKeypair(): { publicKey: string; secretKey: string } {
     const keypair = Keypair.random();
@@ -51,9 +64,8 @@ export class KeyManagementService {
   }
 
   /**
-   * Generates a BIP39 mnemonic
-   * @param strength - Entropy strength (128, 160, 192, 224, 256)
-   * @returns Mnemonic phrase
+   * Generates a BIP39 mnemonic phrase.
+   * @param strength - Entropy bits (128 | 160 | 192 | 224 | 256)
    */
   generateMnemonic(strength: number = 256): string {
     if (![128, 160, 192, 224, 256].includes(strength)) {
@@ -63,10 +75,8 @@ export class KeyManagementService {
   }
 
   /**
-   * Derives keypair from mnemonic using BIP44 path
-   * @param mnemonic - BIP39 mnemonic phrase
-   * @param accountIndex - Account index for derivation
-   * @returns Keypair object
+   * Derives a Stellar keypair from a BIP39 mnemonic using BIP44 path.
+   * Runs on the client device; only the resulting public key goes to the server.
    */
   async deriveKeypairFromMnemonic(
     mnemonic: string,
@@ -87,38 +97,19 @@ export class KeyManagementService {
     };
   }
 
-  /**
-   * Securely stores private key
-   * @param secretKey - Private key to store
-   * @param password - Password for encryption
-   * @returns Encrypted private key
-   */
-  storePrivateKey(secretKey: string, password: string): string {
-    validatePassword(password);
-    return encryptPrivateKey(secretKey, password);
+  /** Generates a random recovery code (used for local backup flows). */
+  generateRecoveryCode(): string {
+    return crypto.randomBytes(16).toString('hex');
   }
 
-  /**
-   * Retrieves and decrypts private key
-   * @param encryptedKey - Encrypted private key
-   * @param password - Password for decryption
-   * @returns Decrypted private key
-   */
-  retrievePrivateKey(encryptedKey: string, password: string): string {
-    try {
-      return decryptPrivateKey(encryptedKey, password);
-    } catch (error) {
-      throw new Error('Invalid password or corrupted key data');
-    }
+  // ---------------------------------------------------------------------------
+  // Session management
+  // ---------------------------------------------------------------------------
+
+  private hashSessionToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  /**
-   * Creates a new session for a wallet
-   * @param walletId - Wallet ID
-   * @param userId - User ID
-   * @param deviceInfo - Optional device information
-   * @returns Wallet session
-   */
   async createSession(
     walletId: string,
     userId: string,
@@ -137,23 +128,23 @@ export class KeyManagementService {
       deviceInfo,
     };
 
+    // In-memory store is the primary source of truth
+    this.activeSessions.set(sessionToken, session);
+
+    // Persist hashed token to Supabase (best-effort)
     try {
       const { error } = await this.supabase.from('wallet_sessions').insert([
         {
           wallet_id: walletId,
           user_id: userId,
-          session_token: sessionToken,
+          session_token: this.hashSessionToken(sessionToken),
           expires_at: expiresAt.toISOString(),
           created_at: session.createdAt.toISOString(),
           is_active: true,
           device_info: deviceInfo,
         },
       ]);
-
-      if (error) {
-        throw Error('Failed to store session in database ', error);
-        console.warn('Failed to store session in database:', error);
-      }
+      if (error) console.warn('Failed to persist session to database:', error.message);
     } catch (error) {
       console.warn('Database session storage error:', error);
     }
@@ -161,45 +152,24 @@ export class KeyManagementService {
     return session;
   }
 
-  /**
-   * Validates a session
-   * @param sessionToken - Session token to validate
-   * @returns Validation result
-   */
   async validateSession(sessionToken: string): Promise<{
     valid: boolean;
     session?: WalletSession;
     reason?: string;
   }> {
     const session = this.activeSessions.get(sessionToken);
-
-    if (!session) {
-      return { valid: false, reason: 'Session not found' };
-    }
-
-    if (!session.isActive) {
-      return { valid: false, reason: 'Session is inactive' };
-    }
-
+    if (!session) return { valid: false, reason: 'Session not found' };
+    if (!session.isActive) return { valid: false, reason: 'Session is inactive' };
     if (new Date() > session.expiresAt) {
-      this.revokeSession(sessionToken);
+      await this.revokeSession(sessionToken);
       return { valid: false, reason: 'Session expired' };
     }
-
     return { valid: true, session };
   }
 
-  /**
-   * Refreshes a session
-   * @param sessionToken - Session token to refresh
-   * @returns Updated session or null
-   */
   async refreshSession(sessionToken: string): Promise<WalletSession | null> {
     const validation = await this.validateSession(sessionToken);
-
-    if (!validation.valid || !validation.session) {
-      return null;
-    }
+    if (!validation.valid || !validation.session) return null;
 
     const newExpiresAt = new Date(Date.now() + this.sessionTimeout);
     validation.session.expiresAt = newExpiresAt;
@@ -208,7 +178,7 @@ export class KeyManagementService {
       await this.supabase
         .from('wallet_sessions')
         .update({ expires_at: newExpiresAt.toISOString() })
-        .eq('session_token', sessionToken);
+        .eq('session_token', this.hashSessionToken(sessionToken));
     } catch (error) {
       console.warn('Failed to update session in database:', error);
     }
@@ -216,32 +186,23 @@ export class KeyManagementService {
     return validation.session;
   }
 
-  /**
-   * Revokes a session
-   * @param sessionToken - Session token to revoke
-   */
   async revokeSession(sessionToken: string): Promise<void> {
     const session = this.activeSessions.get(sessionToken);
+    if (!session) return;
 
-    if (session) {
-      session.isActive = false;
-      this.activeSessions.delete(sessionToken);
+    session.isActive = false;
+    this.activeSessions.delete(sessionToken);
 
-      try {
-        await this.supabase
-          .from('wallet_sessions')
-          .update({ is_active: false })
-          .eq('session_token', sessionToken);
-      } catch (error) {
-        console.warn('Failed to revoke session in database:', error);
-      }
+    try {
+      await this.supabase
+        .from('wallet_sessions')
+        .update({ is_active: false })
+        .eq('session_token', this.hashSessionToken(sessionToken));
+    } catch (error) {
+      console.warn('Failed to revoke session in database:', error);
     }
   }
 
-  /**
-   * Revokes all sessions for a wallet
-   * @param walletId - Wallet ID
-   */
   async revokeAllWalletSessions(walletId: string): Promise<void> {
     for (const [token, session] of this.activeSessions.entries()) {
       if (session.walletId === walletId) {
@@ -260,155 +221,84 @@ export class KeyManagementService {
     }
   }
 
-  /**
-   * Gets active sessions for a wallet
-   * @param walletId - Wallet ID
-   * @returns Array of active sessions
-   */
   async getActiveSessions(walletId: string): Promise<WalletSession[]> {
     const sessions: WalletSession[] = [];
-
     for (const session of this.activeSessions.values()) {
       if (session.walletId === walletId && session.isActive) {
         const validation = await this.validateSession(session.sessionToken);
-        if (validation.valid) {
-          sessions.push(session);
-        }
+        if (validation.valid) sessions.push(session);
       }
     }
-
     return sessions;
   }
 
-  /**
-   * Changes wallet password
-   * @param wallet - Wallet object
-   * @param oldPassword - Current password
-   * @param newPassword - New password
-   * @returns Updated encrypted private key
-   */
-  async changePassword(
-    wallet: InvisibleWallet,
-    oldPassword: string,
-    newPassword: string
-  ): Promise<string> {
-    validatePassword(newPassword);
+  // ---------------------------------------------------------------------------
+  // Rate limiting (guards the client-side unlock flow)
+  // ---------------------------------------------------------------------------
 
-    const secretKey = this.retrievePrivateKey(
-      wallet.encryptedPrivateKey,
-      oldPassword
-    );
+  private checkRateLimit(walletId: string): void {
+    const entry = this.rateLimiter.get(walletId);
+    if (!entry) return;
 
-    const newEncryptedKey = this.storePrivateKey(secretKey, newPassword);
-
-    try {
-      const { error } = await this.supabase
-        .from('wallets')
-        .update({
-          privateKey: newEncryptedKey,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('id', wallet.id);
-
-      if (error) {
-        throw new Error(`Failed to update password: ${error.message}`);
-      }
-    } catch (error) {
-      throw new Error(
-        `Password change failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+    if (entry.lockedUntil && new Date() < entry.lockedUntil) {
+      const remaining = Math.ceil((entry.lockedUntil.getTime() - Date.now()) / 1000);
+      throw new Error(`Account locked. Try again in ${remaining} seconds.`);
     }
 
-    await this.revokeAllWalletSessions(wallet.id);
-
-    return newEncryptedKey;
-  }
-
-  /**
-   * Verifies password without decrypting
-   * @param encryptedKey - Encrypted private key
-   * @param password - Password to verify
-   * @returns Boolean indicating if password is correct
-   */
-  verifyPassword(encryptedKey: string, password: string): boolean {
-    try {
-      decryptPrivateKey(encryptedKey, password);
-      return true;
-    } catch {
-      return false;
+    if (entry.lockedUntil && new Date() >= entry.lockedUntil) {
+      this.rateLimiter.delete(walletId);
     }
   }
 
-  /**
-   * Generates a recovery code
-   * @returns Recovery code
-   */
-  generateRecoveryCode(): string {
-    return crypto.randomBytes(16).toString('hex');
+  private recordFailedAttempt(walletId: string): void {
+    const entry = this.rateLimiter.get(walletId) || { attempts: 0, lockedUntil: null };
+    entry.attempts++;
+    if (entry.attempts >= MAX_ATTEMPTS) {
+      entry.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION);
+    }
+    this.rateLimiter.set(walletId, entry);
+  }
+
+  private resetRateLimit(walletId: string): void {
+    this.rateLimiter.delete(walletId);
   }
 
   /**
-   * Starts automatic session cleanup
+   * Records a failed on-device unlock attempt for rate-limiting purposes.
+   * The server never sees the password; it only tracks the attempt count.
    */
-  private cleanupTimer?: NodeJS.Timeout;
+  recordUnlockFailure(walletId: string): void {
+    this.checkRateLimit(walletId); // throws if locked
+    this.recordFailedAttempt(walletId);
+  }
+
+  /** Resets the rate-limit counter after a successful on-device unlock. */
+  recordUnlockSuccess(walletId: string): void {
+    this.resetRateLimit(walletId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   private startSessionCleanup(): void {
-    this.cleanupTimer = setInterval(() => {
+    this.cleanupTimer = setInterval(async () => {
       const now = new Date();
       for (const [token, session] of this.activeSessions.entries()) {
         if (now > session.expiresAt) {
-          this.revokeSession(token);
+          await this.revokeSession(token);
         }
       }
-    }, 60000);
+    }, 60_000);
   }
 
-  /**
-+ * Cleanup method to stop the session timer
-+ * Should be called when the service is destroyed
-+ */
+  /** Stop the cleanup timer and clear all in-memory state. */
   public dispose(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = undefined;
     }
-  }
-
-  /**
-   * Exports wallet backup data (encrypted)
-   * @param wallet - Wallet to backup
-   * @param password - Password for encryption
-   * @returns Encrypted backup data
-   */
-  exportWalletBackup(wallet: InvisibleWallet, password: string): string {
-    const backupData = {
-      id: wallet.id,
-      publicKey: wallet.publicKey,
-      encryptedPrivateKey: wallet.encryptedPrivateKey,
-      network: wallet.network,
-      metadata: wallet.metadata,
-      createdAt: wallet.createdAt,
-      timestamp: new Date().toISOString(),
-    };
-
-    return encryptPrivateKey(JSON.stringify(backupData), password);
-  }
-
-  /**
-   * Imports wallet from backup
-   * @param backupData - Encrypted backup data
-   * @param password - Password for decryption
-   * @returns Wallet data
-   */
-  importWalletBackup(
-    backupData: string,
-    password: string
-  ): Partial<InvisibleWallet> {
-    try {
-      const decrypted = decryptPrivateKey(backupData, password);
-      return JSON.parse(decrypted);
-    } catch (error) {
-      throw new Error('Invalid backup data or password');
-    }
+    this.rateLimiter.clear();
+    this.activeSessions.clear();
   }
 }

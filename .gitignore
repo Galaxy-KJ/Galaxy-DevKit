@@ -11,12 +11,17 @@ out/
 .next/
 .vercel/
 
+IMPLEMENTATION_PLAN.md
+
 # Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# NPM config with tokens (NEVER commit this)
+.npmrc
 
 # IDE
 .vscode/

@@ -1,0 +1,17 @@
+[package]
+name = "smart-wallet-account-wallet"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "21.0.0"
+smart-wallet-account-common = { path = "../common" }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+

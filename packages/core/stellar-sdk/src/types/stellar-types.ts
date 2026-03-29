@@ -25,13 +25,17 @@ export interface NetworkConfig {
  * Wallet configuration for Stellar operations
  * @interface WalletConfig
  * @property {string} publicKey - The wallet's public key
- * @property {string} privateKey - The wallet's private key (encrypted)
+ * @property {string} privateKey - Encrypted private key ciphertext (NOT the raw Stellar secret key).
+ *   Despite the field name, this value is always the AES-256-GCM encrypted ciphertext
+ *   in the format `salt:iv:authTag:ciphertext`. It must be decrypted with the user's
+ *   password via `decryptPrivateKey()` before use with `Keypair.fromSecret()`.
  * @property {NetworkConfig} network - Network configuration
  * @property {boolean} autoConnect - Whether to auto-connect on initialization
  * @property {number} timeout - Request timeout in milliseconds
  */
 export interface WalletConfig {
   publicKey: string;
+  /** Encrypted private key ciphertext — NOT a raw Stellar secret. Requires decryption before use. */
   privateKey: string;
   network: NetworkConfig;
   autoConnect: boolean;
@@ -43,7 +47,10 @@ export interface WalletConfig {
  * @interface Wallet
  * @property {string} id - Unique wallet identifier
  * @property {string} publicKey - Wallet's public key
- * @property {string} privateKey - Wallet's private key (encrypted)
+ * @property {string} privateKey - Encrypted private key ciphertext (NOT the raw Stellar secret key).
+ *   Despite the field name, this value is always the AES-256-GCM encrypted ciphertext
+ *   in the format `salt:iv:authTag:ciphertext`. It must be decrypted with the user's
+ *   password via `decryptPrivateKey()` before use with `Keypair.fromSecret()`.
  * @property {NetworkConfig} network - Network configuration
  * @property {Date} createdAt - Creation timestamp
  * @property {Date} updatedAt - Last update timestamp
@@ -52,6 +59,7 @@ export interface WalletConfig {
 export interface Wallet {
   id: string;
   publicKey: string;
+  /** Encrypted private key ciphertext — NOT a raw Stellar secret. Requires decryption before use. */
   privateKey: string;
   network: NetworkConfig;
   createdAt: Date;

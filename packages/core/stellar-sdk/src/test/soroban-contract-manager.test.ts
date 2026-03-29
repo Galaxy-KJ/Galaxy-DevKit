@@ -6,12 +6,12 @@
  * @since 2024-12-01
  */
 
-import { SorobanContractManager } from '../soroban-contract-manager';
+import { SorobanContractManager } from '../soroban-contract-manager.js';
 import { Keypair } from '@stellar/stellar-sdk';
 import {
   ContractDeploymentParams,
   ContractInvocationParams,
-} from '../types/contract-types';
+} from '../types/contract-types.js';
 
 // Mock the Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({

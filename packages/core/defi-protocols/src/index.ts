@@ -7,18 +7,27 @@
  */
 
 // Types
-export * from './types/defi-types';
-export * from './types/protocol-interface';
+export * from './types/defi-types.js';
+export * from './types/protocol-interface.js';
+export * from './types/operations.js';
 
 // Base Protocol
-export { BaseProtocol } from './protocols/base-protocol';
+export { BaseProtocol } from './protocols/base-protocol.js';
+
+// Protocol Implementations
+export * from './protocols/blend/index.js';
+export * from './protocols/soroswap/index.js';
 
 // Services
-export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory';
+export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory.js';
 
 // Constants
-export * from './constants/networks';
-export * from './constants/protocols';
+export * from './constants/networks.js';
+export * from './constants/protocols.js';
 
 // Utils
-export * from './utils/validation';
+export * from './utils/validation.js';
+export * from './utils/type-guards.js';
+
+// Errors
+export * from './errors/index.js';

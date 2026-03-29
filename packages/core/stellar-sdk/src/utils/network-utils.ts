@@ -7,7 +7,7 @@
  */
 
 import { Networks, StrKey } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../types/stellar-types';
+import { NetworkConfig } from '../types/stellar-types.js';
 
 /**
  * Network utility class

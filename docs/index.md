@@ -7,6 +7,7 @@ Welcome to the complete documentation for Galaxy DevKit - the ultimate developme
 Galaxy DevKit is a comprehensive development framework that provides both **APIs** and **CLI tools** to build Stellar applications with ease.
 
 ### Key Features
+
 - **🌐 APIs** - REST, GraphQL, WebSocket endpoints
 - **🛠️ CLI Tools** - Command-line interface for project creation
 - **📦 SDKs** - TypeScript, Python, JavaScript SDKs
@@ -16,6 +17,7 @@ Galaxy DevKit is a comprehensive development framework that provides both **APIs
 ## 📋 Documentation Structure
 
 ### 📖 [User Guides](./guides/)
+
 Complete guides for using Galaxy DevKit to build Stellar applications.
 
 - **[Getting Started](./guides/getting-started.md)** - Quick start guide
@@ -23,6 +25,7 @@ Complete guides for using Galaxy DevKit to build Stellar applications.
 - **[CLI Guide](./guides/cli-guide.md)** - Command line interface guide
 
 ### 🌐 [API Documentation](./api/)
+
 Complete API documentation for Galaxy DevKit services.
 
 - **[API Reference](./api/api-reference.md)** - Complete API documentation
@@ -32,6 +35,7 @@ Complete API documentation for Galaxy DevKit services.
 - **[SDK Examples](./api/sdk-examples.md)** - SDK usage examples
 
 ### 📚 [Examples](./examples/)
+
 Real-world examples and use cases for Galaxy DevKit.
 
 - **[Examples Overview](./examples/examples.md)** - Complete examples documentation
@@ -41,9 +45,13 @@ Real-world examples and use cases for Galaxy DevKit.
 - **[Gaming Applications](./examples/gaming-apps.md)** - Gaming integration examples
 
 ### 🏗️ [Architecture](./architecture/)
+
 Comprehensive architecture documentation for Galaxy DevKit.
 
 - **[System Architecture](./architecture/architecture.md)** - Complete system architecture
+- **[Smart Wallet Auth Flow](./architecture/smart-wallet-auth-flow.md)** - WebAuthn to Soroban auth path
+- **[Session Key Flow](./architecture/session-key-flow.md)** - Session key lifecycle and TTL behavior
+- **[DeFi Aggregation Flow](./architecture/defi-aggregation-flow.md)** - Quote routing and signing flow
 - **[API Architecture](./architecture/api-architecture.md)** - API design and structure
 - **[CLI Architecture](./architecture/cli-architecture.md)** - CLI tool architecture
 - **[Smart Contract Architecture](./architecture/smart-contract-architecture.md)** - Contract design
@@ -51,25 +59,34 @@ Comprehensive architecture documentation for Galaxy DevKit.
 - **[Security Architecture](./architecture/security-architecture.md)** - Security design
 - **[Deployment Architecture](./architecture/deployment-architecture.md)** - Deployment strategies
 
+## Soroban Smart Wallet Docs
+
+- **[Smart Wallet Contract Guide](./contracts/smart-wallet-contract.md)** - Factory and wallet reference
+- **[Contract Deployment Guide](./contracts/deployment.md)** - Build and deploy instructions for testnet
+
 ## 🎯 Choose Your Path
 
 ### For API Users
+
 Perfect for developers who want to integrate Stellar functionality into existing applications.
 
 **Start with:** [Getting Started Guide](./guides/getting-started.md)
 
 **Best for:**
+
 - Mobile apps
 - Web applications
 - Backend services
 - Third-party integrations
 
 ### For CLI Users
+
 Perfect for developers who want to create full-stack Stellar applications from scratch.
 
 **Start with:** [User Guide](./guides/user-guide.md)
 
 **Best for:**
+
 - DeFi platforms
 - NFT marketplaces
 - Trading applications
@@ -78,11 +95,13 @@ Perfect for developers who want to create full-stack Stellar applications from s
 ## 🚀 Quick Start
 
 ### Install CLI
+
 ```bash
 npm install -g @galaxy/cli
 ```
 
 ### Create Project
+
 ```bash
 galaxy create my-stellar-app
 cd my-stellar-app
@@ -90,16 +109,17 @@ galaxy dev
 ```
 
 ### Use APIs
+
 ```typescript
 import { GalaxySDK } from '@galaxy/sdk-typescript';
 
 const galaxy = new GalaxySDK({
   apiKey: 'your-api-key',
-  network: 'testnet'
+  network: 'testnet',
 });
 
 const wallet = await galaxy.wallets.create({
-  userId: 'user123'
+  userId: 'user123',
 });
 ```
 
@@ -117,6 +137,12 @@ Want to contribute to Galaxy DevKit? Check out our [Contributing Guide](../CONTR
 ## 📄 License
 
 Galaxy DevKit is licensed under the MIT License. See [LICENSE](../LICENSE) for details.
+
+## Smart Wallet Docs
+
+- [Smart Wallet API Reference](./smart-wallet/api-reference.md)
+- [Smart Wallet Integration Guide](./smart-wallet/integration-guide.md)
+- [Smart Wallet Flow](./architecture/smart-wallet-flow.md)
 
 ---
 

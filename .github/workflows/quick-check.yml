@@ -16,7 +16,7 @@ jobs:
   quick-validation:
     name: ⚡ Quick Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code

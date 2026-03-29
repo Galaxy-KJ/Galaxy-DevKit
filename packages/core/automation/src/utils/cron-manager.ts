@@ -1,5 +1,5 @@
 import cron, { ScheduledTask } from 'node-cron';
-import { CronJob } from '../types/automation-types';
+import { CronJob } from '../types/automation-types.js';
 
 export class CronManager {
   private jobs: Map<string, ScheduledTask> = new Map();

@@ -50,9 +50,20 @@ export interface Condition {
   value2?: number | string; // For BETWEEN operations
 }
 
+export interface PriceTriggerCondition {
+  type: 'price';
+  id: string;
+  asset: string;          // e.g. 'XLM', 'BTC'
+  operator: ConditionOperator; // GT | LT | GTE | LTE
+  threshold: number;      // USD value
+  quoteAsset?: string;    // default 'USD' (informational)
+}
+
+export type AnyCondition = Condition | PriceTriggerCondition;
+
 export interface ConditionGroup {
   logic: ConditionLogic;
-  conditions: Condition[];
+  conditions: AnyCondition[];
   groups?: ConditionGroup[];
 }
 

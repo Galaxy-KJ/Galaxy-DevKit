@@ -271,6 +271,55 @@ Authorization: Bearer jwt-token
 }
 ```
 
+### DeFi Operations
+
+#### GET /api/v1/defi/swap/quote
+Get a swap quote from Soroswap.
+
+**Query Parameters:**
+- `assetIn`: Asset to swap from (e.g., "XLM", "USDC:G...")
+- `assetOut`: Asset to swap to
+- `amountIn`: Amount to swap
+
+#### POST /api/v1/defi/swap
+Create an unsigned swap transaction for Soroswap.
+
+**Request:**
+```json
+{
+  "assetIn": "XLM",
+  "assetOut": "USDC:G...",
+  "amountIn": "100",
+  "minAmountOut": "95",
+  "signerPublicKey": "GD..."
+}
+```
+
+#### GET /api/v1/defi/blend/position/:publicKey
+Get a user's position, supplied and borrowed assets in Blend.
+
+#### POST /api/v1/defi/blend/supply
+Create an unsigned supply transaction for Blend.
+
+**Request:**
+```json
+{
+  "asset": "USDC:G...",
+  "amount": "100",
+  "signerPublicKey": "GD..."
+}
+```
+
+#### POST /api/v1/defi/blend/withdraw
+Create an unsigned withdraw transaction for Blend (similar body to supply).
+
+#### POST /api/v1/defi/blend/borrow
+Create an unsigned borrow transaction for Blend (similar body to supply).
+
+#### POST /api/v1/defi/blend/repay
+Create an unsigned repay transaction for Blend (similar body to supply).
+
+
 ## Security
 
 ### Password Security

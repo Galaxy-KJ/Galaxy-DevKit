@@ -6,8 +6,8 @@
  * @since 2024-12-01
  */
 
-import { ContractEventMonitor } from '../utils/event-monitor';
-import { ContractEventDetail } from '../types/contract-types';
+import { ContractEventMonitor } from '../utils/event-monitor.js';
+import { ContractEventDetail } from '../types/contract-types.js';
 
 // Mock Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({

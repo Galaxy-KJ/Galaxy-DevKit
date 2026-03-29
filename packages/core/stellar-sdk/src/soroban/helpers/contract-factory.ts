@@ -7,13 +7,13 @@
  */
 
 import { Keypair, xdr } from '@stellar/stellar-sdk';
-import { SorobanContractManager } from '../soroban-contract-manager';
-import { ScValConverter } from '../utils/scval-converter';
+import { SorobanContractManager } from '../soroban-contract-manager.js';
+import { ScValConverter } from '../utils/scval-converter.js';
 import {
   ContractFactoryConfig,
   ContractDeploymentParams,
   ContractDeploymentResult,
-} from '../types/contract-types';
+} from '../types/contract-types.js';
 
 export class ContractFactory {
   private manager: SorobanContractManager;

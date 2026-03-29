@@ -17,15 +17,15 @@ export type {
   PaymentResult,
   TransactionInfo,
   Network,
-  Asset,
+  Asset as AssetCode,
   TransactionStatus,
-} from './types/stellar-types';
+} from './types/stellar-types.js';
 
 // Export services
-export { StellarService } from './services/stellar-service';
+export { StellarService } from './services/stellar-service.js';
 
 // Export hooks
-export { useStellar } from './hooks/use-stellar';
+export { useStellar } from './hooks/use-stellar.js';
 
 // Export utilities
 export {
@@ -44,10 +44,95 @@ export {
   createMemo,
   calculateFee,
   isValidAssetCode,
-} from './utils/stellar-utils';
+} from './utils/stellar-utils.js';
 
 // Export Soroban functionality
-export * from './soroban';
+export * from './soroban/index.js';
+
+// Export claimable balances
+export type {
+  ClaimableBalance,
+  Claimant,
+  ClaimPredicate,
+  CreateClaimableBalanceParams,
+  ClaimBalanceParams,
+  QueryClaimableBalancesParams,
+  ClaimableBalanceResult,
+  TimeLockedBalanceParams,
+  VestingScheduleParams,
+  EscrowParams,
+} from './claimable-balances/types.js';
+
+export {
+  ClaimableBalanceManager,
+  unconditional,
+  beforeAbsoluteTime,
+  beforeRelativeTime,
+  not,
+  and,
+  or,
+  toStellarPredicate,
+  validatePredicate,
+  isPredicateClaimable,
+  createTimeLockedBalance,
+  createVestingSchedule,
+  createEscrow,
+  createTwoPartyEscrow,
+  createConditionalRelease,
+  createRefundableBalance,
+} from './claimable-balances/index.js';
+
+// Export liquidity pools
+export type {
+  LiquidityPool,
+  LiquidityPoolDeposit,
+  LiquidityPoolWithdraw,
+  QueryPoolsParams,
+  LiquidityPoolResult,
+  PoolAnalytics,
+  PriceImpact,
+  DepositEstimate,
+  WithdrawEstimate,
+  PoolShare,
+  PoolTrade,
+} from './liquidity-pools/types.js';
+
+export {
+  LiquidityPoolManager,
+  // Calculation functions
+  calculateConstantProduct,
+  calculateSpotPrice,
+  calculateDepositShares,
+  calculateWithdrawAmounts,
+  calculatePriceImpact,
+  calculateSwapOutput,
+  estimateDeposit,
+  estimateWithdraw,
+  calculateMinimumAmounts,
+  calculatePriceBounds,
+  // Validation functions
+  validatePoolId,
+  validateAmount,
+  validateSlippage,
+  validatePrice,
+  validatePublicKey,
+  validateDepositParams,
+  validateWithdrawParams,
+  validateSufficientShares,
+  validateMinimumLiquidity,
+  // Helper functions
+  calculateOptimalDeposit,
+  formatPoolAssets,
+  calculateShareValue,
+  wouldImpactPrice,
+  calculateBreakEvenPrice,
+  calculateImpermanentLoss,
+  hasSufficientLiquidity,
+  calculateAPRFromFees,
+  toStellarPrecision,
+  assetsEqual,
+  sortAssets,
+} from './liquidity-pools/index.js';
 
 // Re-export Stellar SDK for convenience
 export {
@@ -57,4 +142,25 @@ export {
   Networks,
   Operation,
   BASE_FEE,
+  Asset,
+  Horizon,
 } from '@stellar/stellar-sdk';
+
+// Export path payments (path finding, swap execution, slippage protection)
+export type {
+  PaymentPath,
+  SwapParams,
+  SwapResult,
+  SwapEstimate,
+  SwapType,
+  StrictSendPathParams,
+  StrictReceivePathParams,
+  SlippageProtection,
+  SwapAnalyticsRecord,
+  PathAnalytics,
+  PathCacheEntry,
+} from './path-payments/types.js';
+export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments/index.js';
+
+// Export sponsored reserves module
+export * from './sponsored-reserves/index.js';

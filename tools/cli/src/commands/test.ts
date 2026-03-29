@@ -35,7 +35,7 @@ testCommand
       }
 
       const packageJson = await fs.readJson(packageJsonPath);
-      if (!packageJson.name?.includes('galaxy') && !packageJson.dependencies?.['@galaxy/']) {
+      if (!packageJson.name?.includes('galaxy') && !packageJson.dependencies?.['@galaxy-kj/']) {
         console.error(chalk.red('Not a Galaxy project'));
         console.error(chalk.yellow('This command must be run from a Galaxy project'));
         process.exit(1);

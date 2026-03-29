@@ -7,7 +7,7 @@
  */
 
 import { Keypair } from '@stellar/stellar-sdk';
-import { Asset } from '../types/defi-types';
+import { Asset } from '../types/defi-types.js';
 import BigNumber from 'bignumber.js';
 
 /**
@@ -24,7 +24,7 @@ export function validateAddress(address: string): boolean {
   try {
     Keypair.fromPublicKey(address);
     return true;
-  } catch (error) {
+  } catch {
     throw new Error(`Invalid Stellar address: ${address}`);
   }
 }

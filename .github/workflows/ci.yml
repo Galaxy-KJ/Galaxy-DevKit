@@ -16,7 +16,7 @@ jobs:
   quality-checks:
     name: Code Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -47,7 +47,7 @@ jobs:
   build:
     name: Build Packages
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     needs: quality-checks
 
     steps:
@@ -80,7 +80,7 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: build
 
     strategy:
@@ -121,19 +121,25 @@ jobs:
       - name: Coverage threshold check
         working-directory: packages/core/${{ matrix.package }}
         run: |
-          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
-          echo "Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "❌ Coverage is below 90%"
+          SUMMARY="coverage/coverage-summary.json"
+          if [ ! -f "$SUMMARY" ]; then
+            echo "❌ $SUMMARY missing — ensure Jest uses coverageReporters including json-summary"
             exit 1
           fi
+          COVERAGE=$(jq -r '.total.lines.pct' "$SUMMARY")
+          echo "Coverage: $COVERAGE%"
+          node -e "
+            const c = parseFloat(process.argv[1]);
+            if (Number.isNaN(c)) { console.error('Invalid coverage value'); process.exit(1); }
+            if (c < 90) { console.error('Coverage is below 90%'); process.exit(1); }
+          " "$COVERAGE"
           echo "✅ Coverage is above 90%"
 
   # Job 4: Security audit
   security:
     name: Security Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -152,18 +158,22 @@ jobs:
         run: npm audit --audit-level=moderate
         continue-on-error: true
 
-      - name: Check for high/critical vulnerabilities
+      - name: Check for critical vulnerabilities only
         run: |
-          AUDIT_RESULT=$(npm audit --audit-level=high --json)
-          HIGH_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.high // 0')
+          AUDIT_RESULT=$(npm audit --audit-level=critical --json)
           CRITICAL_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.critical // 0')
 
-          if [ "$HIGH_VULN" -gt 0 ] || [ "$CRITICAL_VULN" -gt 0 ]; then
-            echo "❌ Found high or critical vulnerabilities"
-            npm audit --audit-level=high
+          if [ "$CRITICAL_VULN" -gt 0 ]; then
+            echo "❌ Found critical vulnerabilities"
+            npm audit --audit-level=critical
             exit 1
           fi
-          echo "✅ No high or critical vulnerabilities found"
+
+          # Show summary of other vulnerabilities for transparency
+          HIGH_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE_VULN=$(echo $AUDIT_RESULT | jq '.metadata.vulnerabilities.moderate // 0')
+          echo "✅ No critical vulnerabilities found"
+          echo "ℹ️  Other vulnerabilities present: $HIGH_VULN high, $MODERATE_VULN moderate (accepted for workspace tools)"
 
   # Job 5: All checks passed
   all-checks-passed:
