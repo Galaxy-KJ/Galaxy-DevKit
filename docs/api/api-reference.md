@@ -1,612 +1,443 @@
-# 🌐 Galaxy DevKit API Reference
+# Galaxy DevKit REST API Reference
 
-Complete API documentation for Galaxy DevKit services.
+This document describes the actual HTTP endpoints implemented in `packages/api/rest/`. All endpoints reflect the live route code — no invented fields.
 
-## 📋 Table of Contents
+> **Note on private keys:** The Galaxy DevKit REST API never returns or accepts private keys. The non-custodial architecture keeps all private key material on the client device.
 
-- [Authentication](#-authentication)
-- [REST API](#-rest-api)
-- [GraphQL API](#-graphql-api)
-- [WebSocket API](#-websocket-api)
-- [Error Handling](#-error-handling)
-- [Rate Limits](#-rate-limits)
+## Base URL
 
-## 🔐 Authentication
+| Environment | URL |
+|-------------|-----|
+| Local development | `http://localhost:3000` |
+| Testnet | Configure via `STELLAR_RPC_URL` / `STELLAR_HORIZON_URL` env vars |
 
-### API Key Authentication
-```bash
-# Header
-Authorization: Bearer your-api-key
+## Authentication
 
-# Or in SDK
-const galaxy = new GalaxySDK({
-  apiKey: 'your-api-key'
-});
-```
+Most mutating endpoints require a valid JWT from Supabase Auth.
 
-### JWT Authentication
-```bash
-# For user-specific operations
-Authorization: Bearer jwt-token
-```
-
-## 🌐 REST API
-
-### Base URLs
-- **Production**: `https://api.galaxy-devkit.com`
-- **Testnet**: `https://testnet-api.galaxy-devkit.com`
-- **Local**: `http://localhost:3000`
-
-### Wallets API
-
-#### Create Wallet
 ```http
-POST /api/v1/wallets
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "userId": "user123",
-  "network": "testnet",
-  "metadata": {
-    "name": "My Wallet",
-    "description": "Personal wallet"
-  }
-}
+Authorization: Bearer <supabase-jwt>
 ```
 
-**Response:**
+Read-only DeFi endpoints (quotes, positions, analytics) are unauthenticated.
+
+---
+
+## DeFi — Soroswap
+
+### GET /api/v1/defi/swap/quote
+
+Get a swap quote from Soroswap. No authentication required.
+
+**Query parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `assetIn` | string | Yes | Input asset. `XLM` or `NATIVE` for native XLM; `CODE:ISSUER` for non-native (e.g. `USDC:GA5ZS...`) |
+| `assetOut` | string | Yes | Output asset (same format) |
+| `amountIn` | string | Yes | Amount of `assetIn` to swap (decimal string, e.g. `"100"`) |
+
+**Response 200**
+
 ```json
 {
-  "id": "wallet_abc123",
-  "publicKey": "GABC123...",
-  "privateKey": "SABC123...",
-  "network": "testnet",
-  "createdAt": "2024-12-01T00:00:00Z",
-  "metadata": {
-    "name": "My Wallet",
-    "description": "Personal wallet"
-  }
+  "amountOut": "14.2300000",
+  "priceImpact": "0.003",
+  "path": ["XLM", "USDC"],
+  "minAmountOut": "14.0900000"
 }
 ```
 
-#### Get Wallet
-```http
-GET /api/v1/wallets/{walletId}
-Authorization: Bearer your-api-key
-```
+**Error 400**
 
-**Response:**
-```json
-{
-  "id": "wallet_abc123",
-  "publicKey": "GABC123...",
-  "network": "testnet",
-  "balance": [
-    {
-      "asset": "XLM",
-      "amount": "1000.0000000",
-      "limit": null
-    }
-  ],
-  "createdAt": "2024-12-01T00:00:00Z"
-}
-```
-
-#### List Wallets
-```http
-GET /api/v1/wallets?userId=user123&limit=10&offset=0
-Authorization: Bearer your-api-key
-```
-
-#### Update Wallet
-```http
-PUT /api/v1/wallets/{walletId}
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "metadata": {
-    "name": "Updated Wallet Name"
-  }
-}
-```
-
-#### Delete Wallet
-```http
-DELETE /api/v1/wallets/{walletId}
-Authorization: Bearer your-api-key
-```
-
-### Payments API
-
-#### Send Payment
-```http
-POST /api/v1/payments
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "from": "source-address",
-  "to": "destination-address",
-  "amount": "10.5",
-  "asset": "XLM",
-  "memo": "Payment description",
-  "fee": "0.00001"
-}
-```
-
-**Response:**
-```json
-{
-  "id": "payment_xyz789",
-  "hash": "abc123def456...",
-  "status": "success",
-  "ledger": "12345",
-  "createdAt": "2024-12-01T00:00:00Z",
-  "from": "source-address",
-  "to": "destination-address",
-  "amount": "10.5",
-  "asset": "XLM"
-}
-```
-
-#### Get Payment
-```http
-GET /api/v1/payments/{paymentId}
-Authorization: Bearer your-api-key
-```
-
-#### List Payments
-```http
-GET /api/v1/payments?walletId=wallet123&limit=10&offset=0
-Authorization: Bearer your-api-key
-```
-
-### Transactions API
-
-#### Get Transaction
-```http
-GET /api/v1/transactions/{txHash}
-Authorization: Bearer your-api-key
-```
-
-**Response:**
-```json
-{
-  "hash": "abc123def456...",
-  "source": "source-address",
-  "destination": "destination-address",
-  "amount": "10.5",
-  "asset": "XLM",
-  "memo": "Payment description",
-  "status": "success",
-  "ledger": "12345",
-  "createdAt": "2024-12-01T00:00:00Z"
-}
-```
-
-#### List Transactions
-```http
-GET /api/v1/transactions?walletId=wallet123&limit=10&offset=0
-Authorization: Bearer your-api-key
-```
-
-### Smart Contracts API
-
-#### Deploy Contract
-```http
-POST /api/v1/contracts/deploy
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "contractType": "smart-swap",
-  "network": "testnet",
-  "parameters": {
-    "fee": "0.01",
-    "admin": "admin-address"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "id": "contract_def456",
-  "address": "contract-address",
-  "type": "smart-swap",
-  "network": "testnet",
-  "status": "deployed",
-  "createdAt": "2024-12-01T00:00:00Z"
-}
-```
-
-#### Call Contract
-```http
-POST /api/v1/contracts/{contractId}/call
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "method": "swap",
-  "parameters": {
-    "fromAsset": "XLM",
-    "toAsset": "USDC",
-    "amount": "100"
-  }
-}
-```
-
-#### Get Contract
-```http
-GET /api/v1/contracts/{contractId}
-Authorization: Bearer your-api-key
-```
-
-#### List Contracts
-```http
-GET /api/v1/contracts?userId=user123&limit=10&offset=0
-Authorization: Bearer your-api-key
-```
-
-### Automation API
-
-#### Create Automation Rule
-```http
-POST /api/v1/automation/rules
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "name": "Auto Buy XLM",
-  "trigger": {
-    "type": "price",
-    "condition": {
-      "asset": "XLM",
-      "operator": "less_than",
-      "value": "0.10"
-    }
-  },
-  "action": {
-    "type": "buy",
-    "parameters": {
-      "asset": "XLM",
-      "amount": "100"
-    }
-  }
-}
-```
-
-#### List Automation Rules
-```http
-GET /api/v1/automation/rules?userId=user123
-Authorization: Bearer your-api-key
-```
-
-#### Update Automation Rule
-```http
-PUT /api/v1/automation/rules/{ruleId}
-Content-Type: application/json
-Authorization: Bearer your-api-key
-
-{
-  "name": "Updated Auto Buy XLM",
-  "enabled": true
-}
-```
-
-#### Delete Automation Rule
-```http
-DELETE /api/v1/automation/rules/{ruleId}
-Authorization: Bearer your-api-key
-```
-
-## 🔍 GraphQL API
-
-### Endpoint
-```
-https://api.galaxy-devkit.com/graphql
-```
-
-### Schema
-
-#### Queries
-
-```graphql
-# Get user wallets
-query GetWallets($userId: String!) {
-  wallets(userId: $userId) {
-    id
-    publicKey
-    network
-    balance {
-      asset
-      amount
-      limit
-    }
-    createdAt
-  }
-}
-
-# Get wallet transactions
-query GetWalletTransactions($walletId: String!, $limit: Int) {
-  wallet(id: $walletId) {
-    transactions(limit: $limit) {
-      hash
-      source
-      destination
-      amount
-      asset
-      status
-      createdAt
-    }
-  }
-}
-
-# Get smart contracts
-query GetContracts($userId: String!) {
-  contracts(userId: $userId) {
-    id
-    address
-    type
-    network
-    status
-    createdAt
-  }
-}
-```
-
-#### Mutations
-
-```graphql
-# Create wallet
-mutation CreateWallet($input: CreateWalletInput!) {
-  createWallet(input: $input) {
-    id
-    publicKey
-    network
-    createdAt
-  }
-}
-
-# Send payment
-mutation SendPayment($input: SendPaymentInput!) {
-  sendPayment(input: $input) {
-    id
-    hash
-    status
-    createdAt
-  }
-}
-
-# Deploy contract
-mutation DeployContract($input: DeployContractInput!) {
-  deployContract(input: $input) {
-    id
-    address
-    type
-    status
-    createdAt
-  }
-}
-```
-
-#### Subscriptions
-
-```graphql
-# Real-time wallet updates
-subscription WalletUpdates($walletId: String!) {
-  walletUpdated(walletId: $walletId) {
-    id
-    balance {
-      asset
-      amount
-    }
-    lastTransaction {
-      hash
-      amount
-      createdAt
-    }
-  }
-}
-
-# Real-time transaction updates
-subscription TransactionUpdates($walletId: String!) {
-  transactionCreated(walletId: $walletId) {
-    hash
-    source
-    destination
-    amount
-    asset
-    status
-    createdAt
-  }
-}
-
-# Real-time contract events
-subscription ContractEvents($contractId: String!) {
-  contractEvent(contractId: $contractId) {
-    id
-    event
-    data
-    createdAt
-  }
-}
-```
-
-## 🔌 WebSocket API
-
-### Connection
-```javascript
-const ws = new WebSocket('wss://api.galaxy-devkit.com/ws');
-
-ws.onopen = () => {
-  // Authenticate
-  ws.send(JSON.stringify({
-    type: 'auth',
-    token: 'your-api-key'
-  }));
-};
-```
-
-### Message Types
-
-#### Subscribe to Channel
-```javascript
-ws.send(JSON.stringify({
-  type: 'subscribe',
-  channel: 'wallet:wallet123'
-}));
-```
-
-#### Unsubscribe from Channel
-```javascript
-ws.send(JSON.stringify({
-  type: 'unsubscribe',
-  channel: 'wallet:wallet123'
-}));
-```
-
-#### Real-time Updates
-```javascript
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  
-  switch (data.type) {
-    case 'wallet_updated':
-      console.log('Wallet balance updated:', data.balance);
-      break;
-    case 'transaction_created':
-      console.log('New transaction:', data.transaction);
-      break;
-    case 'contract_event':
-      console.log('Contract event:', data.event);
-      break;
-  }
-};
-```
-
-### Available Channels
-
-- `wallet:{walletId}` - Wallet updates
-- `transactions:{walletId}` - Transaction updates
-- `contract:{contractId}` - Contract events
-- `automation:{userId}` - Automation updates
-
-## ❌ Error Handling
-
-### Error Response Format
 ```json
 {
   "error": {
-    "code": "INVALID_REQUEST",
-    "message": "Invalid request parameters",
-    "details": {
-      "field": "amount",
-      "reason": "Must be a positive number"
-    }
+    "code": "VALIDATION_ERROR",
+    "message": "assetIn, assetOut, and amountIn are required query parameters",
+    "details": {}
   }
 }
 ```
 
-### Error Codes
+**Example**
 
-| Code | Description |
-|------|-------------|
-| `INVALID_REQUEST` | Invalid request parameters |
-| `UNAUTHORIZED` | Invalid or missing API key |
-| `FORBIDDEN` | Insufficient permissions |
-| `NOT_FOUND` | Resource not found |
-| `RATE_LIMITED` | Rate limit exceeded |
-| `INTERNAL_ERROR` | Server error |
-
-## 🚦 Rate Limits
-
-### Limits per API Key
-- **REST API**: 1000 requests/hour
-- **GraphQL**: 500 queries/hour
-- **WebSocket**: 10 concurrent connections
-
-### Headers
-```http
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1640995200
+```bash
+curl "http://localhost:3000/api/v1/defi/swap/quote?assetIn=XLM&assetOut=USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&amountIn=100"
 ```
 
-## 📝 SDK Examples
+---
 
-### TypeScript SDK
-```typescript
-import { GalaxySDK } from '@galaxy/sdk-typescript';
+### POST /api/v1/defi/swap
 
-const galaxy = new GalaxySDK({
-  apiKey: 'your-api-key',
-  network: 'testnet'
-});
+Build an unsigned Soroswap swap transaction and return the XDR for client-side signing. **Requires JWT.**
 
-// Create wallet
-const wallet = await galaxy.wallets.create({
-  userId: 'user123'
-});
+**Request body**
 
-// Send payment
-const payment = await galaxy.payments.send({
-  from: wallet.publicKey,
-  to: 'destination-address',
-  amount: '10',
-  asset: 'XLM'
-});
+```json
+{
+  "assetIn": "XLM",
+  "assetOut": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amountIn": "100",
+  "minAmountOut": "14.09",
+  "signerPublicKey": "GABC123..."
+}
+```
 
-// Subscribe to updates
-galaxy.websocket.subscribe('wallet:wallet123', (update) => {
-  console.log('Wallet updated:', update);
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `assetIn` | string | Yes | Input asset |
+| `assetOut` | string | Yes | Output asset |
+| `amountIn` | string | Yes | Amount to swap |
+| `minAmountOut` | string | Yes | Slippage floor |
+| `signerPublicKey` | string | Yes | Stellar public key of the signer (G...) |
+
+**Response 200** — unsigned transaction XDR ready for client signing
+
+```json
+{
+  "xdr": "AAAAAgAAAA...",
+  "network": "testnet"
+}
+```
+
+---
+
+## DeFi — Blend (lending)
+
+### GET /api/v1/defi/blend/position/:publicKey
+
+Get the Blend lending position for a Stellar public key. No authentication required.
+
+**Path parameter:** `publicKey` — Stellar account public key (G...)
+
+**Response 200**
+
+```json
+{
+  "supplied": [
+    { "asset": "USDC", "amount": "500.0000000", "apy": "0.042" }
+  ],
+  "borrowed": [
+    { "asset": "XLM", "amount": "1000.0000000", "apy": "0.061" }
+  ],
+  "healthFactor": "1.82",
+  "collateralValue": "510.00",
+  "debtValue": "120.00"
+}
+```
+
+---
+
+### POST /api/v1/defi/blend/supply
+
+Build an unsigned Blend supply transaction. **Requires JWT.**
+
+**Request body**
+
+```json
+{
+  "asset": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amount": "500",
+  "signerPublicKey": "GABC123..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset` | string | Yes | Asset to supply (`CODE:ISSUER` or `XLM`) |
+| `amount` | string | Yes | Amount to supply |
+| `signerPublicKey` | string | Yes | Signer's Stellar public key |
+
+**Response 200** — unsigned XDR
+
+```json
+{
+  "xdr": "AAAAAgAAAA...",
+  "network": "testnet"
+}
+```
+
+---
+
+### POST /api/v1/defi/blend/withdraw
+
+Build an unsigned Blend withdrawal transaction. **Requires JWT.**
+
+**Request body** — same shape as `/blend/supply`
+
+---
+
+### POST /api/v1/defi/blend/borrow
+
+Build an unsigned Blend borrow transaction. **Requires JWT.**
+
+**Request body** — same shape as `/blend/supply`
+
+---
+
+### POST /api/v1/defi/blend/repay
+
+Build an unsigned Blend repay transaction. **Requires JWT.**
+
+**Request body** — same shape as `/blend/supply`
+
+---
+
+## DeFi — Liquidity pools
+
+### POST /api/v1/defi/liquidity/add
+
+Build an unsigned Soroswap add-liquidity transaction. **Requires JWT.**
+
+**Request body**
+
+```json
+{
+  "assetA": "XLM",
+  "assetB": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amountA": "1000",
+  "amountB": "142",
+  "signerPublicKey": "GABC123..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `assetA` | string | Yes | First asset in the pair |
+| `assetB` | string | Yes | Second asset in the pair |
+| `amountA` | string | Yes | Amount of assetA to deposit |
+| `amountB` | string | Yes | Amount of assetB to deposit |
+| `signerPublicKey` | string | Yes | Signer's Stellar public key |
+
+**Response 200** — unsigned XDR
+
+```json
+{
+  "xdr": "AAAAAgAAAA...",
+  "network": "testnet"
+}
+```
+
+---
+
+### POST /api/v1/defi/liquidity/remove
+
+Build an unsigned Soroswap remove-liquidity transaction. **Requires JWT.**
+
+**Request body**
+
+```json
+{
+  "assetA": "XLM",
+  "assetB": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "poolAddress": "CPOOL...",
+  "lpAmount": "50",
+  "minAmountA": "490",
+  "minAmountB": "69",
+  "signerPublicKey": "GABC123..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `assetA` | string | Yes | First asset |
+| `assetB` | string | Yes | Second asset |
+| `poolAddress` | string | Yes | Soroswap pool contract address |
+| `lpAmount` | string | Yes | LP token amount to redeem |
+| `minAmountA` | string | No | Slippage floor for assetA |
+| `minAmountB` | string | No | Slippage floor for assetB |
+| `signerPublicKey` | string | Yes | Signer's Stellar public key |
+
+---
+
+### GET /api/v1/defi/pools/analytics
+
+Get liquidity pool analytics (TVL, spot prices, fee APR). No authentication required.
+
+**Query parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `poolAddress` | string | No | If omitted, returns analytics for all pools. If provided, returns data for that single pool. |
+
+**Response 200 — single pool**
+
+```json
+{
+  "poolAddress": "CPOOL...",
+  "tvl": "284000.00",
+  "spotPriceAtoB": "0.1423",
+  "spotPriceBtoA": "7.026",
+  "feeApr": "0.0312",
+  "volume24h": "45200.00"
+}
+```
+
+**Response 200 — all pools** (array of the above shape)
+
+---
+
+## Wallets — Fee-sponsored transaction submission
+
+### POST /api/v1/wallets/submit-tx
+
+Wrap a client-signed (fee-less) Soroban XDR in a fee-bump envelope using the server's sponsor account and submit it to Stellar. **No JWT required** (rate-limited by wallet ID + global limits).
+
+This is the submission endpoint for non-custodial smart wallet transactions. The backend signs only the fee-bump outer envelope — it never touches the inner transaction or user keys.
+
+**Request body**
+
+```json
+{
+  "signedTxXdr": "AAAAAgAAAA...",
+  "walletId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `signedTxXdr` | string | Yes | Base-64 encoded signed Soroban transaction XDR (must NOT already be a fee-bump) |
+| `walletId` | string | Yes | UUID of the smart wallet in the `smart_wallets` table |
+
+**Response 200**
+
+```json
+{
+  "transactionHash": "a1b2c3d4...",
+  "ledger": 5012345
+}
+```
+
+**Error 400** — missing/invalid body fields or XDR parse failure
+
+```json
+{
+  "error": "Missing or invalid `signedTxXdr` — expected a base-64 XDR string"
+}
+```
+
+**Error 404** — wallet not found in `smart_wallets` table
+
+```json
+{
+  "error": "Wallet 3fa85f64-... not found in smart_wallets"
+}
+```
+
+**Error 502** — Stellar RPC submission error
+
+```json
+{
+  "error": "Stellar RPC submission failed"
+}
+```
+
+---
+
+## Error response format
+
+All endpoints return errors in this envelope:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Human-readable message",
+    "details": {}
+  }
+}
+```
+
+For the `submit-tx` endpoint, errors are a plain string field:
+
+```json
+{ "error": "Description" }
+```
+
+### Error codes
+
+| Code | HTTP status | Description |
+|------|-------------|-------------|
+| `VALIDATION_ERROR` | 400 | Missing or invalid request parameters |
+| `UNAUTHORIZED` | 401 | Missing or invalid JWT |
+| `NOT_FOUND` | 404 | Resource does not exist |
+| `INTERNAL_ERROR` | 500 | Server-side error |
+| *(plain string)* | 400 / 502 | Used by `submit-tx` endpoint |
+
+---
+
+## Rate limiting
+
+The `submit-tx` endpoint applies two rate limiters:
+
+- **Per user** — enforced by `userSubmitTxLimiter`
+- **Global** — enforced by `globalSubmitTxLimiter`
+
+General DeFi endpoints use the shared `rateLimiterMiddleware` applied at the server level.
+
+---
+
+## Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service-role key (server only) |
+| `STELLAR_RPC_URL` | No | Soroban RPC endpoint (default: testnet) |
+| `STELLAR_HORIZON_URL` | No | Horizon endpoint (default: testnet) |
+| `STELLAR_NETWORK_PASSPHRASE` | No | Network passphrase (default: testnet) |
+| `FEE_SPONSOR_SECRET_KEY` | Yes (submit-tx) | Secret key of the fee-sponsor account |
+| `FEE_BUMP_BASE_FEE` | No | Base fee for fee-bump txs in stroops (default: `1000000`) |
+| `BLEND_POOL_ADDRESS` | No | Blend pool contract address |
+| `BLEND_ORACLE_ADDRESS` | No | Blend oracle contract address |
+| `SOROSWAP_ROUTER_ADDRESS` | No | Soroswap router contract address |
+| `SOROSWAP_FACTORY_ADDRESS` | No | Soroswap factory contract address |
+| `PORT` | No | HTTP server port (default: `3000`) |
+
+---
+
+## WebSocket API
+
+The WebSocket server (`packages/api/websocket/`) is a Socket.io server available separately from the REST API. It provides real-time streams for market prices, transaction status, and automation events.
+
+**Connection**
+
+```ts
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:3001', {
+  auth: { token: supabaseJwt },
 });
 ```
 
-### Python SDK
-```python
-from galaxy_sdk import GalaxySDK
+**Market data channel**
 
-galaxy = GalaxySDK(
-    api_key='your-api-key',
-    network='testnet'
-)
-
-# Create wallet
-wallet = galaxy.wallets.create(
-    user_id='user123'
-)
-
-# Send payment
-payment = galaxy.payments.send(
-    from_address=wallet.public_key,
-    to_address='destination-address',
-    amount='10',
-    asset='XLM'
-)
+```ts
+socket.emit('subscribe:market', { symbol: 'XLM/USD' });
+socket.on('market:price', (data) => console.log(data));
 ```
 
-### JavaScript SDK
-```javascript
-import { GalaxySDK } from '@galaxy/sdk-javascript';
+**Transaction status channel**
 
-const galaxy = new GalaxySDK({
-  apiKey: 'your-api-key',
-  network: 'testnet'
-});
-
-// Create wallet
-const wallet = await galaxy.wallets.create({
-  userId: 'user123'
-});
-
-// Send payment
-const payment = await galaxy.payments.send({
-  from: wallet.publicKey,
-  to: 'destination-address',
-  amount: '10',
-  asset: 'XLM'
-});
+```ts
+socket.emit('subscribe:transaction', { hash: 'abc123...' });
+socket.on('transaction:status', (data) => console.log(data.status));
 ```
+
+**Automation events channel**
+
+```ts
+socket.emit('subscribe:automation', { userId: 'user-abc' });
+socket.on('automation:triggered', (event) => console.log(event));
+socket.on('automation:executed', (result) => console.log(result));
+```
+
+---
+
+## Related docs
+
+- [Getting Started](../guides/getting-started.md)
+- [Oracle Integration Guide](../guides/oracle-integration.md) — price feeds wired to automation
+- [Social Login Integration Guide](../guides/social-login-integration.md) — WebAuthn + OAuth wallet onboarding
+- [Smart Wallet Integration Guide](../smart-wallet/integration-guide.md) — producing signed XDR for `submit-tx`

@@ -266,4 +266,5 @@ Custom sources are stored in `.galaxy/oracles.json` in the current working direc
 ## Related
 
 - [Oracle Core Package](../../packages/core/oracles/README.md)
+- [Oracle Integration Guide](../guides/oracle-integration.md) — off-chain feeds, on-chain Soroban oracle, and automation price triggers
 - [CLI Overview](./interactive.md)

@@ -38,3 +38,8 @@ This package provides the provider implementations used by the smart wallet serv
 ## Testing
 
 See `packages/core/wallet/src/tests/smart-wallet.service.test.ts` for Jest mocks of WebAuthN flows.
+
+## Further reading
+
+- [Social Login Integration Guide](../../../../docs/guides/social-login-integration.md) — OAuth + WebAuthn two-layer model, Supabase onboarding, and security guarantees
+- [WebAuthn Integration Guide](../../../../docs/smart-wallet/webauthn-guide.md) — registration/assertion flows, environment compatibility, and testing
