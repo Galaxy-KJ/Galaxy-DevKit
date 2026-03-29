@@ -2,6 +2,7 @@ import {
   SmartWalletService,
   ttlSecondsToLedgers,
 } from '../smart-wallet.service';
+import { SignatureExpiredException } from '../types/smart-wallet.types';
 import { Transaction, xdr } from '@stellar/stellar-sdk';
 import { Api } from '@stellar/stellar-sdk/rpc';
 import type { CredentialBackend } from '../types/smart-wallet.types';
@@ -113,7 +114,7 @@ const MOCK_SESSION_PUBLIC_KEY =
 const MOCK_CREDENTIAL_ID = Buffer.from('test-credential-id').toString('base64');
 const TTL_SECONDS = 3600;
 
-function makeAuthEntry() {
+function makeAuthEntry(signatureExpirationLedger = 9999) {
   const entry = {
     toXDR: jest.fn(() => Buffer.alloc(32, 0xab)),
     credentials: jest.fn(),
@@ -129,9 +130,10 @@ function makeAuthEntry() {
   } as unknown as xdr.SorobanAuthorizationEntry;
 
   (entry.credentials as jest.Mock).mockReturnValue({
+    switch: () => ({ name: 'sorobanCredentialsAddress' }),
     address: () => ({
       nonce: () => 0n,
-      signatureExpirationLedger: () => 9999,
+      signatureExpirationLedger: () => signatureExpirationLedger,
     }),
   });
 
@@ -947,6 +949,169 @@ describe('SmartWalletService', () => {
       await expect(
         service.setupUSDCTrustline(ACCOUNT_ID, 'testnet')
       ).rejects.toThrow('account not found');
+    });
+  });
+
+  // =========================================================================
+  // Signature expiration validation
+  // =========================================================================
+
+  describe('signature expiration validation', () => {
+    // Current ledger returned by getLatestLedger
+    const CURRENT_LEDGER = 1000;
+    // Default buffer is 10 ledgers
+    const BUFFER = 10;
+
+    beforeEach(() => {
+      mockServer.getLatestLedger.mockResolvedValue({ sequence: CURRENT_LEDGER });
+    });
+
+    describe('sign() expiration checks', () => {
+      it('succeeds when signatureExpirationLedger is well beyond the buffer', async () => {
+        const authEntry = makeAuthEntry(CURRENT_LEDGER + BUFFER + 1); // 1011
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).resolves.toBeDefined();
+      });
+
+      it('throws SignatureExpiredException when signatureExpirationLedger has already passed', async () => {
+        const expiredLedger = CURRENT_LEDGER - 1; // 999 — already in the past
+        const authEntry = makeAuthEntry(expiredLedger);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).rejects.toThrow(SignatureExpiredException);
+      });
+
+      it('throws SignatureExpiredException when signatureExpirationLedger is within the buffer', async () => {
+        const nearlyExpiredLedger = CURRENT_LEDGER + BUFFER; // exactly at boundary
+        const authEntry = makeAuthEntry(nearlyExpiredLedger);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).rejects.toThrow(SignatureExpiredException);
+      });
+
+      it('includes expirationLedger and currentLedger on the thrown error', async () => {
+        const expiredLedger = CURRENT_LEDGER - 5;
+        const authEntry = makeAuthEntry(expiredLedger);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).rejects.toMatchObject({
+          expirationLedger: expiredLedger,
+          currentLedger: CURRENT_LEDGER,
+        });
+      });
+
+      it('skips expiration check for non-address credentials', async () => {
+        const authEntry = makeAuthEntry(CURRENT_LEDGER - 1);
+        // Override switch to return source-account variant.
+        // address() must still be present for attachSignatureToAuthEntry.
+        (authEntry.credentials as jest.Mock).mockReturnValue({
+          switch: () => ({ name: 'sorobanCredentialsSourceAccount' }),
+          address: () => ({
+            nonce: () => 0n,
+            signatureExpirationLedger: () => CURRENT_LEDGER - 1,
+          }),
+        });
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        // Should not throw — source-account credentials have no expiry field to check
+        await expect(
+          service.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).resolves.toBeDefined();
+      });
+
+      it('respects a custom expirationBufferLedgers passed to the constructor', async () => {
+        const customBuffer = 50;
+        const customService = new SmartWalletService(
+          { relyingPartyId: 'localhost' },
+          'https://rpc.example.com',
+          undefined,
+          undefined,
+          mockCredentialBackend,
+          customBuffer
+        );
+
+        // Expiration is beyond default buffer (10) but within custom buffer (50)
+        const expirationLedger = CURRENT_LEDGER + 30; // 1030
+        const authEntry = makeAuthEntry(expirationLedger);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          customService.sign(MOCK_CONTRACT_ADDRESS, sorobanTx, 'Y3JlZElk')
+        ).rejects.toThrow(SignatureExpiredException);
+      });
+    });
+
+    describe('signWithSessionKey() expiration checks', () => {
+      const signFn = () => Buffer.alloc(64, 0xaa);
+
+      it('succeeds when signatureExpirationLedger is well beyond the buffer', async () => {
+        const authEntry = makeAuthEntry(CURRENT_LEDGER + BUFFER + 1);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.signWithSessionKey(
+            MOCK_CONTRACT_ADDRESS,
+            sorobanTx,
+            MOCK_CREDENTIAL_ID,
+            signFn
+          )
+        ).resolves.toBeDefined();
+      });
+
+      it('throws SignatureExpiredException when signatureExpirationLedger has already passed', async () => {
+        const authEntry = makeAuthEntry(CURRENT_LEDGER - 1);
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.signWithSessionKey(
+            MOCK_CONTRACT_ADDRESS,
+            sorobanTx,
+            MOCK_CREDENTIAL_ID,
+            signFn
+          )
+        ).rejects.toThrow(SignatureExpiredException);
+      });
+
+      it('throws SignatureExpiredException when nearly expired (within buffer)', async () => {
+        const authEntry = makeAuthEntry(CURRENT_LEDGER + BUFFER); // at boundary
+        mockServer.simulateTransaction.mockResolvedValue(
+          makeSimResult(authEntry)
+        );
+
+        await expect(
+          service.signWithSessionKey(
+            MOCK_CONTRACT_ADDRESS,
+            sorobanTx,
+            MOCK_CREDENTIAL_ID,
+            signFn
+          )
+        ).rejects.toThrow(SignatureExpiredException);
+      });
     });
   });
 

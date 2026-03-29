@@ -1,3 +1,19 @@
+/**
+ * Thrown when a Soroban auth entry's signatureExpirationLedger is at or within
+ * the configured expiration buffer of the current ledger sequence.
+ */
+export class SignatureExpiredException extends Error {
+  constructor(
+    public readonly expirationLedger: number,
+    public readonly currentLedger: number
+  ) {
+    super(
+      `Signature expires at ledger ${expirationLedger}, which is at or within the expiration buffer of the current ledger ${currentLedger}.`
+    );
+    this.name = 'SignatureExpiredException';
+  }
+}
+
 export interface CredentialBackend {
   get(options: CredentialRequestOptions): Promise<PublicKeyCredential | null>;
   create?(
