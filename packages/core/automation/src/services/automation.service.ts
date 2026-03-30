@@ -9,6 +9,8 @@ import {
   ExecutionContext,
   ExecutionResult,
   AutomationMetrics,
+  PriceConditionContext,
+  PriceTriggerCondition,
   TriggerType,
   StellarNetwork,
 } from '../types/automation-types.js';
@@ -16,7 +18,7 @@ import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
 import { OracleAggregator } from '@galaxy-kj/core-oracles';
-import { supabaseClient } from '../../stellar-sdk/src/utils/supabase-client.js';
+import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;
@@ -31,12 +33,20 @@ export class AutomationService extends EventEmitter {
   private cronManager: CronManager;
   private conditionEvaluator: ConditionEvaluator;
   private executionEngine: ExecutionEngine;
+  private oracle?: OracleAggregator;
   private rules: Map<string, AutomationRule> = new Map();
   private metrics: Map<string, AutomationMetrics> = new Map();
   private activeExecutions: Set<string> = new Set();
-  private config: Required<AutomationServiceConfig>;
+  private config: {
+    network: StellarNetwork;
+    sourceSecret: string;
+    maxConcurrentExecutions: number;
+    executionTimeout: number;
+    enableMetrics: boolean;
+  };
   private network: StellarNetwork;
   private activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private priceMonitorInterval?: NodeJS.Timeout;
   private supabase = supabaseClient;
 
   constructor(config: AutomationServiceConfig = {}) {
@@ -56,8 +66,9 @@ export class AutomationService extends EventEmitter {
       enableMetrics: config.enableMetrics !== false,
     };
 
+    this.oracle = config.oracle;
     this.cronManager = new CronManager();
-    this.conditionEvaluator = new ConditionEvaluator(config.oracle);
+    this.conditionEvaluator = new ConditionEvaluator();
     this.executionEngine = new ExecutionEngine(
       this.network,
       this.config.sourceSecret
@@ -171,7 +182,7 @@ export class AutomationService extends EventEmitter {
 
     try {
       // Build execution context
-      const context: ExecutionContext = {
+      const baseContext: ExecutionContext = {
         ruleId,
         userId: rule.userId,
         timestamp: new Date(),
@@ -180,6 +191,7 @@ export class AutomationService extends EventEmitter {
         },
         ...contextData,
       };
+      const context = await this.attachLivePrices(rule, baseContext);
 
       // Evaluate conditions
       const conditionsMet = await this.conditionEvaluator.evaluateConditionGroup(
@@ -293,6 +305,68 @@ export class AutomationService extends EventEmitter {
       return errorResult;
     } finally {
       this.activeExecutions.delete(ruleId);
+    }
+  }
+
+  async startPriceMonitoring(intervalMs: number = 30_000): Promise<void> {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      throw new Error('Price monitoring interval must be greater than 0');
+    }
+
+    if (!this.oracle) {
+      throw new Error('Oracle not configured for price monitoring');
+    }
+
+    this.stopPriceMonitoring();
+    await this.runPriceMonitoringCycle();
+
+    this.priceMonitorInterval = setInterval(() => {
+      void this.runPriceMonitoringCycle();
+    }, intervalMs);
+  }
+
+  stopPriceMonitoring(): void {
+    if (!this.priceMonitorInterval) {
+      return;
+    }
+
+    clearInterval(this.priceMonitorInterval);
+    this.priceMonitorInterval = undefined;
+  }
+
+  async checkAndExecute(
+    contextData?: Partial<ExecutionContext>
+  ): Promise<ExecutionResult[]> {
+    const activePriceRules = this.getAllRules().filter(
+      rule =>
+        rule.status === AutomationStatus.ACTIVE &&
+        rule.triggerType === TriggerType.PRICE
+    );
+
+    if (activePriceRules.length === 0) {
+      return [];
+    }
+
+    const priceContext = await this.buildPriceContext(
+      activePriceRules,
+      contextData?.priceContext
+    );
+
+    return Promise.all(
+      activePriceRules.map(rule =>
+        this.executeRule(rule.id, {
+          ...contextData,
+          priceContext,
+        })
+      )
+    );
+  }
+
+  private async runPriceMonitoringCycle(): Promise<void> {
+    try {
+      await this.checkAndExecute();
+    } catch (error) {
+      this.emit('rule:error', { ruleId: 'price-monitor', error });
     }
   }
 
@@ -513,6 +587,71 @@ export class AutomationService extends EventEmitter {
     this.metrics.set(ruleId, metrics);
   }
 
+  private async attachLivePrices(
+    rule: AutomationRule,
+    context: ExecutionContext
+  ): Promise<ExecutionContext> {
+    const priceContext = await this.buildPriceContext([rule], context.priceContext);
+    if (!priceContext) {
+      return context;
+    }
+
+    return {
+      ...context,
+      priceContext,
+    };
+  }
+
+  private async buildPriceContext(
+    rules: AutomationRule[],
+    existingPriceContext?: PriceConditionContext
+  ): Promise<PriceConditionContext | undefined> {
+    if (existingPriceContext) {
+      return existingPriceContext;
+    }
+
+    if (!this.oracle) {
+      return undefined;
+    }
+
+    const assets = Array.from(
+      new Set(rules.flatMap(rule => this.collectPriceAssets(rule.conditionGroup)))
+    );
+
+    if (assets.length === 0) {
+      return undefined;
+    }
+
+    const aggregatedPrices = await this.oracle.getAggregatedPrices(assets);
+
+    return {
+      prices: Object.fromEntries(
+        aggregatedPrices.map((price: { symbol: string; price: number }) => [
+          price.symbol,
+          price.price,
+        ])
+      ),
+      timestamp: Date.now(),
+    };
+  }
+
+  private collectPriceAssets(
+    group: AutomationRule['conditionGroup']
+  ): string[] {
+    const directAssets = group.conditions
+      .filter(
+        (condition): condition is PriceTriggerCondition =>
+          'type' in condition && condition.type === 'price'
+      )
+      .map(condition => condition.asset);
+
+    const nestedAssets = (group.groups || []).flatMap(nestedGroup =>
+      this.collectPriceAssets(nestedGroup)
+    );
+
+    return [...directAssets, ...nestedAssets];
+  }
+
   private sanitizeAuditMetadata(
     metadata?: Record<string, unknown>
   ): Record<string, unknown> | undefined {
@@ -601,6 +740,7 @@ export class AutomationService extends EventEmitter {
    * Shutdown service
    */
   async shutdown(): Promise<void> {
+    this.stopPriceMonitoring();
     this.cronManager.destroy();
     this.removeAllListeners();
   }
