@@ -16,6 +16,7 @@ import {
   BASE_FEE,
   rpc
 } from '@stellar/stellar-sdk';
+import BigNumber from 'bignumber.js';
 
 import { BaseProtocol } from '../base-protocol.js';
 import {
@@ -539,17 +540,28 @@ export class SoroswapProtocol extends BaseProtocol {
       if (!Array.isArray(amounts) || amounts.length < 2) {
           throw new Error('Unexpected return value from get_amounts_out');
       }
-      
+
       const amountOutRaw = amounts[1];
-      const amountOut = (Number(amountOutRaw) / 1e7).toString();
-      const minimumReceived = (parseFloat(amountOut) * (1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)).toFixed(7);
+      const amountOut = new BigNumber(amountOutRaw.toString()).dividedBy(1e7).toFixed(7);
+      const minimumReceived = new BigNumber(amountOut)
+        .multipliedBy(1 - SoroswapProtocol.SLIPPAGE_TOLERANCE)
+        .toFixed(7);
+      const liquidityPool = await this.getLiquidityPool(tokenIn, tokenOut);
+      const reserveIn = new BigNumber(liquidityPool.reserveA).dividedBy(1e7);
+      const priceImpact = reserveIn.isZero()
+        ? '0'
+        : new BigNumber(amountIn)
+            .dividedBy(reserveIn.plus(amountIn))
+            .multipliedBy(100)
+            .decimalPlaces(4)
+            .toFixed();
 
       return {
         tokenIn,
         tokenOut,
         amountIn,
         amountOut,
-        priceImpact: '0', // Simplified
+        priceImpact,
         minimumReceived,
         path: [tokenInAddress, tokenOutAddress],
         validUntil: new Date(Date.now() + 60000) // 1 minute validity

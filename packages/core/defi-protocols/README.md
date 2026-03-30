@@ -219,6 +219,38 @@ try {
 
 ### Main Methods
 
+#### DexAggregatorService
+
+`DexAggregatorService` compares Soroswap and SDEX quotes and can evaluate explicit split execution across both venues.
+
+```typescript
+import { DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
+
+const aggregator = new DexAggregatorService({
+  protocolId: 'soroswap',
+  name: 'Soroswap',
+  network: TESTNET_CONFIG,
+  contractAddresses: {
+    router: 'CA_ROUTER',
+    factory: 'CA_FACTORY',
+  },
+  metadata: {},
+});
+
+const bestQuote = await aggregator.getBestQuote(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum4' },
+  '100'
+);
+
+const splitQuote = await aggregator.getSplitQuote(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum4' },
+  '100',
+  [60, 40]
+);
+```
+
 #### initialize()
 
 Initialize protocol connection and validate configuration.

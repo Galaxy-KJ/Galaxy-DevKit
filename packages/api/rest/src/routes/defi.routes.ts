@@ -6,7 +6,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
-import { ProtocolFactory, ProtocolConfig, Asset, SwapQuote } from '@galaxy-kj/core-defi-protocols';
+import { ProtocolFactory, ProtocolConfig, Asset, DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
 
 // Default configuration for protocols (can be moved to a config file or env vars)
 const defaultConfig: Omit<ProtocolConfig, 'protocolId'> = {
@@ -53,6 +53,25 @@ function parseAsset(assetStr: string): Asset {
     };
 }
 
+function parseSplits(value: Request['query']['splits']): number[] | null {
+    if (!value) {
+        return null;
+    }
+
+    const raw = Array.isArray(value) ? value.join(',') : String(value);
+    const splits = raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => Number(item));
+
+    if (splits.length !== 2 || splits.some((split) => !Number.isFinite(split) || split < 0)) {
+        throw new Error('splits must contain exactly two non-negative numeric weights');
+    }
+
+    return splits;
+}
+
 export function setupDefiRoutes(): express.Router {
     const router = express.Router();
 
@@ -91,6 +110,50 @@ export function setupDefiRoutes(): express.Router {
 
             res.json(quote);
         } catch (error) {
+            next(error);
+        }
+    });
+
+    /**
+     * @route GET /api/v1/defi/aggregator/quote
+     * @description Get the best aggregated quote across Soroswap and SDEX
+     */
+    router.get('/aggregator/quote', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const { assetIn, assetOut, amountIn, splits } = req.query;
+
+            if (!assetIn || !assetOut || !amountIn) {
+                res.status(400).json({
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'assetIn, assetOut, and amountIn are required query parameters',
+                        details: {},
+                    },
+                });
+                return;
+            }
+
+            const tokenIn = parseAsset(assetIn as string);
+            const tokenOut = parseAsset(assetOut as string);
+            const aggregator = new DexAggregatorService({ ...defaultConfig, protocolId: 'soroswap' });
+            const parsedSplits = parseSplits(splits);
+            const quote = parsedSplits
+                ? await aggregator.getSplitQuote(tokenIn, tokenOut, amountIn as string, parsedSplits)
+                : await aggregator.getBestQuote(tokenIn, tokenOut, amountIn as string);
+
+            res.json(quote);
+        } catch (error) {
+            if (error instanceof Error && error.message.includes('splits')) {
+                res.status(400).json({
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: error.message,
+                        details: {},
+                    },
+                });
+                return;
+            }
+
             next(error);
         }
     });

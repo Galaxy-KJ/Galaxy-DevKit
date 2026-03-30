@@ -73,6 +73,7 @@ jest.mock('@stellar/stellar-sdk', () => {
     },
     StrKey: {
       isValidEd25519PublicKey: jest.fn().mockReturnValue(true),
+      decodeContract: jest.fn().mockReturnValue(new Uint8Array()),
     },
     Horizon: {
       Server: jest.fn(),
@@ -463,6 +464,7 @@ describe('SoroswapProtocol', () => {
       expect(quote.tokenIn).toEqual(tokenA);
       expect(quote.tokenOut).toEqual(tokenB);
       expect(parseFloat(quote.amountOut)).toBeGreaterThan(0);
+      expect(parseFloat(quote.priceImpact)).toBeGreaterThan(0);
       expect(quote.path).toHaveLength(2);
       expect(quote.validUntil).toBeInstanceOf(Date);
     });
@@ -585,6 +587,21 @@ describe('SoroswapProtocol', () => {
         soroswapProtocol.swap('', testPrivateKey, tokenA, tokenB, '10', '9')
       ).rejects.toThrow(/Invalid wallet address/);
     });
+
+    it('should support contract addresses in swap source account fallback', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Account not found'));
+
+      const result = await soroswapProtocol.swap(
+        'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
+        testPrivateKey,
+        tokenA,
+        tokenB,
+        '10',
+        '9'
+      );
+
+      expect(result.status).toBe('pending');
+    });
   });
 
   describe('addLiquidity()', () => {
@@ -655,6 +672,21 @@ describe('SoroswapProtocol', () => {
       await expect(
         uninitProtocol.addLiquidity(testAddress, testPrivateKey, tokenA, tokenB, '100', '200')
       ).rejects.toThrow(/not initialized/);
+    });
+
+    it('should support contract addresses in addLiquidity source account fallback', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Account not found'));
+
+      const result = await soroswapProtocol.addLiquidity(
+        'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
+        testPrivateKey,
+        tokenA,
+        tokenB,
+        '100',
+        '200'
+      );
+
+      expect(result.status).toBe('pending');
     });
   });
 
@@ -739,6 +771,21 @@ describe('SoroswapProtocol', () => {
         uninitProtocol.removeLiquidity(testAddress, testPrivateKey, tokenA, tokenB, poolAddress, '50')
       ).rejects.toThrow(/not initialized/);
     });
+
+    it('should support contract addresses in removeLiquidity source account fallback', async () => {
+      mockHorizonServer.loadAccount.mockRejectedValueOnce(new Error('Account not found'));
+
+      const result = await soroswapProtocol.removeLiquidity(
+        'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
+        testPrivateKey,
+        tokenA,
+        tokenB,
+        poolAddress,
+        '50'
+      );
+
+      expect(result.status).toBe('pending');
+    });
   });
 
   describe('getLiquidityPool()', () => {
@@ -807,6 +854,14 @@ describe('SoroswapProtocol', () => {
       (soroswapProtocol as any).factoryContract = { call: () => { throw new Error('Contract error'); } };
 
       await expect(soroswapProtocol.getLiquidityPool(tokenA, tokenB)).rejects.toThrow('Contract error');
+    });
+
+    it('should throw if factory contract is missing', async () => {
+      (soroswapProtocol as any).factoryContract = null;
+
+      await expect(soroswapProtocol.getLiquidityPool(tokenA, tokenB)).rejects.toThrow(
+        'Factory contract not initialized'
+      );
     });
   });
 
