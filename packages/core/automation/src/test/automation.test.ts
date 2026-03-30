@@ -2,6 +2,14 @@
  * Jest tests for AutomationService
  */
 
+jest.mock('../../../stellar-sdk/src/utils/supabase-client.js', () => ({
+  supabaseClient: {
+    from: jest.fn().mockReturnValue({
+      insert: jest.fn().mockResolvedValue({ error: null }),
+    }),
+  },
+}));
+
 import { AutomationService } from '../services/automation.service.js';
 import {
   AutomationRule,
@@ -10,11 +18,13 @@ import {
   ExecutionType,
   ConditionLogic,
   ConditionOperator,
+  PriceTriggerCondition,
   StellarNetwork,
 } from '../types/automation-types.js';
 import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
+import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 
 jest.mock('../utils/cron-manager');
@@ -26,6 +36,9 @@ describe('AutomationService', () => {
   let mockCronManager: jest.Mocked<CronManager>;
   let mockConditionEvaluator: jest.Mocked<ConditionEvaluator>;
   let mockExecutionEngine: jest.Mocked<ExecutionEngine>;
+  let mockOracle: jest.Mocked<
+    Pick<OracleAggregator, 'getAggregatedPrices'>
+  >;
 
   const testNetwork: StellarNetwork = {
     type: 'TESTNET',
@@ -70,8 +83,33 @@ describe('AutomationService', () => {
     ...overrides,
   });
 
+  const createPriceRule = (
+    overrides?: Partial<AutomationRule>
+  ): AutomationRule => ({
+    ...createTestRule({
+      id: 'price-rule-1',
+      name: 'Price Rule',
+      triggerType: TriggerType.PRICE,
+      cronExpression: undefined,
+      conditionGroup: {
+        logic: ConditionLogic.AND,
+        conditions: [
+          {
+            type: 'price',
+            id: 'price-condition-1',
+            asset: 'XLM',
+            operator: ConditionOperator.GREATER_THAN,
+            threshold: 0.1,
+          } satisfies PriceTriggerCondition,
+        ],
+      },
+    }),
+    ...overrides,
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
 
     mockCronManager = new CronManager() as jest.Mocked<CronManager>;
     mockConditionEvaluator =
@@ -79,6 +117,9 @@ describe('AutomationService', () => {
     mockExecutionEngine = new ExecutionEngine(
       testNetwork
     ) as jest.Mocked<ExecutionEngine>;
+    mockOracle = {
+      getAggregatedPrices: jest.fn(),
+    };
 
     // Mock implementations
     mockCronManager.scheduleJob = jest.fn().mockReturnValue({
@@ -124,12 +165,13 @@ describe('AutomationService', () => {
     automationService = new AutomationService({
       network: testNetwork,
       sourceSecret: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      oracle: mockOracle as unknown as OracleAggregator,
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await automationService.shutdown();
     jest.restoreAllMocks();
-    // Clean up any pending timers
     jest.clearAllTimers();
   });
 
@@ -152,7 +194,7 @@ describe('AutomationService', () => {
 
     it('should create CronManager, ConditionEvaluator, and ExecutionEngine', () => {
       expect(CronManager).toHaveBeenCalled();
-      expect(ConditionEvaluator).toHaveBeenCalled();
+      expect(ConditionEvaluator).toHaveBeenCalledWith();
       expect(ExecutionEngine).toHaveBeenCalledWith(
         testNetwork,
         expect.any(String)
@@ -471,6 +513,109 @@ describe('AutomationService', () => {
       expect(metrics?.totalExecutions).toBe(1);
       expect(metrics?.successfulExecutions).toBe(1);
       expect(metrics?.successRate).toBe(1);
+    });
+
+    it('should attach live oracle prices for price-triggered rules', async () => {
+      const rule = createPriceRule();
+      mockOracle.getAggregatedPrices.mockResolvedValue([
+        {
+          symbol: 'XLM',
+          price: 0.15,
+          timestamp: new Date(),
+          confidence: 0.99,
+          sourcesUsed: ['mock'],
+          outliersFiltered: [],
+          sourceCount: 1,
+        },
+      ]);
+
+      await automationService.registerRule(rule);
+      await automationService.executeRule(rule.id);
+
+      expect(mockOracle.getAggregatedPrices).toHaveBeenCalledWith(['XLM']);
+      expect(
+        mockConditionEvaluator.evaluateConditionGroup
+      ).toHaveBeenCalledWith(
+        rule.conditionGroup,
+        expect.objectContaining({
+          priceContext: {
+            prices: { XLM: 0.15 },
+            timestamp: expect.any(Number),
+          },
+        })
+      );
+    });
+
+    it('should fall back cleanly when a price rule has no oracle configured', async () => {
+      const serviceWithoutOracle = new AutomationService({
+        network: testNetwork,
+        sourceSecret: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+      });
+      const rule = createPriceRule({ id: 'price-rule-no-oracle' });
+
+      mockConditionEvaluator.evaluateConditionGroup.mockResolvedValue(false);
+
+      await serviceWithoutOracle.registerRule(rule);
+      const result = await serviceWithoutOracle.executeRule(rule.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toBe('Conditions not met');
+      expect(
+        mockConditionEvaluator.evaluateConditionGroup
+      ).toHaveBeenCalledWith(
+        rule.conditionGroup,
+        expect.not.objectContaining({
+          priceContext: expect.anything(),
+        })
+      );
+    });
+  });
+
+  describe('price monitoring', () => {
+    beforeEach(async () => {
+      jest.useFakeTimers();
+      mockOracle.getAggregatedPrices.mockResolvedValue([
+        {
+          symbol: 'XLM',
+          price: 0.2,
+          timestamp: new Date(),
+          confidence: 0.99,
+          sourcesUsed: ['mock'],
+          outliersFiltered: [],
+          sourceCount: 1,
+        },
+      ]);
+      await automationService.registerRule(createPriceRule());
+    });
+
+    it('should poll live prices and execute active price rules', async () => {
+      const executeSpy = jest.spyOn(automationService, 'executeRule');
+
+      await automationService.startPriceMonitoring(1000);
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(executeSpy).toHaveBeenCalledTimes(2);
+      expect(mockOracle.getAggregatedPrices).toHaveBeenCalledWith(['XLM']);
+    });
+
+    it('should stop polling when monitoring is stopped', async () => {
+      const executeSpy = jest.spyOn(automationService, 'executeRule');
+
+      await automationService.startPriceMonitoring(1000);
+      automationService.stopPriceMonitoring();
+      await jest.advanceTimersByTimeAsync(2000);
+
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should require an oracle to start price monitoring', async () => {
+      const serviceWithoutOracle = new AutomationService({
+        network: testNetwork,
+      });
+
+      await expect(
+        serviceWithoutOracle.startPriceMonitoring(1000)
+      ).rejects.toThrow('Oracle not configured for price monitoring');
     });
   });
 

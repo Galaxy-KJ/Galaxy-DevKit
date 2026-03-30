@@ -1,14 +1,13 @@
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import {
-  AnyCondition,
   Condition,
   ConditionGroup,
   ConditionLogic,
   ConditionOperator,
   ExecutionContext,
+  PriceConditionContext,
   PriceTriggerCondition,
 } from '../types/automation-types.js';
-import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 describe('ConditionEvaluator', () => {
   let evaluator: ConditionEvaluator;
@@ -579,18 +578,6 @@ describe('ConditionEvaluator', () => {
   });
 
   describe('price trigger conditions', () => {
-    let mockOracle: jest.Mocked<Pick<OracleAggregator, 'getAggregatedPrice'>>;
-    let priceEvaluator: ConditionEvaluator;
-
-    beforeEach(() => {
-      mockOracle = {
-        getAggregatedPrice: jest.fn(),
-      };
-      priceEvaluator = new ConditionEvaluator(
-        mockOracle as unknown as OracleAggregator
-      );
-    });
-
     const makePriceCond = (
       operator: ConditionOperator,
       threshold: number
@@ -602,80 +589,85 @@ describe('ConditionEvaluator', () => {
       threshold,
     });
 
-    const mockPrice = (price: number) => {
-      mockOracle.getAggregatedPrice.mockResolvedValue({
-        symbol: 'XLM',
-        price,
-        timestamp: new Date(),
-        confidence: 0.95,
-        sourcesUsed: ['coingecko'],
-        outliersFiltered: [],
-        sourceCount: 1,
-      });
-    };
+    const createPriceContext = (price: number): PriceConditionContext => ({
+      prices: { XLM: price },
+      timestamp: Date.now(),
+    });
 
     it('GT: price above threshold returns true', async () => {
-      mockPrice(0.20);
       const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.2),
+        })
+      );
       expect(result).toBe(true);
     });
 
     it('GT: price below threshold returns false', async () => {
-      mockPrice(0.10);
       const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.1),
+        })
+      );
       expect(result).toBe(false);
     });
 
     it('LT: price below threshold returns true', async () => {
-      mockPrice(0.10);
       const cond = makePriceCond(ConditionOperator.LESS_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.1),
+        })
+      );
       expect(result).toBe(true);
     });
 
     it('LT: price above threshold returns false', async () => {
-      mockPrice(0.20);
       const cond = makePriceCond(ConditionOperator.LESS_THAN, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.2),
+        })
+      );
       expect(result).toBe(false);
     });
 
     it('GTE: price equal to threshold returns true (boundary)', async () => {
-      mockPrice(0.15);
       const cond = makePriceCond(ConditionOperator.GREATER_THAN_OR_EQUAL, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.15),
+        })
+      );
       expect(result).toBe(true);
     });
 
     it('LTE: price equal to threshold returns true (boundary)', async () => {
-      mockPrice(0.15);
       const cond = makePriceCond(ConditionOperator.LESS_THAN_OR_EQUAL, 0.15);
-      const result = await priceEvaluator.evaluateCondition(cond, createContext());
+      const result = await evaluator.evaluateCondition(
+        cond,
+        createContext({
+          priceContext: createPriceContext(0.15),
+        })
+      );
       expect(result).toBe(true);
     });
 
-    it('throws when no oracle is configured', async () => {
-      const noOracleEvaluator = new ConditionEvaluator();
+    it('returns false when live price context is missing', async () => {
       const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      await expect(
-        noOracleEvaluator.evaluateCondition(cond, createContext())
-      ).rejects.toThrow('Oracle not configured');
-    });
-
-    it('propagates oracle fetch errors', async () => {
-      mockOracle.getAggregatedPrice.mockRejectedValue(
-        new Error('Oracle unavailable')
+      await expect(evaluator.evaluateCondition(cond, createContext())).resolves.toBe(
+        false
       );
-      const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      await expect(
-        priceEvaluator.evaluateCondition(cond, createContext())
-      ).rejects.toThrow('Oracle unavailable');
     });
 
     it('price condition in AND group with regular condition — both must pass', async () => {
-      mockPrice(0.20);
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -689,15 +681,16 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await priceEvaluator.evaluateConditionGroup(
+      const result = await evaluator.evaluateConditionGroup(
         group,
-        createContext()
+        createContext({
+          priceContext: createPriceContext(0.2),
+        })
       );
       expect(result).toBe(true);
     });
 
     it('AND group fails when price condition is false even if regular condition passes', async () => {
-      mockPrice(0.10);
       const group: ConditionGroup = {
         logic: ConditionLogic.AND,
         conditions: [
@@ -711,16 +704,18 @@ describe('ConditionEvaluator', () => {
         ],
       };
 
-      const result = await priceEvaluator.evaluateConditionGroup(
+      const result = await evaluator.evaluateConditionGroup(
         group,
-        createContext()
+        createContext({
+          priceContext: createPriceContext(0.1),
+        })
       );
       expect(result).toBe(false);
     });
 
     it('validates a well-formed PriceTriggerCondition', () => {
       const cond = makePriceCond(ConditionOperator.GREATER_THAN, 0.15);
-      const result = priceEvaluator.validateCondition(cond);
+      const result = evaluator.validateCondition(cond);
       expect(result.valid).toBe(true);
     });
 
@@ -732,7 +727,7 @@ describe('ConditionEvaluator', () => {
         operator: ConditionOperator.GREATER_THAN,
         threshold: 0.15,
       };
-      const result = priceEvaluator.validateCondition(cond);
+      const result = evaluator.validateCondition(cond);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('asset');
     });

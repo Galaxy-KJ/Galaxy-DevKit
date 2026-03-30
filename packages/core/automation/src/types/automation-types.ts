@@ -53,13 +53,18 @@ export interface Condition {
 export interface PriceTriggerCondition {
   type: 'price';
   id: string;
-  asset: string;          // e.g. 'XLM', 'BTC'
+  asset: string; // e.g. 'XLM', 'BTC'
   operator: ConditionOperator; // GT | LT | GTE | LTE
-  threshold: number;      // USD value
-  quoteAsset?: string;    // default 'USD' (informational)
+  threshold: number; // USD value
+  quoteAsset?: string; // default 'USD' (informational)
 }
 
 export type AnyCondition = Condition | PriceTriggerCondition;
+
+export interface PriceConditionContext {
+  prices: Record<string, number>;
+  timestamp: number;
+}
 
 export interface ConditionGroup {
   logic: ConditionLogic;
@@ -179,6 +184,7 @@ export interface ExecutionContext {
   ruleId: string;
   userId: string;
   timestamp: Date;
+  priceContext?: PriceConditionContext;
   marketData?: Record<string, any>;
   accountData?: {
     balance?: string;

@@ -5,17 +5,11 @@ import {
   ConditionLogic,
   ConditionOperator,
   ExecutionContext,
+  PriceConditionContext,
   PriceTriggerCondition,
 } from '../types/automation-types.js';
-import { OracleAggregator } from '@galaxy-kj/core-oracles';
 
 export class ConditionEvaluator {
-  private oracle?: OracleAggregator;
-
-  constructor(oracle?: OracleAggregator) {
-    this.oracle = oracle;
-  }
-
   async evaluateConditionGroup(
     group: ConditionGroup,
     context: ExecutionContext
@@ -49,7 +43,7 @@ export class ConditionEvaluator {
     context: ExecutionContext
   ): Promise<boolean> {
     if (this.isPriceCondition(condition)) {
-      return this.evaluatePriceCondition(condition);
+      return this.evaluatePriceCondition(condition, context.priceContext);
     }
 
     const actualValue = this.resolveValue(condition.field, context);
@@ -75,17 +69,16 @@ export class ConditionEvaluator {
   }
 
   /**
-   * Evaluate a price trigger condition via the oracle
+   * Evaluate a price trigger condition via the live price context
    */
   private async evaluatePriceCondition(
-    condition: PriceTriggerCondition
+    condition: PriceTriggerCondition,
+    priceContext?: PriceConditionContext
   ): Promise<boolean> {
-    if (!this.oracle) {
-      throw new Error('Oracle not configured for price trigger conditions');
+    const price = this.resolvePrice(condition.asset, priceContext);
+    if (price === undefined) {
+      return false;
     }
-
-    const aggregated = await this.oracle.getAggregatedPrice(condition.asset);
-    const price = aggregated.price;
 
     switch (condition.operator) {
       case ConditionOperator.GREATER_THAN:
@@ -101,6 +94,21 @@ export class ConditionEvaluator {
           `Operator ${condition.operator} is not supported for price trigger conditions`
         );
     }
+  }
+
+  private resolvePrice(
+    asset: string,
+    priceContext?: PriceConditionContext
+  ): number | undefined {
+    if (!priceContext) {
+      return undefined;
+    }
+
+    return (
+      priceContext.prices[asset] ??
+      priceContext.prices[asset.toUpperCase()] ??
+      priceContext.prices[asset.toLowerCase()]
+    );
   }
 
   /**
