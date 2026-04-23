@@ -1123,6 +1123,25 @@ describe('SoroswapProtocol', () => {
       expect(analytics.feeApr).toBe(0);
     });
 
+    it('should derive tvl, fees, and lp analytics when market inputs are provided', async () => {
+      const analytics = await soroswapProtocol.getPoolAnalytics(poolAddress, {
+        token0PriceUsd: 0.1,
+        token1PriceUsd: 1,
+        volume24hUsd: 100000,
+        lpPosition: {
+          lpTokenAmount: 100000n,
+          initialPriceRatio: 1.5,
+        },
+      });
+
+      expect(analytics.tvlUsd).toBeGreaterThan(0);
+      expect(analytics.fees24hUsd).toBeCloseTo(300);
+      expect(analytics.feeApr).toBeGreaterThan(0);
+      expect(analytics.totalSupply).toBe(500000n);
+      expect(analytics.lpPosition?.poolShare).toBeCloseTo(0.2);
+      expect(analytics.lpPosition?.estimatedFees24hUsd).toBeCloseTo(60);
+    });
+
     it('should throw on general errors in getPoolAnalytics', async () => {
       // Force an error by making sorobanServer undefined
       const originalServer = (soroswapProtocol as any).sorobanServer;
@@ -1166,6 +1185,19 @@ describe('SoroswapProtocol', () => {
         expect(typeof a.poolAddress).toBe('string');
         expect(typeof a.reserve0).toBe('bigint');
       });
+    });
+
+    it('should forward analytics options to each pool query', async () => {
+      jest.spyOn(soroswapProtocol, 'getAllPairs').mockResolvedValueOnce([poolAddress]);
+
+      const analytics = await soroswapProtocol.getAllPoolsAnalytics({
+        token0PriceUsd: 0.1,
+        token1PriceUsd: 1,
+        volume24hUsd: 100000,
+      });
+
+      expect(analytics[0].tvlUsd).toBeGreaterThan(0);
+      expect(analytics[0].fees24hUsd).toBeCloseTo(300);
     });
 
     it('should omit pools whose analytics call rejects', async () => {
