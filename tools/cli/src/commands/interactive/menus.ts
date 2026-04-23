@@ -553,12 +553,23 @@ export function attachMenuCommand(program: Command): void {
     .description('Start guided interactive menu (recommended for new users)')
     .action(async () => {
       await runInteractiveMenus(async (cmdString) => {
-        // Delegate back to Commander so all existing handlers run unchanged
+        // Delegate back to Commander so all existing handlers run unchanged.
+        // Commander v12 has no .clone() — we create a fresh Command and
+        // re-attach the registered sub-commands from the original program.
         const args = cmdString.split(/\s+/).filter(Boolean);
-        const temp = program.clone();
+        const temp = new Command();
+        temp.name(program.name());
         temp.exitOverride();
+        temp.configureOutput({
+          writeOut: (str) => process.stdout.write(str),
+          writeErr: (str) => process.stderr.write(str),
+        });
+        // Re-register every sub-command so existing handlers execute unchanged
+        for (const cmd of program.commands) {
+          temp.addCommand(cmd);
+        }
         try {
-          await temp.parseAsync(['node', 'galaxy', ...args], { from: 'user' });
+          await temp.parseAsync(['node', program.name(), ...args], { from: 'user' });
         } catch (err: unknown) {
           const code = (err as Error & { code?: string }).code ?? '';
           if (code === 'commander.helpDisplayed' || code === 'commander.help') return;
@@ -568,6 +579,7 @@ export function attachMenuCommand(program: Command): void {
     });
 }
 
-function executor(command: string): Promise<void> {
-    throw new Error('Function not implemented.');
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function executor(_command: string): Promise<void> {
+  throw new Error('Function not implemented.');
 }
