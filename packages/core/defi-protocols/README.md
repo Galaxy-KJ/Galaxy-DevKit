@@ -314,6 +314,7 @@ Soroswap is a Uniswap V2-style decentralized exchange on Stellar. It supports to
 import {
   SoroswapProtocol,
   SOROSWAP_TESTNET_CONFIG,
+  calculateSoroswapPoolAnalytics,
   getSoroswapConfig
 } from '@galaxy/core-defi-protocols';
 
@@ -331,6 +332,37 @@ console.log('Reserves:', pairInfo.reserve0, pairInfo.reserve1);
 
 // Get all registered pairs
 const pairs = await soroswap.getAllPairs();
+
+// Get analytics with external price / volume inputs
+const analytics = await soroswap.getPoolAnalytics(pairAddress, {
+  token0PriceUsd: 0.11,
+  token1PriceUsd: 1,
+  volume24hUsd: 25000,
+  lpPosition: {
+    lpTokenAmount: '5000000',
+    initialPriceRatio: 9,
+  },
+});
+
+console.log('Pool TVL:', analytics.tvlUsd);
+console.log('24h fees:', analytics.fees24hUsd);
+console.log('Fee APR:', analytics.feeApr);
+console.log('Impermanent loss %:', analytics.lpPosition?.impermanentLossPct);
+
+// Or derive analytics locally from a raw pool snapshot
+const localAnalytics = calculateSoroswapPoolAnalytics({
+  poolAddress: analytics.poolAddress,
+  token0: analytics.token0,
+  token1: analytics.token1,
+  reserve0: analytics.reserve0,
+  reserve1: analytics.reserve1,
+  totalSupply: analytics.totalSupply,
+  options: {
+    token0PriceUsd: 0.11,
+    token1PriceUsd: 1,
+    volume24hUsd: 25000,
+  },
+});
 ```
 
 ### Factory Usage
@@ -344,15 +376,16 @@ const soroswap = factory.createProtocol(SOROSWAP_TESTNET_CONFIG);
 await soroswap.initialize();
 ```
 
-### DEX Operations (Coming Soon)
+### DEX Operations
 
-The following operations are stubbed and will be implemented in upcoming issues:
+The Soroswap integration currently includes:
 
-- `swap()` — Token swaps via the router contract (#27)
-- `getSwapQuote()` — Get swap quotes with price impact (#28)
-- `addLiquidity()` — Add liquidity to pools (#29)
-- `removeLiquidity()` — Remove liquidity from pools (#30)
-- `getLiquidityPool()` — Get pool information (#29)
+- `swap()` — Token swaps via the router contract
+- `getSwapQuote()` — Quote outputs and price impact
+- `addLiquidity()` — Add liquidity to pools
+- `removeLiquidity()` — Remove liquidity from pools
+- `getLiquidityPool()` — Read on-chain pool balances
+- `getPoolAnalytics()` — Derive TVL, fee APR, volume-based revenue, and LP impermanent loss estimates
 
 ### Contract Addresses
 

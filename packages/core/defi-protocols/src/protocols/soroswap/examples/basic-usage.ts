@@ -9,6 +9,7 @@
 import { SoroswapProtocol } from '../soroswap-protocol.js';
 import { Asset, ProtocolConfig } from '../../../types/defi-types.js';
 import { SOROSWAP_TESTNET_CONFIG } from '../soroswap-config.js';
+import { calculateSoroswapPoolAnalytics } from '../analytics.js';
 
 /**
  * Example: Initialize Soroswap Protocol
@@ -71,6 +72,50 @@ async function getAllPairsExample(): Promise<void> {
 }
 
 /**
+ * Example: Derive pool analytics with price and volume inputs
+ */
+async function poolAnalyticsExample(): Promise<void> {
+  const soroswap = await initializeSoroswap();
+
+  const analytics = await soroswap.getPoolAnalytics(
+    'CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD',
+    {
+      token0PriceUsd: 0.11,
+      token1PriceUsd: 1,
+      volume24hUsd: 25000,
+      volume7dUsd: 150000,
+      lpPosition: {
+        lpTokenAmount: '5000000',
+        initialPriceRatio: 9,
+      },
+    }
+  );
+
+  console.log('Pool Analytics:');
+  console.log(`TVL (USD): ${analytics.tvlUsd.toFixed(2)}`);
+  console.log(`24h Volume (USD): ${analytics.volume24hUsd.toFixed(2)}`);
+  console.log(`24h Fees (USD): ${analytics.fees24hUsd.toFixed(2)}`);
+  console.log(`Fee APR: ${(analytics.feeApr * 100).toFixed(2)}%`);
+  console.log(`Impermanent Loss: ${analytics.lpPosition?.impermanentLossPct.toFixed(2) ?? '0.00'}%`);
+
+  const localAnalytics = calculateSoroswapPoolAnalytics({
+    poolAddress: analytics.poolAddress,
+    token0: analytics.token0,
+    token1: analytics.token1,
+    reserve0: analytics.reserve0,
+    reserve1: analytics.reserve1,
+    totalSupply: analytics.totalSupply,
+    options: {
+      token0PriceUsd: 0.11,
+      token1PriceUsd: 1,
+      volume24hUsd: 25000,
+    },
+  });
+
+  console.log(`Local APR check: ${(localAnalytics.feeApr * 100).toFixed(2)}%`);
+}
+
+/**
  * Example: Create via factory
  */
 async function factoryExample(): Promise<void> {
@@ -96,6 +141,7 @@ export {
   protocolStatsExample,
   getPairInfoExample,
   getAllPairsExample,
+  poolAnalyticsExample,
   factoryExample
 };
 
@@ -107,6 +153,7 @@ if (require.main === module) {
       // await protocolStatsExample();
       // await getPairInfoExample();
       // await getAllPairsExample();
+      // await poolAnalyticsExample();
       // await factoryExample();
     } catch (error) {
       console.error('Error running example:', error);
