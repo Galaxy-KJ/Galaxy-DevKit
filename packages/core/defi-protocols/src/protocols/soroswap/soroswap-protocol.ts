@@ -35,6 +35,11 @@ import { PoolAnalytics } from '../../types/protocol-interface.js';
 import { InvalidOperationError } from '../../errors/index.js';
 
 import { SoroswapPairInfo } from './soroswap-types.js';
+import {
+  SoroswapPoolAnalytics,
+  SoroswapPoolAnalyticsOptions,
+  calculateSoroswapPoolAnalytics,
+} from './analytics.js';
 import { SOROSWAP_DEFAULT_FEE } from './soroswap-config.js';
 
 /**
@@ -903,7 +908,10 @@ export class SoroswapProtocol extends BaseProtocol {
    * @param {string} poolAddress - Pair/pool contract address
    * @returns {Promise<PoolAnalytics>}
    */
-  public async getPoolAnalytics(poolAddress: string): Promise<PoolAnalytics> {
+  public async getPoolAnalytics(
+    poolAddress: string,
+    options: SoroswapPoolAnalyticsOptions = {}
+  ): Promise<SoroswapPoolAnalytics> {
     this.ensureInitialized();
 
     if (!poolAddress) {
@@ -911,7 +919,6 @@ export class SoroswapProtocol extends BaseProtocol {
     }
 
     try {
-      const SIMULATION_PLACEHOLDER = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
       const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
         accountId: () => SIMULATION_PLACEHOLDER,
         sequenceNumber: () => '0',
@@ -936,6 +943,7 @@ export class SoroswapProtocol extends BaseProtocol {
       // ---- Reserves -------------------------------------------------------
       let reserve0 = 0n;
       let reserve1 = 0n;
+      let totalSupply = 0n;
 
       const reserveSim = await simulate(pairContract.call('get_reserves'));
       if (
@@ -949,6 +957,7 @@ export class SoroswapProtocol extends BaseProtocol {
           if (Array.isArray(native) && native.length >= 2) {
             reserve0 = native[0] ?? 0n;
             reserve1 = native[1] ?? 0n;
+            totalSupply = native[2] ?? 0n;
           }
         } catch {
           // Unexpected ScVal shape — keep defaults
@@ -989,35 +998,15 @@ export class SoroswapProtocol extends BaseProtocol {
         resolveToken('token_1'),
       ]);
 
-      // ---- Spot prices from reserves (constant-product AMM) ---------------
-      const r0 = Number(reserve0) / 1e7;
-      const r1 = Number(reserve1) / 1e7;
-      const priceToken0InToken1 = r0 > 0 ? r1 / r0 : 0;
-      const priceToken1InToken0 = r1 > 0 ? r0 / r1 : 0;
-
-      // ---- Oracle-dependent metrics (placeholders) ------------------------
-      // tvlUsd and volume24hUsd require an external price oracle / event indexer.
-      // feeApr = (volume24h * 0.003 * 365) / TVL — computed once oracle data arrives.
-      const tvlUsd = 0;
-      const volume24hUsd = 0;
-      const feeApr =
-        volume24hUsd > 0 && tvlUsd > 0
-          ? (volume24hUsd * 0.003 * 365) / tvlUsd
-          : 0;
-
-      return {
+      return calculateSoroswapPoolAnalytics({
         poolAddress,
         token0,
         token1,
         reserve0,
         reserve1,
-        tvlUsd,
-        volume24hUsd,
-        feeApr,
-        priceToken0InToken1,
-        priceToken1InToken0,
-        lastUpdated: Date.now(),
-      };
+        totalSupply,
+        options,
+      });
     } catch (error) {
       this.handleError(error, 'getPoolAnalytics');
     }
@@ -1032,18 +1021,20 @@ export class SoroswapProtocol extends BaseProtocol {
    *
    * @returns {Promise<PoolAnalytics[]>}
    */
-  public async getAllPoolsAnalytics(): Promise<PoolAnalytics[]> {
+  public async getAllPoolsAnalytics(
+    options: SoroswapPoolAnalyticsOptions = {}
+  ): Promise<SoroswapPoolAnalytics[]> {
     this.ensureInitialized();
 
     try {
       const pairs = await this.getAllPairs();
 
       const results = await Promise.allSettled(
-        pairs.map(pairAddress => this.getPoolAnalytics(pairAddress))
+        pairs.map(pairAddress => this.getPoolAnalytics(pairAddress, options))
       );
 
       return results
-        .filter((r): r is PromiseFulfilledResult<PoolAnalytics> => r.status === 'fulfilled')
+        .filter((r): r is PromiseFulfilledResult<SoroswapPoolAnalytics> => r.status === 'fulfilled')
         .map(r => r.value);
     } catch (error) {
       this.handleError(error, 'getAllPoolsAnalytics');
