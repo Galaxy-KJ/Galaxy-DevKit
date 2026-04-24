@@ -4,7 +4,7 @@
  *   a top-level command menu, fill in parameters interactively, and see formatted results.
  *   Supports graceful Ctrl+C aborts and smooth Back navigation via a state machine.
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 1.0.1
  * @since 2026-04-23
  */
 
@@ -20,17 +20,18 @@ export interface MenuParam {
   type: 'input' | 'number' | 'confirm' | 'list' | 'password';
   default?: string | number | boolean;
   choices?: string[];
-  validate?: (value: string) => boolean | string;
+  // Accepts any runtime value (number, boolean, string) and supports async validators
+  validate?: (value: any) => boolean | string | Promise<boolean | string>;
 }
 
 export interface MenuEntry {
   /** Display label shown in the list */
   label: string;
-  /** CLI command string to execute, e.g. "account info" */
+  /** CLI command string to execute, e.g. "account info" — required if children is absent */
   command?: string;
   /** Parameters to collect before running the command */
   params?: MenuParam[];
-  /** Nested submenu entries */
+  /** Nested submenu entries — required if command is absent */
   children?: MenuEntry[];
   /** Human-readable description shown as a hint */
   description?: string;
@@ -40,7 +41,6 @@ export interface MenuEntry {
 type MenuState =
   | { tag: 'root' }
   | { tag: 'submenu'; parent: MenuEntry; entries: MenuEntry[] }
-  | { tag: 'params'; entry: MenuEntry }
   | { tag: 'done' };
 
 // ─── Menu definitions ─────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ const EXIT = '__EXIT__';
 /**
  * Top-level menu structure.
  * Extend this array to register new commands in the interactive UI.
+ * Every entry must have either `children` (submenu) or `command` (action).
  */
 export const ROOT_MENU: MenuEntry[] = [
   {
@@ -66,7 +67,7 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'address',
             message: 'Stellar account address (G…):',
             type: 'input',
-            validate: (v) =>
+            validate: (v: string) =>
               v.startsWith('G') && v.length === 56
                 ? true
                 : 'Enter a valid Stellar public key (56 chars, starts with G)',
@@ -85,7 +86,7 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'address',
             message: 'Account address to fund:',
             type: 'input',
-            validate: (v) =>
+            validate: (v: string) =>
               v.startsWith('G') && v.length === 56
                 ? true
                 : 'Enter a valid Stellar public key',
@@ -106,19 +107,21 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'from',
             message: 'Source account (G…):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'to',
             message: 'Destination account (G…):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'amount',
             message: 'Amount (XLM):',
             type: 'number',
-            validate: (v) => (Number(v) > 0 ? true : 'Must be a positive number'),
+            // inquirer number prompt returns NaN for empty/invalid input
+            validate: (v: number) =>
+              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
           },
           {
             name: 'memo',
@@ -136,13 +139,15 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'address',
             message: 'Account address:',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'limit',
             message: 'Number of records:',
             type: 'number',
             default: 10,
+            validate: (v: number) =>
+              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
           },
         ],
       },
@@ -172,25 +177,28 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'sell',
             message: 'Asset to sell (e.g. XLM):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'buy',
             message: 'Asset to buy (e.g. USDC):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'amount',
             message: 'Amount to sell:',
             type: 'number',
-            validate: (v) => (Number(v) > 0 ? true : 'Must be positive'),
+            validate: (v: number) =>
+              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
           },
           {
             name: 'slippage',
             message: 'Max slippage % (e.g. 0.5):',
             type: 'number',
             default: 0.5,
+            validate: (v: number) =>
+              !isNaN(v) && v >= 0 ? true : 'Must be a non-negative number',
           },
         ],
       },
@@ -202,13 +210,14 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'pool',
             message: 'Pool ID or asset pair (e.g. XLM/USDC):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
           {
             name: 'amount',
             message: 'Amount to deposit:',
             type: 'number',
-            validate: (v) => (Number(v) > 0 ? true : 'Must be positive'),
+            validate: (v: number) =>
+              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
           },
         ],
       },
@@ -226,7 +235,7 @@ export const ROOT_MENU: MenuEntry[] = [
             name: 'asset',
             message: 'Asset symbol (e.g. XLM, BTC):',
             type: 'input',
-            validate: (v) => (v.length > 0 ? true : 'Required'),
+            validate: (v: string) => (v.length > 0 ? true : 'Required'),
           },
         ],
       },
@@ -306,7 +315,6 @@ async function collectParams(
     const answers = await inquirer.prompt(questions as Parameters<typeof inquirer.prompt>[0]);
     return answers as Record<string, unknown>;
   } catch (err: unknown) {
-    // inquirer throws when the user force-exits via Ctrl+C
     if (isAbortError(err)) return null;
     throw err;
   }
@@ -325,19 +333,46 @@ function isAbortError(err: unknown): boolean {
 }
 
 /**
- * Build the CLI command string from a MenuEntry and collected params.
- * e.g. "payment send --from G... --to G... --amount 10"
+ * Build a structured argument list from a MenuEntry and collected params.
+ * Returns string[] safe to pass directly into Commander's parseAsync —
+ * no shell splitting needed, whitespace in values is fully preserved.
+ *
+ * e.g. ['payment', 'send', '--from', 'G...', '--to', 'G...', '--amount', '10']
+ *
+ * For human-readable display use buildCommandPreview() instead.
  */
-function buildCommandString(
+function buildCommandArgs(
+  entry: MenuEntry,
+  params: Record<string, unknown>,
+): string[] {
+  if (!entry.command) return [];
+
+  // Split the base command into individual tokens (e.g. "payment send" → ['payment', 'send'])
+  const base = entry.command.split(/\s+/).filter(Boolean);
+  const flags: string[] = [];
+
+  for (const [k, v] of Object.entries(params)) {
+    if (v === '' || v === undefined || v === null) continue;
+    if (typeof v === 'boolean') {
+      if (v) flags.push(`--${k}`); // omit the flag entirely when false
+      continue;
+    }
+    // Push key and value as separate array elements — whitespace in v is preserved
+    flags.push(`--${k}`, String(v));
+  }
+
+  return [...base, ...flags];
+}
+
+/**
+ * Build a human-readable preview string for display only.
+ * Do NOT use this output for actual command parsing.
+ */
+function buildCommandPreview(
   entry: MenuEntry,
   params: Record<string, unknown>,
 ): string {
-  if (!entry.command) return '';
-  const flags = Object.entries(params)
-    .filter(([, v]) => v !== '' && v !== undefined)
-    .map(([k, v]) => `--${k} ${String(v)}`)
-    .join(' ');
-  return flags ? `${entry.command} ${flags}` : entry.command;
+  return buildCommandArgs(entry, params).join(' ');
 }
 
 // ─── State machine ────────────────────────────────────────────────────────────
@@ -350,11 +385,12 @@ function buildCommandString(
  *
  * At any point the user can go Back or press Ctrl+C to abort gracefully.
  *
- * @param executor  Async function that runs a CLI command string.
- *                  Receives the full command like "payment send --to G… --amount 10".
+ * @param executor  Async function that receives a structured string[] argument list.
+ *                  e.g. ['payment', 'send', '--to', 'G...', '--amount', '10']
+ *                  No shell splitting or quoting is performed by the caller.
  */
 export async function runInteractiveMenus(
-  executor: (command: string) => Promise<void>,
+  executor: (args: string[]) => Promise<void>,
 ): Promise<void> {
   printWelcome();
 
@@ -380,22 +416,22 @@ export async function runInteractiveMenus(
  */
 async function step(
   state: MenuState,
-  executor: (command: string) => Promise<void>,
+  executor: (args: string[]) => Promise<void>,
 ): Promise<MenuState> {
   switch (state.tag) {
     case 'root':
-      return stepRoot();
-
+      return stepRoot(executor);
     case 'submenu':
       return stepSubmenu(state, executor);
-
     case 'done':
       return state;
   }
 }
 
 /** Handle the root (category selection) state */
-async function stepRoot(): Promise<MenuState> {
+async function stepRoot(
+  executor: (args: string[]) => Promise<void>,
+): Promise<MenuState> {
   hr();
 
   const choices = [
@@ -424,8 +460,12 @@ async function stepRoot(): Promise<MenuState> {
 
   const selected = ROOT_MENU[Number(answer.choice)];
 
-  // If the entry has no children, treat it as a direct action
   if (!selected.children || selected.children.length === 0) {
+    // Guard: entry with no children must have a command registered
+    if (!selected.command) {
+      console.log(chalk.yellow(`\n  ⚠  No command registered for "${selected.label}". Skipping.\n`));
+      return { tag: 'root' };
+    }
     await executeEntry(selected, executor);
     return { tag: 'root' };
   }
@@ -436,7 +476,7 @@ async function stepRoot(): Promise<MenuState> {
 /** Handle the submenu (action selection within a category) state */
 async function stepSubmenu(
   state: Extract<MenuState, { tag: 'submenu' }>,
-  executor: (command: string) => Promise<void>,
+  executor: (args: string[]) => Promise<void>,
 ): Promise<MenuState> {
   hr();
 
@@ -473,6 +513,12 @@ async function stepSubmenu(
     return { tag: 'submenu', parent: selected, entries: selected.children };
   }
 
+  // Guard: entry with no children must have a command registered
+  if (!selected.command) {
+    console.log(chalk.yellow(`\n  ⚠  No command registered for "${selected.label}". Skipping.\n`));
+    return { tag: 'submenu', parent: state.parent, entries: state.entries };
+  }
+
   await executeEntry(selected, executor);
 
   // Return to the same submenu after executing
@@ -480,39 +526,36 @@ async function stepSubmenu(
 }
 
 /**
- * Collect params (if any) for an entry and hand off to the executor.
+ * Collect params (if any) for an entry and forward a structured string[]
+ * to the executor — no shell splitting at the call site.
  */
 async function executeEntry(
   entry: MenuEntry,
-  executor: (command: string) => Promise<void>,
+  executor: (args: string[]) => Promise<void>,
 ): Promise<void> {
   const params = await collectParams(entry);
 
   if (params === null) {
-    // User aborted param collection — go back silently
     console.log(chalk.yellow('\n  Cancelled.\n'));
     return;
   }
 
-  if (!entry.command) {
-    console.log(chalk.dim(`  (No command registered for "${entry.label}")`));
-    return;
-  }
+  // entry.command is guaranteed to be set by all callers (checked before this call)
+  const args = buildCommandArgs(entry, params);
+  const preview = buildCommandPreview(entry, params);
 
-  const cmdString = buildCommandString(entry, params);
-
-  console.log(chalk.dim(`\n  Running: galaxy ${cmdString}\n`));
+  console.log(chalk.dim(`\n  Running: galaxy ${preview}\n`));
   hr();
 
   try {
-    await executor(cmdString);
+    await executor(args);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(chalk.red(`\n  ✖  Error: ${message}\n`));
   }
 
   hr();
-  console.log(''); // breathing room before re-rendering the submenu
+  console.log('');
 }
 
 // ─── Print helpers ─────────────────────────────────────────────────────────────
@@ -533,7 +576,7 @@ function printAbort(): void {
 // ─── Public factory ────────────────────────────────────────────────────────────
 
 /**
- * Attach the interactive menu command to a Commander program.
+ * Attach the `galaxy menu` command to a Commander program.
  *
  * Usage:
  * ```ts
@@ -541,7 +584,6 @@ function printAbort(): void {
  * attachMenuCommand(program);
  * ```
  *
- * Running `galaxy menu` launches the guided prompt interface.
  * All command execution is delegated back to the Commander program so
  * existing command logic is reused without duplication.
  *
@@ -552,11 +594,10 @@ export function attachMenuCommand(program: Command): void {
     .command('menu')
     .description('Start guided interactive menu (recommended for new users)')
     .action(async () => {
-      await runInteractiveMenus(async (cmdString) => {
-        // Delegate back to Commander so all existing handlers run unchanged.
-        // Commander v12 has no .clone() — we create a fresh Command and
-        // re-attach the registered sub-commands from the original program.
-        const args = cmdString.split(/\s+/).filter(Boolean);
+      // executor receives a structured string[] — no splitting or quoting needed
+      await runInteractiveMenus(async (args: string[]) => {
+        // Commander v12 has no .clone() — rebuild a temp instance and
+        // re-attach registered sub-commands so existing handlers run unchanged.
         const temp = new Command();
         temp.name(program.name());
         temp.exitOverride();
@@ -564,7 +605,6 @@ export function attachMenuCommand(program: Command): void {
           writeOut: (str) => process.stdout.write(str),
           writeErr: (str) => process.stderr.write(str),
         });
-        // Re-register every sub-command so existing handlers execute unchanged
         for (const cmd of program.commands) {
           temp.addCommand(cmd);
         }
@@ -577,9 +617,4 @@ export function attachMenuCommand(program: Command): void {
         }
       });
     });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function executor(_command: string): Promise<void> {
-  throw new Error('Function not implemented.');
 }
