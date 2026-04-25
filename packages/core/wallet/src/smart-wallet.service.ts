@@ -283,7 +283,7 @@ function getContractAddressFromSimulation(
     return null;
   }
 
-  const toStringFn = contractId.toString;
+  const toStringFn = contractId.toString as any;
   if (typeof toStringFn !== 'function') {
     return null;
   }

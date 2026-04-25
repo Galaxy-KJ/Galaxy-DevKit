@@ -70,6 +70,7 @@ export class WalletSessionPanel {
   private sessions: SessionEntry[] = [];
   private container: HTMLElement;
   private callbacks: SessionKeyPanelCallbacks;
+  private renderGeneration = 0;
 
   constructor(container: HTMLElement, callbacks: SessionKeyPanelCallbacks) {
     this.container = container;
@@ -305,23 +306,46 @@ export class WalletSessionPanel {
       return;
     }
 
-    // getCurrentLedger is async; render optimistically and update once resolved
+    // Bump generation so a stale in-flight render can detect it was superseded
+    const gen = ++this.renderGeneration;
+    const snapshot = [...this.sessions];
+
     this.callbacks.getCurrentLedger().then(currentLedger => {
+      if (gen !== this.renderGeneration) return; // superseded
       list.innerHTML = '';
-      this.sessions.forEach(session => {
+      snapshot.forEach(session => {
         const li = document.createElement('li');
         li.className = 'session-item';
         const remaining = formatRemainingLedgers(session.expiresAtLedger, currentLedger);
         const isExpired = remaining === 'Expired';
         if (isExpired) li.classList.add('session-expired');
+
+        // Build with DOM APIs to avoid XSS from user-supplied sessionPublicKey
+        const keySpan = document.createElement('span');
+        keySpan.className = 'session-key';
+        keySpan.textContent = session.sessionPublicKey.slice(0, 12) + '…';
+
+        const ttlSpan = document.createElement('span');
+        ttlSpan.className = isExpired ? 'session-ttl expired' : 'session-ttl';
+        ttlSpan.setAttribute('aria-label', 'Remaining time');
+        ttlSpan.textContent = remaining;
+
+        const ledgerSpan = document.createElement('span');
+        ledgerSpan.className = 'session-ledger';
+        ledgerSpan.textContent = `Expires ledger ${session.expiresAtLedger.toLocaleString()}`;
+
         li.setAttribute('aria-label', `Session key ${session.sessionPublicKey.slice(0, 8)}… expires in ${remaining}`);
-        li.innerHTML = `
-          <span class="session-key">${session.sessionPublicKey.slice(0, 12)}…</span>
-          <span class="session-ttl ${isExpired ? 'expired' : ''}" aria-label="Remaining time">${remaining}</span>
-          <span class="session-ledger">Expires ledger ${session.expiresAtLedger.toLocaleString()}</span>
-        `;
+        li.appendChild(keySpan);
+        li.appendChild(ttlSpan);
+        li.appendChild(ledgerSpan);
         list.appendChild(li);
       });
+    }).catch(() => {
+      if (gen !== this.renderGeneration) return;
+      list.innerHTML = '';
+      const errItem = document.createElement('li');
+      errItem.textContent = 'Could not fetch current ledger — session times unavailable.';
+      list.appendChild(errItem);
     });
   }
 }

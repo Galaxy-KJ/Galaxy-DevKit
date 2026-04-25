@@ -78,7 +78,7 @@ describe('WalletTxPanel', () => {
 
   it('calls buildAndSimulate with correct params and enables Sign & Submit', async () => {
     mockBuildAndSimulate.mockResolvedValue({
-      estimatedFee: '300',
+      resourceFee: '300',
       authEntryCount: 1,
       raw: {},
       transaction: {},
@@ -103,7 +103,7 @@ describe('WalletTxPanel', () => {
 
   it('shows simulation preview after successful simulate', async () => {
     mockBuildAndSimulate.mockResolvedValue({
-      estimatedFee: '500',
+      resourceFee: '500',
       authEntryCount: 1,
       raw: {},
       transaction: {},
@@ -120,7 +120,7 @@ describe('WalletTxPanel', () => {
 
     const preview = container.querySelector('#tx-preview-section') as HTMLElement;
     expect(preview.hidden).toBe(false);
-    expect(container.querySelector('#tx-preview-pre')?.textContent).toContain('500 stroops');
+    expect(container.querySelector('#tx-preview-pre')?.textContent).toContain('500 stroops (Soroban resource component only)');
   });
 
   it('shows error status when simulate fails', async () => {
@@ -139,7 +139,7 @@ describe('WalletTxPanel', () => {
   });
 
   it('calls onSign and onSubmit on form submit, shows confirmation', async () => {
-    mockBuildAndSimulate.mockResolvedValue({ estimatedFee: '100', authEntryCount: 1, raw: {}, transaction: {} });
+    mockBuildAndSimulate.mockResolvedValue({ resourceFee: '100', authEntryCount: 1, raw: {}, transaction: {} });
     const cbs = makeCallbacks();
 
     new WalletTxPanel(container, { rpcUrl: 'https://rpc' }, cbs);

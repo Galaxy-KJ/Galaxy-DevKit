@@ -1,12 +1,25 @@
-const { createDefaultPreset } = require('ts-jest');
-
-/** @type {import('jest').Config} */
 module.exports = {
-  ...createDefaultPreset(),
-  testEnvironment: 'jest-environment-jsdom',
-  setupFiles: ['<rootDir>/src/tests/jest.setup.ts'],
-  testMatch: ['<rootDir>/src/tests/**/*.test.ts'],
+  preset: 'ts-jest',
+  testEnvironment: 'jsdom',
+  testMatch: ['**/__tests__/**/*.test.ts', '**/tests/**/*.test.ts'],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/main.ts',
+    '!src/index.ts',
+    '!src/__tests__/**',
+    '!src/tests/**',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 75,
+      functions: 90,
+      lines: 90,
+      statements: 90,
+    },
+  },
   moduleNameMapper: {
-    '^(\\.\\.?/.*)\\.js$': '$1',
+    '^@galaxy-kj/core-wallet$': '<rootDir>/../core/wallet/src/index.ts',
+    '^@galaxy-kj/core-stellar-sdk$': '<rootDir>/../core/stellar-sdk/src/browser.ts',
+    '^(\\.\\.\\.?/.*)\\.js$': '$1',
   },
 };

@@ -5,15 +5,16 @@
   "private": true,
   "workspaces": [
     "packages/*",
+    "packages/*/*",
     "tools/*"
   ],
   "scripts": {
-    "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
+    "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "lerna run lint --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
+    "lint": "lerna run lint --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "lint:fix": "lerna run lint:fix",
-    "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/cli || (exit 0)",
+    "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
     "bump": "lerna version",

@@ -12,6 +12,7 @@
 import {
   Asset,
   BASE_FEE,
+  Memo,
   Networks,
   Operation,
   Transaction,
@@ -35,8 +36,8 @@ export interface PaymentParams {
 }
 
 export interface SimulateResult {
-  /** Estimated fee in stroops */
-  estimatedFee: string;
+  /** Soroban resource fee component in stroops (does not include inclusion fee) */
+  resourceFee: string;
   /** Raw simulation result for display */
   raw: Api.SimulateTransactionResponse;
   /** The unsigned transaction that was simulated */
@@ -44,7 +45,6 @@ export interface SimulateResult {
 }
 
 export interface BuildAndSimulateResult extends SimulateResult {
-  /** Auth entries count */
   authEntryCount: number;
 }
 
@@ -92,7 +92,7 @@ export class TxBuilderClient {
     );
 
     if (memo) {
-      builder.addMemo({ value: memo } as any);
+      builder.addMemo(Memo.text(memo.slice(0, 28)));
     }
 
     const tx = builder.setTimeout(300).build();
@@ -102,12 +102,12 @@ export class TxBuilderClient {
       throw new Error(`Transaction simulation failed: ${simResult.error}`);
     }
 
-    const estimatedFee = String(
+    const resourceFee = String(
       Math.max(MIN_FEE_STROOPS, parseInt(simResult.minResourceFee ?? '0', 10))
     );
 
     return {
-      estimatedFee,
+      resourceFee,
       raw: simResult,
       transaction: tx,
       authEntryCount: simResult.result?.auth?.length ?? 0,

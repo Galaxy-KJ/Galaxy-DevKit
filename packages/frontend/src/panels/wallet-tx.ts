@@ -149,7 +149,7 @@ export class WalletTxPanel {
         pendingSimResult = await this.txBuilder.buildAndSimulate(params);
         previewPre.textContent = JSON.stringify(
           {
-            estimatedFee: `${pendingSimResult.estimatedFee} stroops`,
+            resourceFee: `${pendingSimResult.resourceFee} stroops (Soroban resource component only)`,
             authEntries: pendingSimResult.authEntryCount,
             destination: params.destination,
             amount: `${params.amount} XLM`,

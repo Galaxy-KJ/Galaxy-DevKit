@@ -1,28 +1,41 @@
-/**
- * Galaxy DevKit — Smart Wallet Playground
- *
- * App shell: wires the sidebar nav, session panel, TX panel, and handles
- * responsive drawer open/close with full keyboard navigation support.
- * WCAG 2.1 AA: skip link, ARIA landmarks, focus trap for mobile drawer.
- */
-
-import './styles/main.css';
+import { Buffer } from 'buffer';
+import { Keypair, Networks } from '@galaxy-kj/core-stellar-sdk';
+import { SmartWalletClient } from './services/smart-wallet.client';
+import { WalletCreatePanel } from './panels/wallet-create';
+import { WalletSignersPanel } from './panels/wallet-signers';
 import { WalletSessionPanel, type SessionEntry } from './panels/wallet-session';
 import { WalletTxPanel } from './panels/wallet-tx';
 
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
-type PanelId = 'session' | 'tx';
+export interface PlaygroundStatus {
+  network: string;
+  sdkReady: boolean;
+  generatedAccount: string;
+}
 
-function getCurrentLedger(): Promise<number> {
-  return fetch(RPC_URL, {
+export function getPlaygroundStatus(): PlaygroundStatus {
+  const keypair = Keypair.random();
+
+  return {
+    network: Networks.TESTNET,
+    sdkReady: true,
+    generatedAccount: keypair.publicKey(),
+  };
+}
+
+async function getCurrentLedger(): Promise<number> {
+  const res = await fetch(RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger', params: [] }),
-  })
-    .then(r => r.json())
-    .then(data => (data?.result?.sequence as number) ?? 0)
-    .catch(() => 0);
+  });
+  const data = await res.json();
+  const sequence = data?.result?.sequence as number | undefined;
+  if (typeof sequence !== 'number') {
+    throw new Error('Could not fetch current ledger sequence from RPC');
+  }
+  return sequence;
 }
 
 function getStoredSessions(): SessionEntry[] {
@@ -38,48 +51,14 @@ function storeSessions(sessions: SessionEntry[]): void {
   localStorage.setItem('galaxy_sessions', JSON.stringify(sessions));
 }
 
-class App {
-  private sidebar!: HTMLElement;
-  private overlay!: HTMLElement;
-  private hamburger!: HTMLButtonElement;
-  private navLinks!: NodeListOf<HTMLAnchorElement>;
-  private activePanel: PanelId = 'session';
-  private panels: Map<PanelId, HTMLElement> = new Map();
+export function renderPlayground(root: HTMLElement): PlaygroundStatus {
+  const status = getPlaygroundStatus();
 
-  init(): void {
-    document.documentElement.lang = 'en';
+  root.innerHTML = `
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
-    const root = document.getElementById('app');
-    if (!root) throw new Error('Missing #app root element');
-    root.innerHTML = this.buildShellHTML();
-
-    this.sidebar = document.getElementById('sidebar') as HTMLElement;
-    this.overlay = document.getElementById('sidebar-overlay') as HTMLElement;
-    this.hamburger = document.getElementById('hamburger-btn') as HTMLButtonElement;
-    this.navLinks = document.querySelectorAll<HTMLAnchorElement>('.sidebar__nav-link');
-
-    this.bindHamburger();
-    this.bindNavLinks();
-    this.bindOverlayClose();
-    this.bindKeyboardNav();
-
-    // Mount panels
-    const sessionContainer = document.getElementById('panel-session') as HTMLElement;
-    const txContainer = document.getElementById('panel-tx') as HTMLElement;
-    this.panels.set('session', sessionContainer);
-    this.panels.set('tx', txContainer);
-
-    this.mountSessionPanel(sessionContainer);
-    this.mountTxPanel(txContainer);
-
-    this.showPanel('session');
-  }
-
-  private buildShellHTML(): string {
-    return `
-      <a class="skip-link" href="#main-content">Skip to main content</a>
-
-      <header class="app-header" role="banner">
+    <section class="shell">
+      <header class="topbar">
         <button
           class="hamburger"
           id="hamburger-btn"
@@ -91,8 +70,27 @@ class App {
           <span class="hamburger__bar"></span>
           <span class="hamburger__bar"></span>
         </button>
-        <span class="app-header__logo">Galaxy DevKit — Wallet Playground</span>
+        <div>
+          <p class="eyebrow">Galaxy DevKit</p>
+          <h1>Smart wallet playground</h1>
+        </div>
+        <div class="network-pill">${status.network}</div>
       </header>
+
+      <section class="status-grid" aria-label="SDK status">
+        <article>
+          <span>SDK import</span>
+          <strong>${status.sdkReady ? 'Ready' : 'Unavailable'}</strong>
+        </article>
+        <article>
+          <span>Generated testnet account</span>
+          <code>${status.generatedAccount}</code>
+        </article>
+        <article>
+          <span>USDC issuer</span>
+          <code>GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5</code>
+        </article>
+      </section>
 
       <div id="sidebar-overlay" class="sidebar-overlay" role="presentation"></div>
 
@@ -105,205 +103,164 @@ class App {
         >
           <ul class="sidebar__nav" role="list">
             <li class="sidebar__nav-item">
-              <a
-                href="#session"
-                class="sidebar__nav-link"
-                data-panel="session"
-                aria-current="page"
-              >Session Keys</a>
+              <a href="#wallet-create" class="sidebar__nav-link" data-panel="wallet-create-panel" aria-current="page">Create Wallet</a>
             </li>
             <li class="sidebar__nav-item">
-              <a
-                href="#tx"
-                class="sidebar__nav-link"
-                data-panel="tx"
-              >Send Transaction</a>
+              <a href="#wallet-signers" class="sidebar__nav-link" data-panel="wallet-signers-panel">Signers</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#session" class="sidebar__nav-link" data-panel="wallet-session-panel">Session Keys</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#tx" class="sidebar__nav-link" data-panel="wallet-tx-panel">Send Transaction</a>
             </li>
           </ul>
         </nav>
 
-        <main id="main-content" class="main-content" role="main" tabindex="-1">
-          <div id="panel-session" class="panel" role="region" aria-label="Session key management" hidden></div>
-          <div id="panel-tx" class="panel" role="region" aria-label="Transaction builder" hidden></div>
+        <main id="main-content" class="main-content workspace" role="main" tabindex="-1" aria-label="Playground panels">
+          <div id="wallet-create-panel" class="panel"></div>
+          <div id="wallet-signers-panel" class="panel"></div>
+          <div id="wallet-session-panel" class="panel" hidden></div>
+          <div id="wallet-tx-panel" class="panel" hidden></div>
         </main>
       </div>
-    `;
-  }
+    </section>
+  `;
 
-  private mountSessionPanel(container: HTMLElement): void {
-    const sessions = getStoredSessions();
-    const panel = new WalletSessionPanel(container, {
-      onAddSessionKey: async (params) => {
-        // Dynamic import keeps the wallet service out of the initial bundle
-        const { SmartWalletService } = await import(
-          '../../core/wallet/src/smart-wallet.service'
-        );
-        const { BrowserCredentialBackend } = await import(
-          '../../core/wallet/src/credential-backends/browser.backend'
-        );
-        const svc = new SmartWalletService(
-          { relyingPartyId: window.location.hostname },
-          RPC_URL,
-          undefined,
-          undefined,
-          new BrowserCredentialBackend()
-        );
-        const xdr = await svc.addSessionSigner({
-          walletAddress: params.walletAddress,
-          sessionPublicKey: params.sessionPublicKey,
-          ttlSeconds: params.ttlSeconds,
-          credentialId: params.credentialId,
-        });
+  (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
-        // Record the session locally for the active-sessions display
-        const currentLedger = await getCurrentLedger();
-        const LEDGER_CLOSE = 5;
-        const expiresAtLedger =
-          currentLedger + Math.ceil(params.ttlSeconds / LEDGER_CLOSE);
-        const updated: SessionEntry[] = [
-          ...getStoredSessions(),
-          {
-            sessionPublicKey: params.sessionPublicKey,
-            expiresAtLedger,
-            createdAt: Date.now(),
-            ttlSeconds: params.ttlSeconds,
-          },
-        ];
-        storeSessions(updated);
-        panel.setSessions(updated);
-        return xdr;
-      },
-      getCurrentLedger,
-    });
-    panel.setSessions(sessions);
-  }
+  const client = new SmartWalletClient();
+  new WalletCreatePanel('wallet-create-panel', client);
+  new WalletSignersPanel('wallet-signers-panel', client);
 
-  private mountTxPanel(container: HTMLElement): void {
-    new WalletTxPanel(
-      container,
-      { rpcUrl: RPC_URL },
-      {
-        onSign: async (walletAddress, unsignedXdr, credentialId) => {
-          const { SmartWalletService } = await import(
-            '../../core/wallet/src/smart-wallet.service'
-          );
-          const { BrowserCredentialBackend } = await import(
-            '../../core/wallet/src/credential-backends/browser.backend'
-          );
-          const { TransactionBuilder } = await import('@stellar/stellar-sdk');
-          const { Networks } = await import('@stellar/stellar-sdk');
-          const svc = new SmartWalletService(
-            { relyingPartyId: window.location.hostname },
-            RPC_URL,
-            undefined,
-            undefined,
-            new BrowserCredentialBackend()
-          );
-          const tx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
-          return svc.sign(walletAddress, tx as any, credentialId);
-        },
-        onSubmit: async (signedXdr) => {
-          const { TxBuilderClient } = await import('./services/tx-builder.client');
-          const client = new TxBuilderClient(RPC_URL);
-          return client.submitSignedXdr(signedXdr);
-        },
-      }
-    );
-  }
+  mountSessionPanel(document.getElementById('wallet-session-panel')!);
+  mountTxPanel(document.getElementById('wallet-tx-panel')!, client);
 
-  // ── Hamburger / drawer ───────────────────────────────────
+  bindNav();
+  bindHamburger();
 
-  private bindHamburger(): void {
-    this.hamburger.addEventListener('click', () => this.toggleDrawer());
-  }
-
-  private bindOverlayClose(): void {
-    this.overlay.addEventListener('click', () => this.closeDrawer());
-  }
-
-  private openDrawer(): void {
-    this.sidebar.classList.add('open');
-    this.overlay.classList.add('visible');
-    this.hamburger.setAttribute('aria-expanded', 'true');
-    this.hamburger.setAttribute('aria-label', 'Close navigation menu');
-    // Move focus to first nav link so keyboard users can navigate
-    (this.sidebar.querySelector<HTMLAnchorElement>('.sidebar__nav-link'))?.focus();
-  }
-
-  private closeDrawer(): void {
-    this.sidebar.classList.remove('open');
-    this.overlay.classList.remove('visible');
-    this.hamburger.setAttribute('aria-expanded', 'false');
-    this.hamburger.setAttribute('aria-label', 'Open navigation menu');
-    this.hamburger.focus();
-  }
-
-  private toggleDrawer(): void {
-    if (this.sidebar.classList.contains('open')) {
-      this.closeDrawer();
-    } else {
-      this.openDrawer();
-    }
-  }
-
-  // ── Nav links ────────────────────────────────────────────
-
-  private bindNavLinks(): void {
-    this.navLinks.forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const panelId = link.dataset['panel'] as PanelId;
-        if (panelId) {
-          this.showPanel(panelId);
-          // Close drawer on mobile after selection
-          if (window.innerWidth <= 768) this.closeDrawer();
-          // Move focus to main content for screen readers
-          (document.getElementById('main-content') as HTMLElement)?.focus();
-        }
-      });
-    });
-  }
-
-  private showPanel(id: PanelId): void {
-    this.activePanel = id;
-    this.panels.forEach((el, key) => {
-      el.hidden = key !== id;
-    });
-    this.navLinks.forEach(link => {
-      const isCurrent = link.dataset['panel'] === id;
-      link.setAttribute('aria-current', isCurrent ? 'page' : 'false');
-    });
-  }
-
-  // ── Keyboard navigation ─────────────────────────────────
-
-  private bindKeyboardNav(): void {
-    // Close drawer on Escape
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.sidebar.classList.contains('open')) {
-        this.closeDrawer();
-      }
-    });
-
-    // Arrow-key navigation within the sidebar nav list
-    this.sidebar.addEventListener('keydown', (e) => {
-      const links = [...this.sidebar.querySelectorAll<HTMLAnchorElement>('.sidebar__nav-link')];
-      const idx = links.indexOf(document.activeElement as HTMLAnchorElement);
-      if (idx === -1) return;
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        links[(idx + 1) % links.length]?.focus();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        links[(idx - 1 + links.length) % links.length]?.focus();
-      }
-    });
-  }
+  return status;
 }
 
-// Bootstrap when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new App().init());
-} else {
-  new App().init();
+function mountSessionPanel(container: HTMLElement): void {
+  const LEDGER_CLOSE = 5;
+  const sessions = getStoredSessions();
+  const panel = new WalletSessionPanel(container, {
+    onAddSessionKey: async (params) => {
+      const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
+      const { BrowserCredentialBackend } = await import('../core/wallet/src/credential-backends/browser.backend');
+      const svc = new SmartWalletService(
+        { relyingPartyId: window.location.hostname },
+        RPC_URL,
+        undefined,
+        undefined,
+        new BrowserCredentialBackend()
+      );
+      const xdr = await svc.addSessionSigner({
+        walletAddress: params.walletAddress,
+        sessionPublicKey: params.sessionPublicKey,
+        ttlSeconds: params.ttlSeconds,
+        credentialId: params.credentialId,
+      });
+
+      const currentLedger = await getCurrentLedger();
+      const expiresAtLedger = currentLedger + Math.ceil(params.ttlSeconds / LEDGER_CLOSE);
+      const updated: SessionEntry[] = [
+        ...getStoredSessions(),
+        {
+          sessionPublicKey: params.sessionPublicKey,
+          expiresAtLedger,
+          createdAt: Date.now(),
+          ttlSeconds: params.ttlSeconds,
+        },
+      ];
+      storeSessions(updated);
+      panel.setSessions(updated);
+      return xdr;
+    },
+    getCurrentLedger,
+  });
+  panel.setSessions(sessions);
+}
+
+function mountTxPanel(container: HTMLElement, client: SmartWalletClient): void {
+  const { TxBuilderClient } = require('./services/tx-builder.client');
+  const txClient = new TxBuilderClient(RPC_URL);
+
+  new WalletTxPanel(
+    container,
+    { rpcUrl: RPC_URL },
+    {
+      onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
+        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+        const service = client.getService();
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+        return service.sign(walletAddress, tx as any, credentialId);
+      },
+      onSubmit: (signedXdr: string) => txClient.submitSignedXdr(signedXdr),
+    }
+  );
+}
+
+function bindNav(): void {
+  const links = document.querySelectorAll<HTMLAnchorElement>('.sidebar__nav-link');
+  const panels = document.querySelectorAll<HTMLElement>('.main-content .panel');
+
+  links.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetId = link.dataset['panel'];
+      panels.forEach(p => { p.hidden = p.id !== targetId; });
+      links.forEach(l => l.setAttribute('aria-current', l === link ? 'page' : 'false'));
+      if (window.innerWidth <= 768) closeSidebar();
+      (document.getElementById('main-content') as HTMLElement)?.focus();
+    });
+  });
+
+  document.getElementById('sidebar')?.addEventListener('keydown', (e) => {
+    const all = [...document.querySelectorAll<HTMLAnchorElement>('.sidebar__nav-link')];
+    const idx = all.indexOf(document.activeElement as HTMLAnchorElement);
+    if (idx === -1) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); all[(idx + 1) % all.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); all[(idx - 1 + all.length) % all.length]?.focus(); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebar();
+  });
+}
+
+function bindHamburger(): void {
+  const btn = document.getElementById('hamburger-btn') as HTMLButtonElement | null;
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    const sidebar = document.getElementById('sidebar')!;
+    if (sidebar.classList.contains('open')) closeSidebar();
+    else openSidebar();
+  });
+
+  overlay?.addEventListener('click', closeSidebar);
+}
+
+function openSidebar(): void {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  const btn = document.getElementById('hamburger-btn') as HTMLButtonElement | null;
+  sidebar?.classList.add('open');
+  overlay?.classList.add('visible');
+  btn?.setAttribute('aria-expanded', 'true');
+  btn?.setAttribute('aria-label', 'Close navigation menu');
+  sidebar?.querySelector<HTMLAnchorElement>('.sidebar__nav-link')?.focus();
+}
+
+function closeSidebar(): void {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  const btn = document.getElementById('hamburger-btn') as HTMLButtonElement | null;
+  sidebar?.classList.remove('open');
+  overlay?.classList.remove('visible');
+  btn?.setAttribute('aria-expanded', 'false');
+  btn?.setAttribute('aria-label', 'Open navigation menu');
 }

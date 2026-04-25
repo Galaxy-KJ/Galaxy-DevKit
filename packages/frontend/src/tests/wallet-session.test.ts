@@ -167,7 +167,8 @@ describe('WalletSessionPanel', () => {
     const preview = container.querySelector('#session-ledger-preview') as HTMLElement;
     ttlInput.value = '2';
     ttlInput.dispatchEvent(new Event('input'));
-    // 2 hours = 7200 s → 1440 ledgers
-    expect(preview.textContent).toContain('1,440');
+    // 2 hours = 7200 s → 1440 ledgers; use locale-stable check on the raw number
+    const ledgers = (1440).toLocaleString();
+    expect(preview.textContent).toContain(ledgers);
   });
 });

@@ -84,7 +84,7 @@ describe('TxBuilderClient', () => {
       ).rejects.toThrow('Transaction simulation failed: contract not found');
     });
 
-    it('returns estimated fee and auth entry count on success', async () => {
+    it('returns resource fee and auth entry count on success', async () => {
       mockSimulateTransaction.mockResolvedValue({
         minResourceFee: '200',
         result: { auth: [{}, {}] },
@@ -94,7 +94,7 @@ describe('TxBuilderClient', () => {
         destination: 'GDEST',
         amount: '10',
       });
-      expect(result.estimatedFee).toBe('200');
+      expect(result.resourceFee).toBe('200');
       expect(result.authEntryCount).toBe(2);
     });
 
@@ -105,7 +105,7 @@ describe('TxBuilderClient', () => {
         destination: 'GDEST',
         amount: '1',
       });
-      expect(parseInt(result.estimatedFee, 10)).toBeGreaterThanOrEqual(100);
+      expect(parseInt(result.resourceFee, 10)).toBeGreaterThanOrEqual(100);
     });
   });
 

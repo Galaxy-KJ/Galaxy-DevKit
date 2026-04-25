@@ -24,7 +24,6 @@
   },
   "devDependencies": {
     "@types/bip39": "^3.0.0",
-    "@types/ed25519-hd-key": "^2.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "jest": "^30.0.5",

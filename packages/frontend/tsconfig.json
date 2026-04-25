@@ -1,9 +1,25 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "lib": ["ES2020", "DOM"]
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "noEmit": true,
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["vite/client", "jest", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@galaxy-kj/core-wallet": ["../core/wallet/src/index.ts"],
+      "@galaxy-kj/core-stellar-sdk": ["../core/stellar-sdk/src/browser.ts"],
+      "@stellar/stellar-sdk/rpc": ["./node_modules/@stellar/stellar-sdk/lib/rpc/index.d.ts"]
+    }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
 }

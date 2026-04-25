@@ -105,7 +105,7 @@ body {
 .hamburger__bar {
   display: block;
   height: 2px;
-  background: currentColor;
+  background: currentcolor;
   border-radius: 2px;
   transition: transform 0.2s, opacity 0.2s;
 }
@@ -277,15 +277,17 @@ button.btn-secondary:hover:not(:disabled) {
 }
 
 /* ── Status / feedback text ───────────────────────────────── */
-[role="status"],
-[role="alert"] {
+[role="status"] {
   font-size: 0.875rem;
   min-height: 1.25em;
   margin: 6px 0;
 }
 
+/* role="alert" is reserved for time-sensitive error/warning messages */
 [role="alert"] {
-  color: var(--color-success);
+  font-size: 0.875rem;
+  min-height: 1.25em;
+  margin: 6px 0;
 }
 
 /* ── Session list ─────────────────────────────────────────── */
@@ -358,6 +360,7 @@ button.btn-secondary:hover:not(:disabled) {
   padding: 12px;
   margin-top: 8px;
   font-size: 0.875rem;
+  color: var(--color-success);
 }
 
 #tx-confirmation code {
