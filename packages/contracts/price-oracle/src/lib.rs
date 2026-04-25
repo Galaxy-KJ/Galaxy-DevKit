@@ -1,80 +1,67 @@
 //! Price Oracle Contract for Galaxy DevKit
 //!
-//! This contract stores on-chain price data for asset pairs submitted by
-//! authorised price-pushers. It exposes a TWAP (Time-Weighted Average Price)
-//! to protect consumers from single-block price manipulation.
+//! Stores and serves on-chain price-feed data for any number of asset pairs.
+//!
+//! ## Access control
+//! | Operation            | Who can call        |
+//! |----------------------|---------------------|
+//! | `initialize`         | anyone (once)       |
+//! | `set_admin`          | current admin       |
+//! | `add_pusher`         | admin               |
+//! | `remove_pusher`      | admin               |
+//! | `push_price`         | registered pusher   |
+//! | `get_*`              | anyone              |
+//!
+//! ## Storage layout
+//! All state lives in **instance storage** (one ledger entry) which is the
+//! cheapest option for frequently-read data.  Each price history vector is
+//! bounded to `TWAP_WINDOW_SIZE` entries so storage growth is constant.
+//!
+//! ## Precision
+//! Prices are scaled by **1 000 000** (six implied decimal places).
+//! The maximum safe scaled price is `i128::MAX / 1_000_000 ≈ 1.7 × 10³²`,
+//! which covers any realistic asset price.  The contract rejects values that
+//! would overflow during TWAP arithmetic (`price > MAX_SAFE_PRICE`).
 
 #![no_std]
 
+mod types;
+pub use types::{OracleError, PriceEntry, PriceResult};
+
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, symbol_short, vec, Address, Env,
-    Error as SdkError, Map, Symbol, Vec,
+    contract, contractimpl, panic_with_error, symbol_short, Address, Env, Map, Symbol, Vec,
 };
 
 // ---------------------------------------------------------------------------
-// Error codes
+// Constants
 // ---------------------------------------------------------------------------
 
-#[contracttype]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum OracleError {
-    /// Caller is not the admin
-    Unauthorized = 1,
-    /// Pusher address is already registered
-    PusherAlreadyExists = 2,
-    /// Pusher address is not registered
-    PusherNotFound = 3,
-    /// No price record exists for this asset pair
-    PriceNotFound = 4,
-    /// Not enough price history to compute TWAP
-    InsufficientHistory = 5,
-    /// The contract has already been initialised
-    AlreadyInitialized = 6,
-}
-
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
-
-/// Represents a single price observation for an asset pair.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PriceEntry {
-    /// Price scaled by 1_000_000 (i.e. 7 decimal places).
-    /// Example: 1.234567 XLM/USDC → 1_234_567
-    pub price: i128,
-    /// Ledger timestamp when this entry was recorded
-    pub timestamp: u64,
-    /// Address of the pusher that submitted this price
-    pub pusher: Address,
-}
-
-/// Canonical key used to look up prices: `BASE_QUOTE` (e.g. `XLM_USDC`).
-/// We store it as a Symbol so it fits in the cheap instance storage slot.
-fn pair_key(env: &Env, base: &Symbol, quote: &Symbol) -> Symbol {
-    // Concatenate base + "_" + quote into a single short symbol.
-    // Symbol::short only accepts up to 9 chars; for longer pair keys we fall
-    // back to a 32-byte hash stored as a Symbol.
-    let mut key_str = base.to_string();
-    key_str.push('_');
-    key_str.push_str(&quote.to_string());
-    // Soroban does not expose arbitrary-length Symbol construction without
-    // `String`; we store the pair key as a concatenated symbol via the SDK's
-    // from_str helper (available in soroban-sdk 21+).
-    Symbol::new(env, &key_str)
-}
-
-// ---------------------------------------------------------------------------
-// Storage key constants  (instance storage — all fit in one ledger entry)
-// ---------------------------------------------------------------------------
-
+/// Symbol keys for instance storage.
 const KEY_ADMIN: Symbol = symbol_short!("ADMIN");
 const KEY_PUSHERS: Symbol = symbol_short!("PUSHERS");
-/// Map<PairKey, Vec<PriceEntry>> — rolling window of the last N observations
+/// `Map<(Symbol, Symbol), Vec<PriceEntry>>` — rolling TWAP window per pair.
 const KEY_PRICES: Symbol = symbol_short!("PRICES");
-/// Maximum number of historical price entries stored per pair (TWAP window)
-const TWAP_WINDOW_SIZE: u32 = 10;
+
+/// Maximum number of historical observations retained per pair.
+/// Older entries are discarded to keep storage bounded.
+pub const TWAP_WINDOW_SIZE: u32 = 10;
+
+/// Upper bound on acceptable `price` values.
+///
+/// 10^30 with 6 decimal places represents an asset priced at 10^24 "whole
+/// units" — astronomically above any real-world supply limit.  This constant
+/// prevents overflow in the `weighted_sum` computation inside `get_twap`.
+pub const MAX_SAFE_PRICE: i128 = 1_000_000_000_000_000_000_000_000_000_000_i128; // 10^30
+
+// ---------------------------------------------------------------------------
+// Event topic symbols  (≤ 9 ASCII chars for symbol_short!)
+// ---------------------------------------------------------------------------
+
+const EVT_INIT: Symbol = symbol_short!("init");
+const EVT_ADMIN: Symbol = symbol_short!("admin");
+const EVT_P_ADD: Symbol = symbol_short!("p_add");
+const EVT_P_REM: Symbol = symbol_short!("p_rem");
+const EVT_PRICE: Symbol = symbol_short!("price");
 
 // ---------------------------------------------------------------------------
 // Contract
@@ -85,23 +72,25 @@ pub struct PriceOracleContract;
 
 #[contractimpl]
 impl PriceOracleContract {
-    // -----------------------------------------------------------------------
-    // Admin & lifecycle
-    // -----------------------------------------------------------------------
+    // =======================================================================
+    // Lifecycle
+    // =======================================================================
 
-    /// Initialise the oracle with an admin address.
-    /// Can only be called once.
+    /// Initialise the oracle.  Must be called **once** before any other method.
+    ///
+    /// Emits event: `("init", admin_address)`.
     pub fn initialize(env: &Env, admin: Address) {
         let storage = env.storage().instance();
         if storage.has(&KEY_ADMIN) {
             panic_with_error!(env, OracleError::AlreadyInitialized);
         }
         storage.set(&KEY_ADMIN, &admin);
-        // Initialise empty pusher list and price map
         let empty_pushers: Vec<Address> = Vec::new(env);
         storage.set(&KEY_PUSHERS, &empty_pushers);
-        let empty_prices: Map<Symbol, Vec<PriceEntry>> = Map::new(env);
+        let empty_prices: Map<(Symbol, Symbol), Vec<PriceEntry>> = Map::new(env);
         storage.set(&KEY_PRICES, &empty_prices);
+
+        env.events().publish((EVT_INIT,), admin);
     }
 
     /// Return the current admin address.
@@ -109,44 +98,58 @@ impl PriceOracleContract {
         env.storage().instance().get(&KEY_ADMIN).unwrap()
     }
 
-    /// Transfer admin rights to a new address.
-    /// Only the current admin may call this.
+    /// Transfer admin rights to `new_admin`.  Only the current admin may call.
+    ///
+    /// Emits event: `("admin", new_admin_address)`.
     pub fn set_admin(env: &Env, new_admin: Address) {
         let storage = env.storage().instance();
         let admin: Address = storage.get(&KEY_ADMIN).unwrap();
         admin.require_auth();
         storage.set(&KEY_ADMIN, &new_admin);
+
+        env.events().publish((EVT_ADMIN,), new_admin);
     }
 
-    // -----------------------------------------------------------------------
-    // Pusher management (access control)
-    // -----------------------------------------------------------------------
+    // =======================================================================
+    // Pusher management
+    // =======================================================================
 
-    /// Register a new price-pusher address.
-    /// Only the admin may call this.
-    pub fn add_pusher(env: &Env, pusher: Address) {
+    /// Register a new price-pusher address.  Only the admin may call.
+    ///
+    /// Panics with [`OracleError::PusherAlreadyExists`] on duplicate.
+    ///
+    /// Emits event: `("p_add", pusher_address)`.
+    pub fn add_pusher(env: &Env, admin: Address, pusher: Address) {
         let storage = env.storage().instance();
-        let admin: Address = storage.get(&KEY_ADMIN).unwrap();
+        let stored_admin: Address = storage.get(&KEY_ADMIN).unwrap();
+        if stored_admin != admin {
+            panic_with_error!(env, OracleError::Unauthorized);
+        }
         admin.require_auth();
 
         let mut pushers: Vec<Address> = storage.get(&KEY_PUSHERS).unwrap_or(Vec::new(env));
-
-        // Check for duplicates
         for existing in pushers.iter() {
             if existing == pusher {
                 panic_with_error!(env, OracleError::PusherAlreadyExists);
             }
         }
-
-        pushers.push_back(pusher);
+        pushers.push_back(pusher.clone());
         storage.set(&KEY_PUSHERS, &pushers);
+
+        env.events().publish((EVT_P_ADD,), pusher);
     }
 
-    /// Remove a price-pusher address.
-    /// Only the admin may call this.
-    pub fn remove_pusher(env: &Env, pusher: Address) {
+    /// Remove a registered pusher.  Only the admin may call.
+    ///
+    /// Panics with [`OracleError::PusherNotFound`] when pusher is unknown.
+    ///
+    /// Emits event: `("p_rem", pusher_address)`.
+    pub fn remove_pusher(env: &Env, admin: Address, pusher: Address) {
         let storage = env.storage().instance();
-        let admin: Address = storage.get(&KEY_ADMIN).unwrap();
+        let stored_admin: Address = storage.get(&KEY_ADMIN).unwrap();
+        if stored_admin != admin {
+            panic_with_error!(env, OracleError::Unauthorized);
+        }
         admin.require_auth();
 
         let pushers: Vec<Address> = storage.get(&KEY_PUSHERS).unwrap_or(Vec::new(env));
@@ -164,8 +167,9 @@ impl PriceOracleContract {
         if !found {
             panic_with_error!(env, OracleError::PusherNotFound);
         }
-
         storage.set(&KEY_PUSHERS, &new_pushers);
+
+        env.events().publish((EVT_P_REM,), pusher);
     }
 
     /// Return all registered pusher addresses.
@@ -176,40 +180,43 @@ impl PriceOracleContract {
             .unwrap_or(Vec::new(env))
     }
 
-    // -----------------------------------------------------------------------
+    // =======================================================================
     // Price submission
-    // -----------------------------------------------------------------------
+    // =======================================================================
 
-    /// Push a new price for the `base`/`quote` asset pair.
+    /// Push a new price observation for the `base`/`quote` pair.
     ///
-    /// `price` must be scaled by 1_000_000 (7 implied decimal places).
-    /// Example: to submit 1.2345678 XLM/USDC pass `price = 1_234_568`.
+    /// `price` must be scaled by **1 000 000**.
     ///
-    /// Only a registered pusher may call this; the SDK enforces the auth
-    /// via `pusher.require_auth()`.
+    /// # Panics
+    /// - [`OracleError::Unauthorized`]    — `pusher` is not registered.
+    /// - [`OracleError::PriceOutOfRange`] — `price` ≤ 0 or > `MAX_SAFE_PRICE`.
+    ///
+    /// Emits event: `("price", (base, quote, price))`.
     pub fn push_price(env: &Env, pusher: Address, base: Symbol, quote: Symbol, price: i128) {
         pusher.require_auth();
-
-        // Verify pusher is in the authorised list
         Self::assert_is_pusher(env, &pusher);
 
+        // Validate price range to prevent i128 overflow in TWAP arithmetic
+        if price <= 0 || price > MAX_SAFE_PRICE {
+            panic_with_error!(env, OracleError::PriceOutOfRange);
+        }
+
         let storage = env.storage().instance();
-        let mut prices: Map<Symbol, Vec<PriceEntry>> =
+        let mut prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
 
-        let key = pair_key(env, &base, &quote);
+        let key = (base.clone(), quote.clone());
         let mut history: Vec<PriceEntry> = prices.get(key.clone()).unwrap_or(Vec::new(env));
 
-        let entry = PriceEntry {
+        history.push_back(PriceEntry {
             price,
             timestamp: env.ledger().timestamp(),
-            pusher,
-        };
-        history.push_back(entry);
+            pusher: pusher.clone(),
+        });
 
-        // Keep only the last TWAP_WINDOW_SIZE entries to bound storage growth
+        // Bound the rolling window by evicting the oldest entry when full
         if history.len() > TWAP_WINDOW_SIZE {
-            // Remove oldest (index 0)
             let mut trimmed: Vec<PriceEntry> = Vec::new(env);
             let start = history.len() - TWAP_WINDOW_SIZE;
             for i in start..history.len() {
@@ -220,47 +227,91 @@ impl PriceOracleContract {
 
         prices.set(key, history);
         storage.set(&KEY_PRICES, &prices);
+
+        env.events().publish((EVT_PRICE,), (base, quote, price));
     }
 
-    // -----------------------------------------------------------------------
-    // Price reads
-    // -----------------------------------------------------------------------
+    // =======================================================================
+    // Price reads — unchecked (no staleness gate)
+    // =======================================================================
 
-    /// Return the most recent price entry for a pair.
+    /// Return the most recent [`PriceEntry`] for the pair.
+    ///
+    /// Panics with [`OracleError::PriceNotFound`] when no data exists.
     pub fn get_price(env: &Env, base: Symbol, quote: Symbol) -> PriceEntry {
-        let storage = env.storage().instance();
-        let prices: Map<Symbol, Vec<PriceEntry>> =
-            storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
-
-        let key = pair_key(env, &base, &quote);
-        let history: Vec<PriceEntry> = prices.get(key).unwrap_or(Vec::new(env));
-
+        let history = Self::get_price_history(env, base, quote);
         if history.is_empty() {
             panic_with_error!(env, OracleError::PriceNotFound);
         }
-
         history.get(history.len() - 1).unwrap()
     }
 
-    /// Return the full price history (up to `TWAP_WINDOW_SIZE` entries) for a pair.
+    /// Return the full rolling history (up to `TWAP_WINDOW_SIZE` entries).
     pub fn get_price_history(env: &Env, base: Symbol, quote: Symbol) -> Vec<PriceEntry> {
         let storage = env.storage().instance();
-        let prices: Map<Symbol, Vec<PriceEntry>> =
+        let prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
-
-        let key = pair_key(env, &base, &quote);
+        let key = (base, quote);
         prices.get(key).unwrap_or(Vec::new(env))
     }
 
-    /// Compute the Time-Weighted Average Price (TWAP) over all stored
-    /// observations for the given pair.
+    // =======================================================================
+    // Price reads — staleness-aware
+    // =======================================================================
+
+    /// Fetch the latest price annotated with age/staleness metadata.
+    ///
+    /// Unlike [`get_price`], this call **never panics** on a stale price —
+    /// it returns a [`PriceResult`] with `is_stale = true` so callers can
+    /// decide how to proceed.
+    ///
+    /// Panics with [`OracleError::PriceNotFound`] when no data exists at all.
+    pub fn get_price_checked(
+        env: &Env,
+        base: Symbol,
+        quote: Symbol,
+        max_age_seconds: u64,
+    ) -> PriceResult {
+        let entry = Self::get_price(env, base, quote);
+        let now = env.ledger().timestamp();
+        let age = now.saturating_sub(entry.timestamp);
+        PriceResult {
+            entry,
+            age_seconds: age,
+            is_stale: age > max_age_seconds,
+        }
+    }
+
+    /// Like [`get_price_checked`] but **panics** with [`OracleError::PriceStale`]
+    /// when the price is older than `max_age_seconds`.
+    ///
+    /// Use this variant when the caller wants a hard-fail rather than a flag.
+    pub fn get_price_strict(
+        env: &Env,
+        base: Symbol,
+        quote: Symbol,
+        max_age_seconds: u64,
+    ) -> PriceEntry {
+        let result = Self::get_price_checked(env, base, quote, max_age_seconds);
+        if result.is_stale {
+            panic_with_error!(env, OracleError::PriceStale);
+        }
+        result.entry
+    }
+
+    // =======================================================================
+    // TWAP
+    // =======================================================================
+
+    /// Compute the Time-Weighted Average Price over all stored observations.
     ///
     /// TWAP = Σ(price_i × Δt_i) / Σ(Δt_i)
     ///
-    /// where Δt_i is the interval between consecutive timestamps.
-    /// For the most recent entry Δt = current_ledger_time − last_timestamp.
+    /// where Δt_i is the interval between observation i and the next one (or
+    /// the current ledger time for the last entry).
     ///
-    /// Panics with `InsufficientHistory` when fewer than 2 entries exist.
+    /// Panics with [`OracleError::InsufficientHistory`] when fewer than 2
+    /// observations are stored.
     pub fn get_twap(env: &Env, base: Symbol, quote: Symbol) -> i128 {
         let history = Self::get_price_history(env, base, quote);
 
@@ -274,32 +325,56 @@ impl PriceOracleContract {
 
         for i in 0..history.len() {
             let entry = history.get(i).unwrap();
-            // Determine the duration this price was "active"
             let end_time: u64 = if i + 1 < history.len() {
                 history.get(i + 1).unwrap().timestamp
             } else {
                 now
             };
-
             let duration = end_time.saturating_sub(entry.timestamp) as i128;
             weighted_sum += entry.price * duration;
             total_time += duration;
         }
 
         if total_time == 0 {
-            // All entries share the same timestamp; return simple average
-            let sum: i128 = history.iter().map(|e| e.price).sum();
+            // All entries share the same timestamp → simple average
+            let mut sum: i128 = 0;
+            for e in history.iter() {
+                sum += e.price;
+            }
             return sum / history.len() as i128;
         }
 
         weighted_sum / total_time
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    // =======================================================================
+    // Multi-asset helpers
+    // =======================================================================
 
-    /// Panic with `Unauthorized` if `caller` is not a registered pusher.
+    /// Return the latest prices for **all** registered pairs in a single call.
+    ///
+    /// The map key is `(base, quote)` pair; value is the most recent
+    /// [`PriceEntry`].  Pairs that have no data are omitted.
+    pub fn get_all_prices(env: &Env) -> Map<(Symbol, Symbol), PriceEntry> {
+        let storage = env.storage().instance();
+        let prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
+            storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
+
+        let mut latest: Map<(Symbol, Symbol), PriceEntry> = Map::new(env);
+        for (key, history) in prices.iter() {
+            if !history.is_empty() {
+                let last = history.get(history.len() - 1).unwrap();
+                latest.set(key, last);
+            }
+        }
+        latest
+    }
+
+    // =======================================================================
+    // Internal helpers
+    // =======================================================================
+
+    /// Panic with [`OracleError::Unauthorized`] if `caller` is not registered.
     fn assert_is_pusher(env: &Env, caller: &Address) {
         let pushers: Vec<Address> = env
             .storage()

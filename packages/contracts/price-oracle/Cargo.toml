@@ -1,10 +1,11 @@
 [package]
 name = "price-oracle"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
+description = "On-chain price oracle Soroban contract for Galaxy DevKit"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "21.0.0"
@@ -13,4 +14,9 @@ soroban-sdk = "21.0.0"
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 
 [profile.release]
+opt-level = "z"
 overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true
+codegen-units = 1
