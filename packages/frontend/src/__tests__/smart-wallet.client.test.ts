@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 import { setupWebAuthnMock } from './mock-webauthn';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { Buffer } from 'buffer';
