@@ -1,8 +1,10 @@
 /**
  * @fileoverview Interactive mode entry point for Galaxy CLI
- * @description Exports the interactive command and starts the REPL
+ * @description Exports the interactive command (REPL) and the guided menu command.
+ *   - `galaxy interactive` → raw REPL with autocomplete + history
+ *   - `galaxy menu`        → guided, menu-driven prompt interface (new)
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 1.1.0
  * @since 2026-01-28
  */
 
@@ -13,6 +15,7 @@ import { SessionManager, getSessionManager, resetSessionManager } from './sessio
 import { HistoryManager, getHistoryManager, resetHistoryManager } from './history.js';
 import { AutocompleteManager, getAutocompleteManager, resetAutocompleteManager, COMMAND_REGISTRY } from './autocomplete.js';
 import { WorkflowManager, getWorkflowManager, resetWorkflowManager, runWorkflow, WORKFLOWS, listWorkflows } from './workflows.js';
+import { attachMenuCommand, runInteractiveMenus, ROOT_MENU } from './menus.js';
 
 // Re-export types
 export type {
@@ -53,10 +56,18 @@ export {
   runWorkflow,
   WORKFLOWS,
   listWorkflows,
+  // Menu exports (new in 1.1.0)
+  attachMenuCommand,
+  runInteractiveMenus,
+  ROOT_MENU,
 };
 
+export type { MenuEntry, MenuParam } from './menus.js';
+
 /**
- * Create the interactive command for Commander.js
+ * Create the interactive REPL command for Commander.js.
+ * This is the raw REPL (`galaxy interactive`) — for guided menus use `galaxy menu`.
+ *
  * @param programRef Reference to the main program for command execution
  */
 export function createInteractiveCommand(programRef: Command): Command {
@@ -72,6 +83,21 @@ export function createInteractiveCommand(programRef: Command): Command {
 }
 
 /**
+ * Register both interactive commands on a Commander program:
+ *   - `galaxy interactive`  raw REPL
+ *   - `galaxy menu`         guided menu
+ *
+ * Call this once during program setup:
+ * ```ts
+ * registerInteractiveCommands(program);
+ * ```
+ */
+export function registerInteractiveCommands(program: Command): void {
+  program.addCommand(createInteractiveCommand(program));
+  attachMenuCommand(program);
+}
+
+/**
  * Launch the interactive REPL mode
  */
 export async function launchInteractiveMode(
@@ -81,51 +107,39 @@ export async function launchInteractiveMode(
   const repl = createRepl({
     history: {
       maxEntries: 100,
-      // historyPath uses default (~/.galaxy/history) when not specified
       persist: options.history !== false,
       deduplicate: true,
     },
     session: {
       autoSave: options.session !== false,
       timeout: 0,
-      // statePath uses default (~/.galaxy/session.json) when not specified
     },
   });
 
-  // Set up command executor that delegates to the main program
   repl.setCommandExecutor(async (input: string) => {
-    // Parse the input as if it was command line arguments
     const args = parseCommandLine(input);
-
-    // Create a temporary program instance to avoid modifying the original
     const tempProgram = createTempProgram(program);
-
-    // Suppress exit on error
     tempProgram.exitOverride();
 
-    // Execute the command
     try {
       await tempProgram.parseAsync(['node', 'galaxy', ...args], { from: 'user' });
     } catch (error) {
       const err = error as Error & { code?: string };
-      // Ignore commander exit errors (like --help)
       if (err.code === 'commander.helpDisplayed' || err.code === 'commander.help') {
         return;
       }
-      // Re-throw other errors
       if (err.code !== 'commander.executeSubCommandAsync') {
         throw error;
       }
     }
   });
 
-  // Start the REPL
   await repl.start();
 }
 
 /**
- * Parse command line string into arguments array
- * Handles quoted strings and escaped characters
+ * Parse command line string into arguments array.
+ * Handles quoted strings and escaped characters.
  */
 function parseCommandLine(input: string): string[] {
   const args: string[] = [];
@@ -179,26 +193,22 @@ function parseCommandLine(input: string): string[] {
 }
 
 /**
- * Create a temporary program instance with same commands but different error handling
+ * Create a temporary program instance with same commands but different error handling.
  */
 function createTempProgram(original: Command): Command {
   const temp = new Command();
 
-  // Copy basic configuration
   temp.name(original.name());
   temp.description(original.description());
 
-  // Copy all registered commands
   original.commands.forEach((cmd) => {
     temp.addCommand(cmd);
   });
 
-  // Copy registered options from the original
   original.options.forEach((opt) => {
     temp.addOption(opt);
   });
 
-  // Configure error handling
   temp.configureOutput({
     writeOut: (str) => console.log(str),
     writeErr: (str) => console.error(chalk.red(str)),
@@ -209,20 +219,15 @@ function createTempProgram(original: Command): Command {
 }
 
 /**
- * Check if interactive mode should be launched (no args provided)
+ * Check if interactive mode should be launched (no args provided).
  */
 export function shouldLaunchInteractive(argv: string[]): boolean {
-  // Get args after node and script path
   const args = argv.slice(2);
-
-  // Only auto-launch interactive mode when there are truly no arguments
-  // When 'interactive' is specified explicitly, let Commander handle it
-  // so that options like --no-history, --no-session, and --help are parsed
   return args.length === 0;
 }
 
 /**
- * Reset all singleton instances (useful for testing)
+ * Reset all singleton instances (useful for testing).
  */
 export function resetAll(): void {
   resetSessionManager();
@@ -234,6 +239,7 @@ export function resetAll(): void {
 // Default export for convenience
 export default {
   createInteractiveCommand,
+  registerInteractiveCommands,
   launchInteractiveMode,
   shouldLaunchInteractive,
   startRepl,
@@ -243,4 +249,7 @@ export default {
   getHistoryManager,
   getAutocompleteManager,
   getWorkflowManager,
+  attachMenuCommand,
+  runInteractiveMenus,
+  ROOT_MENU,
 };

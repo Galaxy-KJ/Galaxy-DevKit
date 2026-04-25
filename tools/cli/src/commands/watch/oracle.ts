@@ -11,7 +11,7 @@ import { TerminalUI } from '../../utils/terminal-ui.js';
 import { createOracleAggregator } from '../../utils/oracle-registry.js';
 import { MedianStrategy } from '@galaxy-kj/core-oracles';
 
-oracleWatchCommand
+const oracleWatchCommand = new Command('oracle-watch')
   .description('Stream real-time price updates for a symbol')
   .argument('<symbol>', 'Asset symbol (e.g. XLM, BTC)')
   .option('--network <type>', 'Network (testnet/mainnet)', 'testnet')
