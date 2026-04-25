@@ -112,11 +112,11 @@ export class PathPaymentManager {
     const paths = params.customPath
       ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
       : await this.findPaths({
-          sourceAsset: params.sendAsset,
-          destAsset: params.destAsset,
-          amount: params.amount,
-          type: params.type,
-        });
+        sourceAsset: params.sendAsset,
+        destAsset: params.destAsset,
+        amount: params.amount,
+        type: params.type,
+      });
 
     const bestPath = params.customPath
       ? paths[0]
@@ -140,21 +140,21 @@ export class PathPaymentManager {
     const op =
       params.type === 'strict_send'
         ? Operation.pathPaymentStrictSend({
-            sendAsset: params.sendAsset,
-            sendAmount: params.amount,
-            destination: destinationAccountId,
-            destAsset: params.destAsset,
-            destMin: estimate.minimumReceived!,
-            path: pathAssets,
-          })
+          sendAsset: params.sendAsset,
+          sendAmount: params.amount,
+          destination: destinationAccountId,
+          destAsset: params.destAsset,
+          destMin: estimate.minimumReceived!,
+          path: pathAssets,
+        })
         : Operation.pathPaymentStrictReceive({
-            sendAsset: params.sendAsset,
-            sendMax,
-            destination: destinationAccountId,
-            destAsset: params.destAsset,
-            destAmount: params.amount,
-            path: pathAssets,
-          });
+          sendAsset: params.sendAsset,
+          sendMax,
+          destination: destinationAccountId,
+          destAsset: params.destAsset,
+          destAmount: params.amount,
+          path: pathAssets,
+        });
 
     const tx = new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
@@ -188,11 +188,11 @@ export class PathPaymentManager {
     const paths = params.customPath
       ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
       : await this.findPaths({
-          sourceAsset: params.sendAsset,
-          destAsset: params.destAsset,
-          amount: params.amount,
-          type: params.type,
-        });
+        sourceAsset: params.sendAsset,
+        destAsset: params.destAsset,
+        amount: params.amount,
+        type: params.type,
+      });
 
     const bestPath = params.customPath ? paths[0] : await this.getBestPath(paths, params.type);
     if (!bestPath) {
