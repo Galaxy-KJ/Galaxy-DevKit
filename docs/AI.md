@@ -1233,9 +1233,39 @@ A: Implement `IOracleSource` interface in `packages/core/oracles/src/sources/`.
 
 A: Add to `TriggerType` enum and implement in respective manager (CronManager, EventManager, etc.).
 
+### 5. Frontend Components
+Pre-built UI components and a client wrapper for integrating WebAuthn flows into applications.
+
+**Key Files:**
+- `packages/frontend/src/services/smart-wallet.client.ts` - Browser-ready service wrapper
+- `packages/frontend/src/panels/wallet-create.ts` - Registration and deployment UI
+- `packages/frontend/src/panels/wallet-signers.ts` - Signer management UI
+
+**Usage Example:**
+```typescript
+import { SmartWalletClient, WalletCreatePanel } from '@galaxy-kj/frontend';
+
+const client = new SmartWalletClient('https://rpc.testnet.stellar.org');
+
+// Initialize panel in a container
+const createPanel = new WalletCreatePanel('wallet-create-container', client);
+
+// Register passkey programmatically
+const cred = await client.registerPasskey('alice@example.com');
+
+// Deploy wallet using registered passkey
+const address = await client.deployWallet(cred.publicKey);
+```
+
+**Patterns for AI:**
+- **DOM Encapsulation**: Panel classes manage their own innerHTML and event listeners.
+- **Service Injection**: UI components receive a `SmartWalletClient` instance for logic.
+- **Status Feedback**: Use `updateStatus` method to provide visual cues (info, success, error) to the user.
+- **WebAuthn Mocking**: Use `setupWebAuthnMock` (see `src/__tests__/mock-webauthn.ts`) for unit testing UI components without real hardware.
+
 ---
 
-**Last Updated**: 2024-01-15
+**Last Updated**: 2026-04-24
 **Maintained By**: Galaxy DevKit Team
 **For Questions**: Open an issue with label `question`
 

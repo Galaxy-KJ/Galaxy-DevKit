@@ -140,8 +140,21 @@ Object.defineProperty(global.navigator, 'credentials', {
 - Hardware unavailable: `NoAvailableAuthenticatorError`; fallback to alternative auth flow (PIN, OTP).
 - Invalid assertion: verify server side and show `Invalid credentials.
 
-## 9. Related docs
+## 10. Frontend Components
 
+Galaxy DevKit provides pre-built UI components and a client wrapper for integrating WebAuthn flows into your playground or web application.
+
+- **`SmartWalletClient`**: A browser-ready wrapper that manages WebAuthn credential persistence in `localStorage` and simplifies interactions with `SmartWalletService`.
+- **`WalletCreatePanel`**: UI component for passkey registration and smart wallet factory deployment.
+- **`WalletSignersPanel`**: UI component for adding and removing admin signers on an existing contract.
+
+For more information, see `packages/frontend/README.md`.
+
+## 11. Related docs
+
+- `packages/frontend/src/panels/wallet-create.ts`
+- `packages/frontend/src/panels/wallet-signers.ts`
+- `packages/frontend/src/services/smart-wallet.client.ts`
 - `packages/core/wallet/src/smart-wallet.service.ts` (WebAuthn negotiation for sign and addSigner)
 - `packages/core/wallet/auth/src/providers/WebAuthNProvider.ts`
 - `packages/core/wallet/auth/src/providers/SocialLoginProvider.ts`
