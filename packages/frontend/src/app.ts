@@ -5,6 +5,7 @@ import { WalletCreatePanel } from './panels/wallet-create';
 import { WalletSignersPanel } from './panels/wallet-signers';
 import { WalletSessionPanel, type SessionEntry } from './panels/wallet-session';
 import { WalletTxPanel } from './panels/wallet-tx';
+import { LiquidityPanel } from './panels/liquidity';
 
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
@@ -114,6 +115,9 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
             <li class="sidebar__nav-item">
               <a href="#tx" class="sidebar__nav-link" data-panel="wallet-tx-panel">Send Transaction</a>
             </li>
+            <li class="sidebar__nav-item">
+              <a href="#liquidity" class="sidebar__nav-link" data-panel="liquidity-panel">Liquidity Pools</a>
+            </li>
           </ul>
         </nav>
 
@@ -122,6 +126,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <div id="wallet-signers-panel" class="panel"></div>
           <div id="wallet-session-panel" class="panel" hidden></div>
           <div id="wallet-tx-panel" class="panel" hidden></div>
+          <div id="liquidity-panel" class="panel" hidden></div>
         </main>
       </div>
     </section>
@@ -135,6 +140,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
 
   mountSessionPanel(document.getElementById('wallet-session-panel')!);
   mountTxPanel(document.getElementById('wallet-tx-panel')!, client);
+  mountLiquidityPanel(document.getElementById('liquidity-panel')!);
 
   bindNav();
   bindHamburger();
@@ -181,6 +187,33 @@ function mountSessionPanel(container: HTMLElement): void {
     getCurrentLedger,
   });
   panel.setSessions(sessions);
+}
+
+function mountLiquidityPanel(container: HTMLElement): void {
+  const { Horizon, Networks, Asset } = require('@stellar/stellar-sdk');
+  const {
+    LiquidityPoolManager,
+    calculateImpermanentLoss,
+  } = require('@galaxy-kj/core-stellar-sdk');
+
+  const server = new Horizon.Server('https://horizon-testnet.stellar.org');
+  const manager = new LiquidityPoolManager(server, Networks.TESTNET);
+
+  new LiquidityPanel(container, {
+    onQueryPool: async (assetAStr: string, assetBStr: string) => {
+      const parseAsset = (s: string) =>
+        s === 'native' ? Asset.native() : new Asset(s.split(':')[0], s.split(':')[1]);
+      const pools = await manager.getPoolsForAssets(parseAsset(assetAStr), parseAsset(assetBStr), 1);
+      return pools.length > 0 ? pools[0] : null;
+    },
+    onGetAnalytics: (poolId: string) => manager.getPoolAnalytics(poolId),
+    onEstimateDeposit: (poolId: string, a: string, b: string) => manager.estimatePoolDeposit(poolId, a, b),
+    onEstimateWithdraw: (poolId: string, shares: string) => manager.estimatePoolWithdraw(poolId, shares),
+    onDeposit: async () => { throw new Error('Deposit requires wallet signing — not yet wired'); },
+    onWithdraw: async () => { throw new Error('Withdraw requires wallet signing — not yet wired'); },
+    onGetUserShares: async () => '0',
+    onCalculateIL: (initial: string, current: string) => calculateImpermanentLoss(initial, current),
+  });
 }
 
 function mountTxPanel(container: HTMLElement, client: SmartWalletClient): void {
