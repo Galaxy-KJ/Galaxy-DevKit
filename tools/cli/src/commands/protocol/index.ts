@@ -11,6 +11,7 @@ import { listCommand } from './list.js';
 import { infoCommand } from './info.js';
 import { connectCommand } from './connect.js';
 import { blendCommand } from './blend.js';
+import { supplyCommand } from './supply.js';
 import { swapCommand } from './swap.js';
 import { liquidityCommand } from './liquidity.js';
 
@@ -23,10 +24,12 @@ Examples:
   $ galaxy protocol list                           List available protocols
   $ galaxy protocol info blend                     Show Blend Protocol details
   $ galaxy protocol connect soroswap              Test Soroswap connection
-  $ galaxy protocol blend supply USDC 100         Supply USDC to Blend
-  $ galaxy protocol blend position                 View your lending position
+  $ galaxy protocol supply USDC 100               Supply USDC to Blend (default)
+  $ galaxy protocol supply XLM 500 --protocol blend  Supply XLM to Blend explicitly
   $ galaxy protocol swap quote XLM USDC 100       Get swap quote
   $ galaxy protocol swap execute XLM USDC 100     Execute swap
+  $ galaxy protocol blend supply USDC 100         Supply USDC via Blend subcommand
+  $ galaxy protocol blend position                 View your lending position
   $ galaxy protocol liquidity add XLM USDC 100 50 Add liquidity
   $ galaxy protocol liquidity pools               List liquidity pools
 `
@@ -36,6 +39,7 @@ Examples:
 protocolCommand.addCommand(listCommand);
 protocolCommand.addCommand(infoCommand);
 protocolCommand.addCommand(connectCommand);
+protocolCommand.addCommand(supplyCommand);
 protocolCommand.addCommand(blendCommand);
 protocolCommand.addCommand(swapCommand);
 protocolCommand.addCommand(liquidityCommand);

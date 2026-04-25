@@ -24,10 +24,22 @@ export default {
           allowSyntheticDefaultImports: true
         }
       }
+    ],
+    '^.+\\.js$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          module: 'CommonJS',
+          moduleResolution: 'node',
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          allowJs: true
+        }
+      }
     ]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@stellar)/)'
+    'node_modules/(?!(@stellar|@galaxy-kj)/)'
   ],
   testMatch: [
     '**/__tests__/**/*.test.ts',

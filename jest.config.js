@@ -15,7 +15,22 @@ module.exports = {
   ],
   transform: {
     ...tsJestTransformCfg,
+    '^.+\\.js$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          module: 'CommonJS',
+          moduleResolution: 'node',
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          allowJs: true,
+        },
+      },
+    ],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@stellar|@galaxy-kj)/)',
+  ],
   moduleNameMapper: {
     "^@galaxy/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^@galaxy-kj/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
