@@ -130,7 +130,7 @@ Choose your preferred interface:
 npm install @galaxy-kj/core-defi-protocols @galaxy-kj/core-invisible-wallet
 ```
 
-📖 **[Full Installation Guide](./INSTALLATION.md)** - Detailed setup instructions
+📖 **[5-minute quickstart](docs/quickstart.md)** and **[end-to-end getting started guide](docs/getting-started.md)** - From install to first smart wallet transaction
 
 ---
 
@@ -210,7 +210,7 @@ Galaxy DevKit includes the following ready-to-use packages:
 - **`@galaxy-kj/core-automation`** - Automation engine for DeFi operations
 - **`@galaxy-kj/core-stellar-sdk`** - Simplified wrapper for Stellar SDK
 
-For more information, see the [complete documentation](docs/README.md).
+For more information, see the [complete documentation](docs/index.md).
 
 ---
 
@@ -218,7 +218,8 @@ For more information, see the [complete documentation](docs/README.md).
 
 ### Getting Started
 
-- [Quick Start Guide](docs/README.md) - Get started in 5 minutes
+- [Quick Start Guide](docs/quickstart.md) - Get started in 5 minutes
+- [Getting Started](docs/getting-started.md) - End-to-end smart wallet setup and first transaction
 - [Code Examples](docs/examples/) - Real-world examples
 
 ### Package Documentation
@@ -233,6 +234,7 @@ For more information, see the [complete documentation](docs/README.md).
 - [Architecture Overview](docs/architecture/architecture.md) - Current wallet, session key, and DeFi flow diagrams
 - [Smart Wallet Auth Flow](docs/architecture/smart-wallet-auth-flow.md) - WebAuthn and Soroban auth sequence
 - [Session Key Flow](docs/architecture/session-key-flow.md) - Session signer lifecycle
+- [Frontend Playground](packages/frontend/README.md) - Vite browser playground for SDK testing
 - [DeFi Aggregation Flow](docs/architecture/defi-aggregation-flow.md) - Quote routing and execution path
 - [Smart Wallet Contract Guide](docs/contracts/smart-wallet-contract.md) - Factory and wallet contract reference
 - [Contract Deployment Guide](docs/contracts/deployment.md) - Soroban build and testnet deploy guide

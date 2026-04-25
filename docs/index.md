@@ -20,7 +20,9 @@ Galaxy DevKit is a comprehensive development framework that provides both **APIs
 
 Complete guides for using Galaxy DevKit to build Stellar applications.
 
-- **[Getting Started](./guides/getting-started.md)** - Quick start guide
+- **[Quickstart](./quickstart.md)** - 5-minute setup and playground launch
+- **[Getting Started](./getting-started.md)** - End-to-end smart wallet creation to first transaction
+- **[Legacy Getting Started](./guides/getting-started.md)** - Broader project setup guide
 - **[User Guide](./guides/user-guide.md)** - Complete user documentation
 - **[CLI Guide](./guides/cli-guide.md)** - Command line interface guide
 

@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 import { setupWebAuthnMock } from './mock-webauthn';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { WalletCreatePanel } from '../panels/wallet-create';
@@ -14,7 +18,7 @@ describe('UI Panels', () => {
 
   describe('WalletCreatePanel', () => {
     it('renders and handles registration', async () => {
-      const panel = new WalletCreatePanel('app', client);
+      new WalletCreatePanel('app', client);
       const regBtn = document.getElementById('wc-register') as HTMLButtonElement;
       const deployBtn = document.getElementById('wc-deploy') as HTMLButtonElement;
       
@@ -33,7 +37,7 @@ describe('UI Panels', () => {
     it('handles deployment', async () => {
       jest.spyOn(client, 'deployWallet').mockResolvedValue('C-DEPLOYED');
       
-      const panel = new WalletCreatePanel('app', client);
+      new WalletCreatePanel('app', client);
       
       // Manually set pub key as if registered
       const pubKeyEl = document.getElementById('wc-pub-key')!;
@@ -54,7 +58,7 @@ describe('UI Panels', () => {
     it('renders and handles add signer', async () => {
       jest.spyOn(client, 'addSigner').mockResolvedValue('SIGNED-XDR-ADD');
       
-      const panel = new WalletSignersPanel('app', client);
+      new WalletSignersPanel('app', client);
       
       (document.getElementById('ws-wallet-address') as HTMLInputElement).value = 'C-WALLET';
       (document.getElementById('ws-auth-id') as HTMLInputElement).value = 'auth-id';
@@ -72,7 +76,7 @@ describe('UI Panels', () => {
     it('handles remove signer', async () => {
       jest.spyOn(client, 'removeSigner').mockResolvedValue('SIGNED-XDR-REMOVE');
       
-      const panel = new WalletSignersPanel('app', client);
+      new WalletSignersPanel('app', client);
       
       (document.getElementById('ws-wallet-address') as HTMLInputElement).value = 'C-WALLET';
       (document.getElementById('ws-auth-id') as HTMLInputElement).value = 'auth-id';
@@ -89,7 +93,7 @@ describe('UI Panels', () => {
     it('handles errors during add/remove signer', async () => {
       jest.spyOn(client, 'addSigner').mockRejectedValue(new Error('Add failed'));
       
-      const panel = new WalletSignersPanel('app', client);
+      new WalletSignersPanel('app', client);
       
       // Missing fields should trigger local error
       document.getElementById('ws-add-signer')?.click();
