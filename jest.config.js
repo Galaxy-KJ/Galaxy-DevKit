@@ -5,6 +5,7 @@ const tsJestTransformCfg = createDefaultPreset().transform;
 /** @type {import("jest").Config} **/
 module.exports = {
   testEnvironment: "node",
+  setupFiles: ["<rootDir>/packages/frontend/src/tests/jest.setup.ts"],
   testPathIgnorePatterns: [
     "/node_modules/",
     "\\.e2e\\.test\\.[jt]sx?$",
