@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Vite playground for Galaxy DevKit smart wallets, Stellar SDK flows, and browser integration testing",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
@@ -13,17 +14,24 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
+    "@galaxy-kj/core-defi-protocols": "5.0.2",
+    "@galaxy-kj/core-stellar-sdk": "5.0.2",
+    "@galaxy-kj/core-wallet": "5.0.0",
+    "@galaxy-kj/core-oracles": "5.0.0",
     "@stellar/stellar-sdk": "^14.6.1",
+    "bignumber.js": "^9.1.2",
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^4.11.0",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
+    "@types/blessed": "^0.1.25",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.3.0",
     "ts-jest": "^29.4.5",
-    "typescript": "^5.0.0",
+    "typescript": "^5.9.3",
     "vite": "^5.4.14"
   }
 }
