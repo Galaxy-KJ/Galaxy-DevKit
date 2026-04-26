@@ -10,6 +10,9 @@ import {
   checkDeviation,
   filterByDeviation,
   validatePrices,
+  validateValidationConfig,
+  validatePriceFrame,
+  OracleValidationError,
 } from '../../src/validation/price-validator.js';
 import { PriceData } from '../../src/types/oracle-types.js';
 
@@ -171,6 +174,56 @@ describe('price-validator', () => {
       const result = validatePrices(prices, { maxStalenessMs: 60000 });
       expect(result.valid.length).toBe(2);
       expect(result.invalid.length).toBe(1);
+    });
+  });
+
+  describe('validateValidationConfig', () => {
+    it('throws a structured validation error on invalid thresholds', () => {
+      expect(() => validateValidationConfig({ minSources: 0 })).toThrow(
+        OracleValidationError
+      );
+      try {
+        validateValidationConfig({ minSources: 0 });
+      } catch (error) {
+        const payload = (error as OracleValidationError).toJSON();
+        expect(payload.code).toBe('INVALID_VALIDATION_CONFIG');
+        expect(payload.details).toEqual({ minSources: 0 });
+      }
+    });
+  });
+
+  describe('validatePriceFrame', () => {
+    it('throws structured stale-price error when stale samples exist', () => {
+      const prices = [
+        createPrice(100, 'source1', 70_000),
+        createPrice(101, 'source2'),
+      ];
+      expect(() =>
+        validatePriceFrame('XLM', prices, {
+          anomalyDetection: { stalePriceMs: 60_000 },
+        })
+      ).toThrow(OracleValidationError);
+    });
+
+    it('throws structured flash-crash error when enabled', () => {
+      const prices = [
+        createPrice(70, 'source1'),
+        createPrice(71, 'source2'),
+      ];
+
+      expect(() =>
+        validatePriceFrame(
+          'XLM',
+          prices,
+          {
+            anomalyDetection: {
+              flashCrashPercent: 10,
+              enforceFlashCrashProtection: true,
+            },
+          },
+          100
+        )
+      ).toThrow(OracleValidationError);
     });
   });
 });

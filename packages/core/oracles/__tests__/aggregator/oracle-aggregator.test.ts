@@ -12,6 +12,7 @@ import {
 } from '../../src/types/oracle-types.js';
 import { MedianStrategy } from '../../src/aggregator/strategies/MedianStrategy.js';
 import { WeightedAverageStrategy } from '../../src/aggregator/strategies/WeightedAverageStrategy.js';
+import { OracleValidationError } from '../../src/validation/price-validator.js';
 
 // Mock oracle source implementation
 class MockOracleSource implements IOracleSource {
@@ -294,6 +295,12 @@ describe('OracleAggregator', () => {
       aggregator.updateConfig({ minSources: 3 });
       const config = aggregator.getConfig();
       expect(config.minSources).toBe(3);
+    });
+
+    it('should throw structured validation error for invalid config', () => {
+      expect(() => aggregator.updateConfig({ minSources: 0 })).toThrow(
+        OracleValidationError
+      );
     });
   });
 

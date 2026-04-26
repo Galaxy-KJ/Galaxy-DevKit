@@ -179,6 +179,89 @@ h1 {
   background: #f7d9d1;
 }
 
+.tx-history-subtitle {
+  margin: 0 0 0.75rem;
+  color: #52615d;
+  font-size: 0.92rem;
+}
+
+.tx-history-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.tx-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.tx-history-item,
+.tx-history-empty {
+  border: 1px solid rgba(22, 33, 31, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 0.75rem;
+}
+
+.tx-history-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tx-status-pill {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0.22rem 0.56rem;
+}
+
+.tx-status-pending {
+  background: #f4e5c6;
+  color: #5f4303;
+}
+
+.tx-status-success {
+  background: #d8efe3;
+  color: #185b39;
+}
+
+.tx-status-failed {
+  background: #f7d9d1;
+  color: #8b2c19;
+}
+
+.tx-history-time {
+  color: #52615d;
+  font-size: 0.78rem;
+}
+
+.tx-history-summary {
+  margin: 0.45rem 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.tx-history-error {
+  color: #8b2c19;
+  margin: 0.45rem 0;
+}
+
+.tx-history-item a {
+  color: #124b95;
+  font-size: 0.86rem;
+}
+
+.tx-history-item button {
+  margin-top: 0.65rem;
+}
+
 @media (max-width: 760px) {
   .topbar,
   .workspace {

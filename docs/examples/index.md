@@ -64,6 +64,7 @@ galaxy dev
 - **Aggregator Setup** - Basic aggregator configuration
 - **Custom Sources** - Implementing custom oracle sources
 - **Aggregation Strategies** - Using median, weighted average, and TWAP
+- **Anomaly Detection** - Flash-crash and source-disagreement threshold tuning
 
 ### NFT Marketplaces
 - **NFT Minting** - Create and deploy NFTs

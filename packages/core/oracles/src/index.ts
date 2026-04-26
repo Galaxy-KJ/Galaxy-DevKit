@@ -25,6 +25,7 @@ export { PriceCache } from './cache/price-cache.js';
 
 // Validation
 export * from './validation/price-validator.js';
+export * from './validation/anomaly-detector.js';
 
 // Utils
 export * from './utils/outlier-detection.js';
