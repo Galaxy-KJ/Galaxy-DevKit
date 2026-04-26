@@ -29,6 +29,7 @@ interface DexAggregatorDependencies {
 
 export class DexAggregatorService {
   private readonly soroswapConfig: ProtocolConfig;
+  private readonly sdexConfig: ProtocolConfig;
   private readonly fetchImpl: typeof fetch;
   private readonly horizonServer: HorizonServerLike;
   private readonly protocolFactory: AggregatorProtocolFactory;
@@ -37,6 +38,11 @@ export class DexAggregatorService {
     this.soroswapConfig = {
       ...config,
       protocolId: 'soroswap',
+    };
+    this.sdexConfig = {
+      ...config,
+      protocolId: 'sdex',
+      name: 'Stellar DEX',
     };
     this.fetchImpl = dependencies.fetchImpl ?? fetch;
     this.horizonServer =
@@ -174,45 +180,21 @@ export class DexAggregatorService {
     assetOut: Asset,
     amountIn: string
   ): Promise<AggregatorRoute> {
-    const base = this.horizonServer.serverURL;
-    const baseUrl = typeof base === 'string' ? base : base?.toString?.() ?? this.soroswapConfig.network.horizonUrl;
-    const assetInParams = this.toHorizonAssetParams(this.toStellarAsset(assetIn), 'source');
-    const assetOutParams = this.toHorizonAssetParams(this.toStellarAsset(assetOut), 'destination');
+    const protocol = this.protocolFactory.createProtocol(this.sdexConfig);
+    await protocol.initialize();
 
-    const query = new URLSearchParams({
-      ...assetInParams,
-      source_amount: amountIn,
-      ...assetOutParams,
-      limit: '10',
-    });
-
-    const response = await this.fetchImpl(
-      `${baseUrl.replace(/\/$/, '')}/paths/strict-send?${query.toString()}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`SDEX quote failed with ${response.status} ${response.statusText}`);
+    if (typeof protocol.getSwapQuote !== 'function') {
+      throw new Error('SDEX protocol does not implement getSwapQuote');
     }
 
-    const payload = await response.json();
-    const records: Array<Record<string, any>> = payload._embedded?.records ?? payload.records ?? [];
-
-    if (records.length === 0) {
-      throw new Error('SDEX did not return a viable path');
-    }
-
-    const bestRecord = records.reduce((best, current) =>
-      this.compareAmount(current.destination_amount, best.destination_amount) > 0 ? current : best
-    );
+    const quote = await protocol.getSwapQuote(assetIn, assetOut, amountIn);
 
     return {
       venue: 'sdex',
       amountIn,
-      amountOut: bestRecord.destination_amount,
-      priceImpact: 0,
-      path: (bestRecord.path ?? []).map((hop: Record<string, string>) =>
-        hop.asset_type === 'native' ? 'native' : `${hop.asset_code}:${hop.asset_issuer}`
-      ),
+      amountOut: quote.amountOut,
+      priceImpact: this.toNumber(quote.priceImpact),
+      path: quote.path ?? [],
     };
   }
 
@@ -287,29 +269,6 @@ export class DexAggregatorService {
       (splits[0] / totalWeight) * 100,
       (splits[1] / totalWeight) * 100,
     ];
-  }
-
-  private toStellarAsset(asset: Asset): StellarAsset {
-    if (asset.type === 'native') {
-      return StellarAsset.native();
-    }
-
-    return new StellarAsset(asset.code, asset.issuer!);
-  }
-
-  private toHorizonAssetParams(
-    asset: StellarAsset,
-    prefix: 'source' | 'destination'
-  ): Record<string, string> {
-    if (asset.isNative()) {
-      return { [`${prefix}_asset_type`]: 'native' };
-    }
-
-    return {
-      [`${prefix}_asset_type`]: 'credit_alphanum4',
-      [`${prefix}_asset_code`]: asset.getCode(),
-      [`${prefix}_asset_issuer`]: asset.getIssuer(),
-    };
   }
 
   private validateAsset(asset: Asset): void {

@@ -38,38 +38,38 @@ describe('DexAggregatorService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    protocolFactory.createProtocol.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
-      getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
-        tokenIn: XLM,
-        tokenOut: USDC,
-        amountIn,
-        amountOut: amountIn === '100' ? '95.0000000' : '8.0000000',
-        priceImpact: '0.5',
-        minimumReceived: '0',
-        path: ['native', 'USDC:GA5Z...'],
-        validUntil: new Date(),
-      })),
-    });
-
-    fetchImpl.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      const amount = new URL(url).searchParams.get('source_amount');
-      const destinationAmount = amount === '100' ? '93.5000000' : '84.0000000';
-
-      return {
-        ok: true,
-        json: async () => ({
-          _embedded: {
-            records: [
-              {
-                destination_amount: destinationAmount,
-                path: [],
-              },
-            ],
-          },
-        }),
-      } as Response;
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: amountIn === '100' ? '95.0000000' : '8.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: ['native', 'USDC:GA5Z...'],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: amountIn === '100' ? '93.5000000' : '84.0000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      return null;
     });
   });
 
@@ -89,33 +89,39 @@ describe('DexAggregatorService', () => {
   });
 
   it('returns a split quote with both route legs and savings against the best single venue', async () => {
-    protocolFactory.createProtocol.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
-      getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
-        tokenIn: XLM,
-        tokenOut: USDC,
-        amountIn,
-        amountOut: amountIn === '60.0000000' ? '61.0000000' : '95.0000000',
-        priceImpact: '0.5',
-        minimumReceived: '0',
-        path: ['native', 'USDC:GA5Z...'],
-        validUntil: new Date(),
-      })),
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: amountIn === '60.0000000' ? '61.0000000' : '95.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: ['native', 'USDC:GA5Z...'],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: '41.5000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      return null;
     });
-
-    fetchImpl.mockImplementation(async () => ({
-      ok: true,
-      json: async () => ({
-        _embedded: {
-          records: [
-            {
-              destination_amount: '41.5000000',
-              path: [],
-            },
-          ],
-        },
-      }),
-    }));
 
     const aggregator = new DexAggregatorService(config, {
       fetchImpl,
@@ -132,43 +138,43 @@ describe('DexAggregatorService', () => {
   });
 
   it('allows getBestQuote to recommend a better split automatically', async () => {
-    protocolFactory.createProtocol.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
-      getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
-        tokenIn: XLM,
-        tokenOut: USDC,
-        amountIn,
-        amountOut:
-          amountIn === '100'
-            ? '95.0000000'
-            : amountIn === '40.0000000'
-              ? '45.0000000'
-              : '8.0000000',
-        priceImpact: '0.5',
-        minimumReceived: '0',
-        path: ['native', 'USDC:GA5Z...'],
-        validUntil: new Date(),
-      })),
-    });
-
-    fetchImpl.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      const amount = new URL(url).searchParams.get('source_amount');
-      const destinationAmount = amount === '60.0000000' ? '57.0000000' : '93.5000000';
-
-      return {
-        ok: true,
-        json: async () => ({
-          _embedded: {
-            records: [
-              {
-                destination_amount: destinationAmount,
-                path: [],
-              },
-            ],
-          },
-        }),
-      } as Response;
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut:
+              amountIn === '100'
+                ? '95.0000000'
+                : amountIn === '40.0000000'
+                  ? '45.0000000'
+                  : '8.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: ['native', 'USDC:GA5Z...'],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: amountIn === '60.0000000' ? '57.0000000' : '93.5000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      return null;
     });
 
     const aggregator = new DexAggregatorService(config, {
@@ -197,19 +203,21 @@ describe('DexAggregatorService', () => {
   });
 
   it('throws when no venue can produce a quote', async () => {
-    protocolFactory.createProtocol.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
-      getSwapQuote: jest.fn().mockRejectedValue(new Error('No Soroswap pool')),
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('No Soroswap pool')),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX did not return a viable path')),
+        };
+      }
+      return null;
     });
-
-    fetchImpl.mockImplementation(async () => ({
-      ok: true,
-      json: async () => ({
-        _embedded: {
-          records: [],
-        },
-      }),
-    }));
 
     const aggregator = new DexAggregatorService(config, {
       fetchImpl,
@@ -223,7 +231,30 @@ describe('DexAggregatorService', () => {
   });
 
   it('returns the surviving venue when the other venue fails during best-quote discovery', async () => {
-    fetchImpl.mockRejectedValue(new Error('SDEX unavailable'));
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn, _assetOut, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: amountIn === '100' ? '95.0000000' : '8.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: ['native', 'USDC:GA5Z...'],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX unavailable')),
+        };
+      }
+      return null;
+    });
 
     const aggregator = new DexAggregatorService(config, {
       fetchImpl,
@@ -309,10 +340,20 @@ describe('DexAggregatorService', () => {
   });
 
   it('throws when SDEX returns a non-success response', async () => {
-    fetchImpl.mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({ amountOut: '0' }),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX quote failed with 503 Service Unavailable')),
+        };
+      }
+      return null;
     });
 
     const aggregator = new DexAggregatorService(config, {
@@ -327,9 +368,14 @@ describe('DexAggregatorService', () => {
   });
 
   it('throws when SDEX returns no viable paths for the requested split', async () => {
-    fetchImpl.mockResolvedValue({
-      ok: true,
-      json: async () => ({ records: [] }),
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX did not return a viable path')),
+        };
+      }
+      return null;
     });
 
     const aggregator = new DexAggregatorService(config, {
@@ -344,36 +390,38 @@ describe('DexAggregatorService', () => {
   });
 
   it('maps non-native SDEX hops and normalizes priceImpact fallbacks', async () => {
-    protocolFactory.createProtocol.mockReturnValue({
-      initialize: jest.fn().mockResolvedValue(undefined),
-      getSwapQuote: jest.fn().mockResolvedValue({
-        tokenIn: XLM,
-        tokenOut: USDC,
-        amountIn: '100',
-        amountOut: '94.0000000',
-        priceImpact: 'not-a-number',
-        minimumReceived: '0',
-        path: [],
-        validUntil: new Date(),
-      }),
-    });
-
-    fetchImpl.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        records: [
-          {
-            destination_amount: '96.0000000',
-            path: [
-              {
-                asset_type: 'credit_alphanum4',
-                asset_code: 'AQUA',
-                asset_issuer: 'GAQUA',
-              },
-            ],
-          },
-        ],
-      }),
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '94.0000000',
+            priceImpact: 'not-a-number',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '96.0000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: ['AQUA:GAQUA'],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      return null;
     });
 
     const aggregator = new DexAggregatorService(config, {
@@ -390,14 +438,23 @@ describe('DexAggregatorService', () => {
   });
 
   it('picks the best SDEX record when multiple paths are returned', async () => {
-    fetchImpl.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        records: [
-          { destination_amount: '92.0000000', path: [] },
-          { destination_amount: '97.0000000', path: [] },
-        ],
-      }),
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '97.0000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      return null;
     });
 
     const aggregator = new DexAggregatorService(config, {
@@ -413,35 +470,32 @@ describe('DexAggregatorService', () => {
   });
 
   it('handles numeric and undefined Soroswap price impacts', async () => {
-    protocolFactory.createProtocol
-      .mockReturnValueOnce({
+    let callCount = 0;
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX unavailable')),
+        };
+      }
+      
+      callCount++;
+      const impact = callCount === 1 ? 1.25 : undefined;
+      
+      return {
         initialize: jest.fn().mockResolvedValue(undefined),
         getSwapQuote: jest.fn().mockResolvedValue({
           tokenIn: XLM,
           tokenOut: USDC,
           amountIn: '100',
           amountOut: '99.0000000',
-          priceImpact: 1.25,
+          priceImpact: impact,
           minimumReceived: '0',
           path: [],
           validUntil: new Date(),
         }),
-      })
-      .mockReturnValueOnce({
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getSwapQuote: jest.fn().mockResolvedValue({
-          tokenIn: XLM,
-          tokenOut: USDC,
-          amountIn: '100',
-          amountOut: '99.0000000',
-          priceImpact: undefined,
-          minimumReceived: '0',
-          path: [],
-          validUntil: new Date(),
-        }),
-      });
-
-    fetchImpl.mockRejectedValue(new Error('SDEX unavailable'));
+      };
+    });
 
     const aggregator = new DexAggregatorService(config, {
       fetchImpl,
