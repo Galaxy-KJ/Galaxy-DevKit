@@ -20,7 +20,6 @@
 ### The Problem We Solve
 
 Integrating Stellar into your application is complex:
-
 - Managing private keys and wallets is complicated and risky
 - Each DeFi protocol has its own interface and logic
 - Setting up transactions requires deep blockchain knowledge
@@ -47,36 +46,28 @@ Galaxy DevKit abstracts all this complexity:
 ## 💡 Use Cases
 
 ### 🏦 Financial Applications
-
 Add DeFi capabilities to your fintech or payment apps:
-
 - Automated lending and borrowing
 - Asset swapping
 - Cross-border payments
 - Staking and yield generation
 
 ### 🎮 Gaming & NFTs
-
 Integrate blockchain economy into your game or platform:
-
 - Frictionless user wallets
 - In-game asset trading
 - Automated crypto rewards
 - NFT marketplaces
 
 ### 📱 Mobile & Web Apps
-
 Add Web3 capabilities to your existing application:
-
 - Wallet-based authentication (passwordless)
 - Peer-to-peer payments
 - Crypto subscriptions
 - Tokenized loyalty programs
 
 ### 🤖 DeFi Automation
-
 Create automated investment strategies:
-
 - Automatic portfolio rebalancing
 - Condition-based trading (price, volume)
 - Automated yield farming
@@ -87,35 +78,27 @@ Create automated investment strategies:
 ## 🚀 What's Included
 
 ### 🔐 Invisible Wallet System
-
 Secure wallets without user complexity:
-
 - No need to handle private keys directly
 - Secure encryption and storage
 - Mnemonic phrase recovery
 - Multi-device management
 
 ### 💰 Integrated DeFi Protocols
-
 Unified access to major Stellar protocols:
-
 - **Blend Protocol** - Lending and borrowing _(Coming Soon)_
-- **Soroswap** - Decentralized exchange _(Coming Soon)_
+- **Soroswap** - Decentralized exchange (Available)
 - **Base Infrastructure** - Ready for new protocol implementations
 
 ### 🤖 Automation Engine
-
 Automate DeFi operations without complex code:
-
-- Time-based triggers
+- Time-based triggers 
 - Price and volume conditions
 - Complex logic (AND/OR)
 - Swaps, payments, and contract calls
 
 ### 📊 Multiple API Options
-
 Choose your preferred interface:
-
 - **REST API** - Traditional HTTP endpoints
 - **GraphQL API** - Flexible queries and subscriptions
 - **WebSocket API** - Real-time updates
@@ -130,7 +113,7 @@ Choose your preferred interface:
 npm install @galaxy-kj/core-defi-protocols @galaxy-kj/core-invisible-wallet
 ```
 
-📖 **[5-minute quickstart](docs/quickstart.md)** and **[end-to-end getting started guide](docs/getting-started.md)** - From install to first smart wallet transaction
+📖 **[Full Installation Guide](./INSTALLATION.md)** - Detailed setup instructions
 
 ---
 
@@ -142,14 +125,14 @@ import { WalletManager } from '@galaxy-kj/core-invisible-wallet';
 // Create a wallet for your user
 const wallet = await WalletManager.createWallet({
   userId: 'user123',
-  encrypted: true, // Automatic encryption
+  encrypted: true  // Automatic encryption
 });
 
 // Send a payment
 await wallet.sendPayment({
   destination: 'GDESTINATION...',
   amount: '100',
-  asset: 'USDC',
+  asset: 'USDC'
 });
 ```
 
@@ -162,7 +145,7 @@ import { getProtocolFactory } from '@galaxy-kj/core-defi-protocols';
 const factory = getProtocolFactory();
 const protocol = factory.createProtocol({
   protocolId: 'blend',
-  network: 'testnet',
+  network: 'testnet'
 });
 
 // Get protocol statistics
@@ -170,8 +153,8 @@ const stats = await protocol.getStats();
 console.log('Total Value Locked:', stats.tvl);
 
 // Perform operations
-await protocol.supply('USDC', '1000'); // Deposit USDC
-await protocol.borrow('XLM', '500'); // Borrow XLM
+await protocol.supply('USDC', '1000');  // Deposit USDC
+await protocol.borrow('XLM', '500');    // Borrow XLM
 ```
 
 ### Example: Automation
@@ -188,14 +171,14 @@ automation.createRule({
     type: 'price',
     asset: 'XLM',
     condition: 'above',
-    value: 0.15,
+    value: 0.15
   },
   action: {
     type: 'swap',
     from: 'XLM',
     to: 'USDC',
-    amount: '100',
-  },
+    amount: '100'
+  }
 });
 ```
 
@@ -210,34 +193,23 @@ Galaxy DevKit includes the following ready-to-use packages:
 - **`@galaxy-kj/core-automation`** - Automation engine for DeFi operations
 - **`@galaxy-kj/core-stellar-sdk`** - Simplified wrapper for Stellar SDK
 
-For more information, see the [complete documentation](docs/index.md).
+For more information, see the [complete documentation](docs/README.md).
 
 ---
 
 ## 📚 Documentation
 
 ### Getting Started
-
-- [Quick Start Guide](docs/quickstart.md) - Get started in 5 minutes
-- [Getting Started](docs/getting-started.md) - End-to-end smart wallet setup and first transaction
+- [Quick Start Guide](docs/README.md) - Get started in 5 minutes
 - [Code Examples](docs/examples/) - Real-world examples
 
 ### Package Documentation
-
 - [DeFi Protocols](packages/core/defi-protocols/README.md) - DeFi integration guide
 - [Invisible Wallet](packages/core/invisible-wallet/README.md) - Wallet management
 - [Automation](packages/core/automation/README.md) - Automation engine
 
 ### Additional Resources
-
 - [System Architecture](docs/ARCHITECTURE.md) - Design and patterns
-- [Architecture Overview](docs/architecture/architecture.md) - Current wallet, session key, and DeFi flow diagrams
-- [Smart Wallet Auth Flow](docs/architecture/smart-wallet-auth-flow.md) - WebAuthn and Soroban auth sequence
-- [Session Key Flow](docs/architecture/session-key-flow.md) - Session signer lifecycle
-- [Frontend Playground](packages/frontend/README.md) - Vite browser playground for SDK testing
-- [DeFi Aggregation Flow](docs/architecture/defi-aggregation-flow.md) - Quote routing and execution path
-- [Smart Wallet Contract Guide](docs/contracts/smart-wallet-contract.md) - Factory and wallet contract reference
-- [Contract Deployment Guide](docs/contracts/deployment.md) - Soroban build and testnet deploy guide
 - [Roadmap](docs/ROADMAP.md) - Development phases and progress
 - [GitHub Issues](https://github.com/galaxy-devkit/galaxy-devkit/issues) - Report bugs or request features
 
@@ -246,27 +218,23 @@ For more information, see the [complete documentation](docs/index.md).
 ## 🛣️ Roadmap
 
 ### ✅ Phase 1: Foundation (Completed)
-
 - Invisible wallet system
 - Base architecture for DeFi protocols
 - Automation engine
 - APIs and testing infrastructure
 
 ### 🚧 Phase 2: DeFi Integration (In Progress)
-
 - Blend Protocol integration (lending/borrowing)
 - Soroswap integration (DEX)
 - DEX aggregator
 - Oracle system
 
 ### 📋 Phase 3: Advanced Features
-
 - Automated yield strategies
 - Analytics dashboard
 - Advanced risk management
 
 ### 📋 Phase 4: Enterprise
-
 - Multi-signature wallets
 - Team accounts
 - Complete audit logging
