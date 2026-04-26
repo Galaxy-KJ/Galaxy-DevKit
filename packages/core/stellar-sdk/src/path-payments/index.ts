@@ -19,5 +19,6 @@ export type {
   SwapAnalyticsRecord,
   PathAnalytics,
   PathCacheEntry,
+  PathPaymentManagerOptions,
 } from './types.js';
 export { HIGH_PRICE_IMPACT_THRESHOLD } from './types.js';

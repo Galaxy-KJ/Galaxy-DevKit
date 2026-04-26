@@ -18,6 +18,30 @@ function usdcAsset() {
   return new Asset('USDC', TEST_ISSUER);
 }
 
+function strictSendRecord(destinationAmount: string, sourceAmount = '100.0000000') {
+  return {
+    source_asset_type: 'native',
+    source_amount: sourceAmount,
+    destination_asset_type: 'credit_alphanum4',
+    destination_asset_code: 'USDC',
+    destination_asset_issuer: TEST_ISSUER,
+    destination_amount: destinationAmount,
+    path: [],
+  };
+}
+
+function strictReceiveRecord(sourceAmount: string, destinationAmount = '100.0000000') {
+  return {
+    source_asset_type: 'native',
+    source_amount: sourceAmount,
+    destination_asset_type: 'credit_alphanum4',
+    destination_asset_code: 'USDC',
+    destination_asset_issuer: TEST_ISSUER,
+    destination_amount: destinationAmount,
+    path: [],
+  };
+}
+
 jest.mock('../utils/encryption.utils', () => ({
   decryptPrivateKey: jest.fn(() => Promise.resolve(Buffer.from(TEST_KEYPAIR.secret()))),
   decryptPrivateKeyToString: jest.fn(() => Promise.resolve(TEST_KEYPAIR.secret())),
@@ -51,6 +75,7 @@ describe('PathPaymentManager', () => {
   const networkPassphrase = 'Test SDF Network ; September 2015';
 
   beforeEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
     manager = new PathPaymentManager(mockServer, networkPassphrase, {
       pathCacheTtlMs: 0,
@@ -139,6 +164,76 @@ describe('PathPaymentManager', () => {
       });
 
       expect(paths).toEqual([]);
+    });
+
+    it('reuses cached paths within TTL', async () => {
+      manager = new PathPaymentManager(mockServer, networkPassphrase, {
+        pathCacheTtlMs: 60_000,
+      });
+
+      (global as any).fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          _embedded: {
+            records: [strictSendRecord('95.0000000')],
+          },
+        }),
+      });
+
+      const first = await manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: usdcAsset(),
+        amount: '100.0000000',
+        type: 'strict_send',
+      });
+      const second = await manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: usdcAsset(),
+        amount: '100.0000000',
+        type: 'strict_send',
+      });
+
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+      expect((global as any).fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('deduplicates concurrent path requests for the same cache key', async () => {
+      let resolveFetch: ((value: any) => void) | undefined;
+      (global as any).fetch.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          })
+      );
+
+      const requestA = manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: usdcAsset(),
+        amount: '100.0000000',
+        type: 'strict_send',
+      });
+      const requestB = manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: usdcAsset(),
+        amount: '100.0000000',
+        type: 'strict_send',
+      });
+
+      expect((global as any).fetch).toHaveBeenCalledTimes(1);
+
+      resolveFetch?.({
+        ok: true,
+        json: async () => ({
+          _embedded: {
+            records: [strictSendRecord('95.0000000')],
+          },
+        }),
+      });
+
+      const [pathsA, pathsB] = await Promise.all([requestA, requestB]);
+      expect(pathsA[0].destination_amount).toBe('95.0000000');
+      expect(pathsB[0].destination_amount).toBe('95.0000000');
     });
   });
 
@@ -249,6 +344,79 @@ describe('PathPaymentManager', () => {
           type: 'strict_send',
         })
       ).rejects.toThrow('No payment path found');
+    });
+
+    it('adjusts slippage guidance using historical volatility', async () => {
+      const wallet: Wallet = {
+        id: 'w1',
+        publicKey: TEST_KEYPAIR.publicKey(),
+        privateKey: 'encrypted_' + TEST_KEYPAIR.secret(),
+        network: { network: 'testnet', horizonUrl: 'https://horizon-testnet.stellar.org', passphrase: networkPassphrase },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {},
+      };
+
+      (global as any).fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            _embedded: {
+              records: [strictSendRecord('98.0000000')],
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            _embedded: {
+              records: [strictSendRecord('90.0000000')],
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            _embedded: {
+              records: [strictSendRecord('92.0000000')],
+            },
+          }),
+        });
+
+      await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdcAsset(),
+          amount: '100.0000000',
+          type: 'strict_send',
+        },
+        'pass',
+        wallet.publicKey
+      );
+
+      await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdcAsset(),
+          amount: '100.0000000',
+          type: 'strict_send',
+        },
+        'pass',
+        wallet.publicKey
+      );
+
+      const estimate = await manager.estimateSwap({
+        sendAsset: Asset.native(),
+        destAsset: usdcAsset(),
+        amount: '100.0000000',
+        type: 'strict_send',
+      });
+
+      expect(estimate.historicalVolatility).not.toBe('0.00');
+      expect(estimate.volatilityAdjustedSlippage).toBeGreaterThan(1);
+      expect(estimate.suggestedMaxSlippage).toBeGreaterThan(1);
     });
   });
 
@@ -366,6 +534,37 @@ describe('PathPaymentManager', () => {
           wallet.publicKey
         )
       ).rejects.toThrow('No payment path found');
+    });
+
+    it('should execute strict receive swap and return source cost', async () => {
+      (global as any).fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          _embedded: {
+            records: [
+              strictReceiveRecord('105.0000000'),
+            ],
+          },
+        }),
+      });
+
+      const result = await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdcAsset(),
+          amount: '100.0000000',
+          type: 'strict_receive',
+          maxSlippage: 1,
+        },
+        'pass',
+        wallet.publicKey
+      );
+
+      expect(result.inputAmount).toBe('105.0000000');
+      expect(result.outputAmount).toBe('100.0000000');
+      expect(result.slippageApplied).toBe('1.00');
+      expect(mockServer.submitTransaction).toHaveBeenCalled();
     });
   });
 

@@ -81,6 +81,10 @@ export interface SwapEstimate {
   minimumReceived?: string;
   maximumCost?: string;
   highImpact: boolean;
+  /** Historical realized volatility for this asset pair as a percentage */
+  historicalVolatility?: string;
+  /** Slippage used for estimate calculations after volatility adjustment */
+  volatilityAdjustedSlippage?: number;
   /** Suggested max slippage for this path */
   suggestedMaxSlippage?: number;
 }
@@ -132,9 +136,11 @@ export const HIGH_PRICE_IMPACT_THRESHOLD = 5;
 export interface SwapAnalyticsRecord {
   timestamp: Date;
   pathHash: string;
+  pairKey: string;
   pathDepth: number;
   inputAmount: string;
   outputAmount: string;
+  executedPrice: string;
   priceImpact: string;
   success: boolean;
   transactionHash?: string;
@@ -160,5 +166,21 @@ export interface PathAnalytics {
 export interface PathCacheEntry {
   paths: PaymentPath[];
   fetchedAt: number;
+  lastAccessedAt: number;
+  hits: number;
   ttlMs: number;
+}
+
+/**
+ * Path payment manager configuration
+ */
+export interface PathPaymentManagerOptions {
+  /** TTL for cached path responses */
+  pathCacheTtlMs?: number;
+  /** Maximum number of cache entries retained */
+  pathCacheMaxEntries?: number;
+  /** Historical records used for volatility estimation */
+  volatilityLookback?: number;
+  /** Invalidate cached paths after swaps above this notional amount */
+  largeSwapAmountThreshold?: string;
 }
