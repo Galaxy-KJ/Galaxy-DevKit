@@ -83,6 +83,31 @@ galaxy dev
 galaxy deploy
 ```
 
+## 🧩 Interactive Playground Panels
+
+The frontend playground now includes:
+
+- **Blend Panel**: Borrow/repay transaction initiation and real-time health factor monitoring.
+- **Security Limits Panel**: Contract-style limit creation (daily/weekly/monthly/custom), risk profile setup, transaction allow checks, and local transaction record inspection.
+
+### Health Factor Thresholds
+
+- Green: `healthFactor > 1.5`
+- Yellow: `healthFactor > 1.2`
+- Red: `healthFactor < 1.2`
+
+### Blend Panel Inputs
+
+- Signer public key (`G...`)
+- Optional JWT for authenticated API endpoints
+- Asset + amount for borrow/repay
+
+### Security Limits Inputs
+
+- Owner address (`G...` or `C...`)
+- Limit type dropdown (`Daily`, `Weekly`, `Monthly`, `PerTransaction`, `PerHour`, `Custom`)
+- Risk profile configuration (allowed and blacklisted assets)
+
 ## 🌐 Using APIs
 
 ### REST API
