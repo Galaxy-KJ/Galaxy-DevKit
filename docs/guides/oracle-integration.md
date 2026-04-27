@@ -50,6 +50,14 @@ const aggregator = new OracleAggregator(
     maxStalenessMs: 60_000,  // reject prices older than 60 s
     enableOutlierDetection: true,
     outlierThreshold: 2.0,   // Z-score threshold
+    anomalyDetection: {
+      stalePriceMs: 60_000,
+      outlierStdDevMultiplier: 2,
+      flashCrashPercent: 20,
+      sourceDisagreementPercent: 10,
+      enforceFlashCrashProtection: true,
+      enforceSourceDisagreement: false,
+    },
   },
   { ttlMs: 30_000 }          // cache TTL
 );
@@ -377,6 +385,9 @@ AUTOMATION_SIGNER_SECRET=S... DESTINATION_ADDRESS=G... npx ts-node e2e-oracle-sw
 | `maxStalenessMs` | `number` | `60000` | Reject cached entries older than this |
 | `enableOutlierDetection` | `boolean` | `true` | Filter statistical outliers via Z-score |
 | `outlierThreshold` | `number` | `2.0` | Z-score threshold for outlier removal |
+| `anomalyDetection.stalePriceMs` | `number` | `60000` | Stale price threshold for frame validation |
+| `anomalyDetection.flashCrashPercent` | `number` | `25` | Max drop allowed vs previous aggregated price |
+| `anomalyDetection.sourceDisagreementPercent` | `number` | `15` | Max spread allowed across active sources |
 
 ### AutomationService options
 

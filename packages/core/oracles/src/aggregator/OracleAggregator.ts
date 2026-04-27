@@ -12,6 +12,7 @@ import {
   AggregatedPrice,
   PriceSource,
   AggregationConfig,
+  AggregationConfigOverrides,
   CacheConfig,
   CircuitBreakerState,
   CircuitBreakerConfig,
@@ -23,6 +24,10 @@ import {
   validatePrices,
   requireMinimumSources,
   filterByDeviation,
+  validatePriceFrame,
+  validateValidationConfig,
+  OracleValidationError,
+  DEFAULT_ANOMALY_CONFIG,
 } from '../validation/price-validator.js';
 import { filterOutliers, OutlierMethod } from '../utils/outlier-detection.js';
 import { retryWithBackoff } from '../utils/retry-utils.js';
@@ -36,6 +41,7 @@ const DEFAULT_AGGREGATION_CONFIG: AggregationConfig = {
   maxStalenessMs: 60000,
   enableOutlierDetection: true,
   outlierThreshold: 2.0,
+  anomalyDetection: DEFAULT_ANOMALY_CONFIG,
 };
 
 /**
@@ -79,7 +85,7 @@ export class OracleAggregator {
    * @param {Partial<CircuitBreakerConfig>} circuitBreakerConfig - Circuit breaker configuration
    */
   constructor(
-    config: Partial<AggregationConfig> = {},
+    config: AggregationConfigOverrides = {},
     cacheConfig: Partial<CacheConfig> = {},
     circuitBreakerConfig: Partial<CircuitBreakerConfig> = {}
   ) {
@@ -87,7 +93,14 @@ export class OracleAggregator {
     this.sourceWeights = new Map();
     this.sourceHealth = new Map();
     this.circuitBreakers = new Map();
-    this.config = { ...DEFAULT_AGGREGATION_CONFIG, ...config };
+    this.config = validateValidationConfig({
+      ...DEFAULT_AGGREGATION_CONFIG,
+      ...config,
+      anomalyDetection: {
+        ...DEFAULT_AGGREGATION_CONFIG.anomalyDetection,
+        ...(config.anomalyDetection ?? {}),
+      },
+    });
     this.circuitBreakerConfig = {
       ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
       ...circuitBreakerConfig,
@@ -375,10 +388,20 @@ export class OracleAggregator {
       if (cached) {
         return cached;
       }
-      throw new Error(
-        `Insufficient sources: got ${prices.length}, required ${this.config.minSources}`
-      );
+      throw new OracleValidationError({
+        code: 'INSUFFICIENT_SOURCES',
+        symbol,
+        message: `Insufficient sources: got ${prices.length}, required ${this.config.minSources}`,
+        details: { currentSources: prices.length, minSources: this.config.minSources },
+      });
     }
+
+    const anomalyReport = validatePriceFrame(
+      symbol,
+      prices,
+      this.config,
+      cached?.price ?? null
+    );
 
     // Filter by deviation if needed
     if (this.config.maxDeviationPercent > 0) {
@@ -404,9 +427,16 @@ export class OracleAggregator {
       if (cached) {
         return cached;
       }
-      throw new Error(
-        `Insufficient sources after filtering: got ${prices.length}, required ${this.config.minSources}`
-      );
+      throw new OracleValidationError({
+        code: 'INSUFFICIENT_SOURCES',
+        symbol,
+        message: `Insufficient sources after filtering: got ${prices.length}, required ${this.config.minSources}`,
+        details: {
+          currentSources: prices.length,
+          minSources: this.config.minSources,
+          outliersFiltered: outliers.map((o) => o.source),
+        },
+      });
     }
 
     // Aggregate prices
@@ -430,6 +460,14 @@ export class OracleAggregator {
       sourcesUsed: prices.map((p) => p.source),
       outliersFiltered: outliers.map((o) => o.source),
       sourceCount: prices.length,
+      metadata: {
+        anomalies: {
+          stale: anomalyReport.stale,
+          outliers: anomalyReport.outliers,
+          flashCrash: anomalyReport.flashCrash,
+          sourceDisagreement: anomalyReport.sourceDisagreement,
+        },
+      },
     };
 
     // Cache the aggregated price
@@ -493,10 +531,17 @@ export class OracleAggregator {
 
   /**
    * Update aggregation configuration
-   * @param {Partial<AggregationConfig>} config - Partial configuration to update
+   * @param {AggregationConfigOverrides} config - Partial configuration to update
    */
-  updateConfig(config: Partial<AggregationConfig>): void {
-    this.config = { ...this.config, ...config };
+  updateConfig(config: AggregationConfigOverrides): void {
+    this.config = validateValidationConfig({
+      ...this.config,
+      ...config,
+      anomalyDetection: {
+        ...this.config.anomalyDetection,
+        ...(config.anomalyDetection ?? {}),
+      },
+    });
   }
 
   /**

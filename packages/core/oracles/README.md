@@ -20,6 +20,7 @@
 - ✅ **Source Health Monitoring** - Circuit breaker pattern for failing sources
 - ✅ **Caching Layer** - In-memory cache with TTL to reduce API calls
 - ✅ **Validation** - Multiple validation layers (staleness, deviation, minimum sources)
+- ✅ **Anomaly Detection** - Stale feeds, flash-crash protection, >2 std-dev outliers, and source disagreement alerts
 - ✅ **Graceful Degradation** - Continues working even when some sources fail
 - ✅ **Type Safety** - Full TypeScript support with comprehensive types
 - ✅ **Extensible** - Easy to add custom oracle sources
@@ -392,6 +393,14 @@ const aggregator = new OracleAggregator({
   maxStalenessMs: 30000, // 30 seconds max age
   enableOutlierDetection: true,
   outlierThreshold: 2.5, // Stricter outlier detection
+  anomalyDetection: {
+    stalePriceMs: 30000,
+    outlierStdDevMultiplier: 2,
+    flashCrashPercent: 20,
+    sourceDisagreementPercent: 10,
+    enforceFlashCrashProtection: true,
+    enforceSourceDisagreement: false,
+  },
 });
 ```
 
@@ -406,6 +415,15 @@ try {
 } catch (error) {
   // Fallback logic (e.g., use cached price, use single source, etc.)
   console.error('Aggregation failed:', error);
+}
+```
+
+Validation failures are returned as structured `OracleValidationError` payloads:
+
+```typescript
+if (error instanceof OracleValidationError) {
+  console.error(error.toJSON());
+  // { code, message, symbol, details }
 }
 ```
 
