@@ -27,6 +27,14 @@ jest.mock('../panels/wallet-signers', () => ({
   WalletSignersPanel: jest.fn().mockImplementation(() => undefined),
 }));
 
+jest.mock('../panels/blend', () => ({
+  BlendPanel: jest.fn().mockImplementation(() => undefined),
+}));
+
+jest.mock('../panels/security-limits', () => ({
+  SecurityLimitsPanel: jest.fn().mockImplementation(() => undefined),
+}));
+
 describe('playground app', () => {
   it('reports that the Stellar SDK workspace import is usable', () => {
     expect(getPlaygroundStatus()).toEqual({
@@ -47,5 +55,7 @@ describe('playground app', () => {
     expect(root.textContent).toContain('GPLAYGROUNDTESTACCOUNT');
     expect(document.getElementById('wallet-create-panel')).not.toBeNull();
     expect(document.getElementById('wallet-signers-panel')).not.toBeNull();
+    expect(document.getElementById('blend-panel')).not.toBeNull();
+    expect(document.getElementById('security-limits-panel')).not.toBeNull();
   });
 });

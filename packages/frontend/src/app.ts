@@ -8,6 +8,10 @@ import { WalletTxPanel } from './panels/wallet-tx';
 import { TxHistoryPanel } from './panels/tx-history';
 import { TxTrackerService } from './services/tx-tracker';
 import { TxBuilderClient } from './services/tx-builder.client';
+import { BlendPanel } from './panels/blend';
+import { BlendClient } from './services/blend.client';
+import { SecurityLimitsPanel } from './panels/security-limits';
+import { SecurityLimitsClient } from './services/security-limits.client';
 
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
@@ -120,6 +124,12 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
             <li class="sidebar__nav-item">
               <a href="#tx-history" class="sidebar__nav-link" data-panel="wallet-tx-history-panel">Tx History</a>
             </li>
+            <li class="sidebar__nav-item">
+              <a href="#blend" class="sidebar__nav-link" data-panel="blend-panel">Blend</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#security-limits" class="sidebar__nav-link" data-panel="security-limits-panel">Security Limits</a>
+            </li>
           </ul>
         </nav>
 
@@ -129,6 +139,8 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <div id="wallet-session-panel" class="panel" hidden></div>
           <div id="wallet-tx-panel" class="panel" hidden></div>
           <div id="wallet-tx-history-panel" class="panel" hidden></div>
+          <div id="blend-panel" class="panel" hidden></div>
+          <div id="security-limits-panel" class="panel" hidden></div>
         </main>
       </div>
     </section>
@@ -147,6 +159,8 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
     document.getElementById('wallet-tx-history-panel')!,
     txTracker
   );
+  new BlendPanel('blend-panel', new BlendClient());
+  new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
 
   bindNav();
   bindHamburger();
