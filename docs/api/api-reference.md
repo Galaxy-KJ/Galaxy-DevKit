@@ -105,6 +105,12 @@ Build an unsigned Soroswap swap transaction and return the XDR for client-side s
 
 ## DeFi — Blend (lending)
 
+The frontend Blend playground panel computes a live health factor from collateral and debt values:
+
+- Green when `healthFactor > 1.5`
+- Yellow when `healthFactor > 1.2`
+- Red when `healthFactor < 1.2`
+
 ### GET /api/v1/defi/blend/position/:publicKey
 
 Get the Blend lending position for a Stellar public key. No authentication required.
