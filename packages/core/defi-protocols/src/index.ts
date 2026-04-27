@@ -21,6 +21,7 @@ export * from './aggregator/types.js';
 // Protocol Implementations
 export * from './protocols/blend/index.js';
 export * from './protocols/soroswap/index.js';
+export * from './protocols/sdex/index.js';
 
 // Services
 export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory.js';

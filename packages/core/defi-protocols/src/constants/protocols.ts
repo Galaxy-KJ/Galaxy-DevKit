@@ -12,7 +12,8 @@
 export const PROTOCOL_IDS = {
   BLEND: 'blend',
   SOROSWAP: 'soroswap',
-  AQUARIUS: 'aquarius'
+  AQUARIUS: 'aquarius',
+  SDEX: 'sdex'
 } as const;
 
 /**
@@ -21,7 +22,8 @@ export const PROTOCOL_IDS = {
 export const PROTOCOL_NAMES = {
   [PROTOCOL_IDS.BLEND]: 'Blend Protocol',
   [PROTOCOL_IDS.SOROSWAP]: 'Soroswap',
-  [PROTOCOL_IDS.AQUARIUS]: 'Aquarius'
+  [PROTOCOL_IDS.AQUARIUS]: 'Aquarius',
+  [PROTOCOL_IDS.SDEX]: 'Stellar DEX'
 } as const;
 
 /**
