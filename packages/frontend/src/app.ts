@@ -250,7 +250,7 @@ function mountSessionPanel(container: HTMLElement): void {
       networkStore.assertWritable('Add session key');
 
       const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
-      const { BrowserCredentialBackend } = await import('../core/wallet/src/credential-backends/browser.backend');
+      const { BrowserCredentialBackend } = await import('../../core/wallet/src/credential-backends/browser.backend');
       const svc = new SmartWalletService(
         { relyingPartyId: window.location.hostname },
         getRpcUrl(),
