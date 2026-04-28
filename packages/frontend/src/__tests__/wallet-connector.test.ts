@@ -6,12 +6,18 @@ import { WalletConnectorService, ImportedWalletInfo } from '../services/wallet-c
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { setupWebAuthnMock } from './mock-webauthn';
 import { Buffer } from 'buffer';
-import { StrKey, Networks, Server } from '@stellar/stellar-sdk';
+import { StrKey, Networks } from '@stellar/stellar-sdk';
+import { Server } from '@stellar/stellar-sdk/rpc';
 
 jest.mock('@stellar/stellar-sdk', () => {
   const original = jest.requireActual('@stellar/stellar-sdk');
   return {
     ...original,
+  };
+});
+
+jest.mock('@stellar/stellar-sdk/rpc', () => {
+  return {
     Server: jest.fn().mockImplementation(() => ({
       getLatestLedger: jest.fn(() => Promise.resolve({ sequence: 12345 })),
     })),
@@ -132,7 +138,7 @@ describe('WalletConnectorService', () => {
       expect(result).toHaveProperty('isValid');
       expect(result).toHaveProperty('isSmartWallet');
       expect(result).toHaveProperty('signers');
-      expect(result).toHaveProperty('errorMessage');
+      expect(result.errorMessage).toBeUndefined();
       expect(Array.isArray(result.signers)).toBe(true);
     });
   });
