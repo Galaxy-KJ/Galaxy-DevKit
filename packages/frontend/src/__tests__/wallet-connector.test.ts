@@ -6,12 +6,22 @@ import { WalletConnectorService, ImportedWalletInfo } from '../services/wallet-c
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { setupWebAuthnMock } from './mock-webauthn';
 import { Buffer } from 'buffer';
-import { StrKey, Networks } from '@stellar/stellar-sdk';
+import { StrKey, Networks, Server } from '@stellar/stellar-sdk';
+
+jest.mock('@stellar/stellar-sdk', () => {
+  const original = jest.requireActual('@stellar/stellar-sdk');
+  return {
+    ...original,
+    Server: jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn(() => Promise.resolve({ sequence: 12345 })),
+    })),
+  };
+});
 
 describe('WalletConnectorService', () => {
   let client: SmartWalletClient;
   let connectorService: WalletConnectorService;
-  const testContractAddress = 'CABC123ABCDEFGHIJKLMNOPQRSTUVWXYZ123456ABCDEFG';
+  const testContractAddress = 'CBJLVS7PUHVFRRMOWIXXF5SGETGU7ELPSRU47WYXHAIOAIXF4XID27WV';
 
   beforeEach(() => {
     setupWebAuthnMock();
@@ -167,9 +177,13 @@ describe('WalletConnectorService', () => {
 
   describe('error handling and edge cases', () => {
     it('should handle network errors gracefully', async () => {
-      // Network errors should be caught and reported
+      // Mock network error
+      const mockServer = (connectorService as any).server;
+      mockServer.getLatestLedger.mockRejectedValueOnce(new Error('Network error'));
+
       const result = await connectorService.importWallet(testContractAddress);
-      expect(result).toHaveProperty('errorMessage');
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toBeDefined();
     });
 
     it('should handle whitespace in address input', () => {

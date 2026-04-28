@@ -9,4 +9,4 @@ export {
   decryptPrivateKey,
   decryptPrivateKeyToString,
   withDecryptedKey,
-} from '../../../invisible-wallet/src/utils/encryption.utils.js';
+} from '@galaxy-kj/core-invisible-wallet/utils/encryption.utils.js';
