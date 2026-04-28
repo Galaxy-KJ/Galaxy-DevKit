@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import { createWalletCommand } from './create.js';
 import { importWalletCommand } from './import.js';
 import { listWalletsCommand } from './list.js';
+import { infoWalletCommand } from './info.js';
+import { fundWalletCommand } from './fund.js';
 import { multisigCommand } from './multisig.js';
 import { ledgerCommand } from './ledger.js';
 import { biometricCommand } from './biometric.js';
@@ -14,6 +16,8 @@ export const walletCommand = new Command('wallet')
 walletCommand.addCommand(createWalletCommand);
 walletCommand.addCommand(importWalletCommand);
 walletCommand.addCommand(listWalletsCommand);
+walletCommand.addCommand(infoWalletCommand);
+walletCommand.addCommand(fundWalletCommand);
 walletCommand.addCommand(multisigCommand);
 walletCommand.addCommand(ledgerCommand);
 walletCommand.addCommand(biometricCommand);
