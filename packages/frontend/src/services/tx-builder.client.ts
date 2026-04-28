@@ -143,4 +143,30 @@ export class TxBuilderClient {
     const assembled = assembleTransaction(tx, simResult).build();
     return assembled.toEnvelope().toXDR('base64');
   }
+
+  /**
+   * Re-runs simulation for a previously captured transaction XDR.
+   * Useful for debugging failed submissions from local history.
+   */
+  async resimulateXdr(unsignedXdr: string): Promise<BuildAndSimulateResult> {
+    if (!unsignedXdr) throw new Error('resimulateXdr: unsignedXdr is required');
+
+    const tx = TransactionBuilder.fromXDR(unsignedXdr, this.network) as Transaction;
+    const simResult = await this.server.simulateTransaction(tx);
+
+    if (Api.isSimulationError(simResult)) {
+      throw new Error(`Transaction simulation failed: ${simResult.error}`);
+    }
+
+    const resourceFee = String(
+      Math.max(MIN_FEE_STROOPS, parseInt(simResult.minResourceFee ?? '0', 10))
+    );
+
+    return {
+      resourceFee,
+      raw: simResult,
+      transaction: tx,
+      authEntryCount: simResult.result?.auth?.length ?? 0,
+    };
+  }
 }

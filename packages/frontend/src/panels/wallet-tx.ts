@@ -9,6 +9,7 @@
  */
 
 import { TxBuilderClient, type PaymentParams } from '../services/tx-builder.client';
+import { TxTrackerService, TrackedTransaction } from '../services/tx-tracker';
 
 export interface WalletTxCallbacks {
   /**
@@ -25,12 +26,14 @@ export interface WalletTxCallbacks {
 export interface WalletTxPanelOptions {
   rpcUrl: string;
   network?: string;
+  txTracker?: TxTrackerService;
 }
 
 export class WalletTxPanel {
   private container: HTMLElement;
   private callbacks: WalletTxCallbacks;
   private txBuilder: TxBuilderClient;
+  private txTracker?: TxTrackerService;
 
   constructor(
     container: HTMLElement,
@@ -40,6 +43,7 @@ export class WalletTxPanel {
     this.container = container;
     this.callbacks = callbacks;
     this.txBuilder = new TxBuilderClient(options.rpcUrl, options.network);
+    this.txTracker = options.txTracker;
     this.render();
   }
 
@@ -186,6 +190,8 @@ export class WalletTxPanel {
       signSubmitBtn.disabled = true;
       signSubmitBtn.textContent = 'Signing…';
       status.textContent = '';
+      let trackerEntry: TrackedTransaction | null = null;
+      let signedXdr = '';
 
       try {
         const unsignedXdr = this.txBuilder.assembleFromSimulation(
@@ -193,10 +199,27 @@ export class WalletTxPanel {
           pendingSimResult.raw
         );
 
-        const signedXdr = await this.callbacks.onSign(walletAddress, unsignedXdr, credentialId);
+        const destination = (form.querySelector('#tx-destination') as HTMLInputElement).value.trim();
+        const amount = (form.querySelector('#tx-amount') as HTMLInputElement).value.trim();
+        const memo = (form.querySelector('#tx-memo') as HTMLInputElement).value.trim();
+        trackerEntry = this.txTracker?.createPending({
+          walletAddress,
+          destination,
+          amount,
+          memo: memo || undefined,
+          unsignedXdr,
+          network: 'testnet',
+          simulationAuthEntryCount: pendingSimResult.authEntryCount,
+          simulationResourceFee: pendingSimResult.resourceFee,
+        }) ?? null;
+
+        signedXdr = await this.callbacks.onSign(walletAddress, unsignedXdr, credentialId);
 
         signSubmitBtn.textContent = 'Submitting…';
         const txHash = await this.callbacks.onSubmit(signedXdr);
+        if (trackerEntry) {
+          this.txTracker?.markSuccess(trackerEntry.id, txHash, signedXdr);
+        }
 
         confirmation.hidden = false;
         confirmation.innerHTML = `
@@ -211,6 +234,13 @@ export class WalletTxPanel {
 
         this.callbacks.onConfirmed?.(txHash);
       } catch (err) {
+        if (trackerEntry) {
+          this.txTracker?.markFailed(
+            trackerEntry.id,
+            err instanceof Error ? err.message : String(err),
+            signedXdr || undefined
+          );
+        }
         status.textContent = `Error: ${err instanceof Error ? err.message : String(err)}`;
         signSubmitBtn.disabled = false;
         signSubmitBtn.textContent = 'Sign & Submit';

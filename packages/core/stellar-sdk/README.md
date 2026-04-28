@@ -295,7 +295,10 @@ const config = {
   passphrase: Networks.TESTNET,
 };
 const server = new Horizon.Server(config.horizonUrl);
-const pathManager = new PathPaymentManager(server, config.passphrase);
+const pathManager = new PathPaymentManager(server, config.passphrase, {
+  pathCacheTtlMs: 60_000,
+  volatilityLookback: 20,
+});
 ```
 
 ### Find Paths (Strict Send / Strict Receive)
@@ -328,9 +331,20 @@ const estimate = await pathManager.estimateSwap({
   destAsset: new Asset('USDC', ISSUER),
   amount: '100.0000000',
   type: 'strict_send',
-  maxSlippage: 1,
 });
-console.log('Output:', estimate.outputAmount, 'Price impact:', estimate.priceImpact, '%');
+console.log(
+  'Output:',
+  estimate.outputAmount,
+  'Price impact:',
+  estimate.priceImpact,
+  '%',
+  'Historical volatility:',
+  estimate.historicalVolatility,
+  '%',
+  'Suggested slippage:',
+  estimate.suggestedMaxSlippage,
+  '%'
+);
 ```
 
 ### Execute Swap with Slippage Protection
@@ -352,12 +366,33 @@ const result = await pathManager.executeSwap(
 console.log('Tx hash:', result.transactionHash, 'Output:', result.outputAmount);
 ```
 
+### Execute Strict Receive Swap
+
+```typescript
+const strictReceiveResult = await pathManager.executeSwap(
+  wallet,
+  {
+    sendAsset: Asset.native(),
+    destAsset: new Asset('USDC', ISSUER),
+    amount: '100.0000000',
+    type: 'strict_receive',
+    maxSendAmount: '106.0000000',
+  },
+  password,
+  wallet.publicKey
+);
+console.log('Tx hash:', strictReceiveResult.transactionHash, 'Source spent:', strictReceiveResult.inputAmount);
+```
+
 ### Slippage & Price Impact
 
 - **maxSlippage**: Max allowed slippage (e.g. 1 = 1%).
+- **historicalVolatility**: Realized volatility from recent swaps for the same pair.
+- **suggestedMaxSlippage**: Recommended slippage ceiling after volatility analysis.
 - **minDestinationAmount** (strict send): Minimum amount to receive.
 - **maxSendAmount** (strict receive): Maximum amount to send.
 - **HIGH_PRICE_IMPACT_THRESHOLD** (5%): Paths above this trigger a high-impact warning.
+- Path queries are cached with TTL and concurrent callers reuse the same in-flight Horizon lookup.
 
 See examples: `docs/examples/stellar-sdk/18-simple-swap.ts`, `19-path-finding.ts`, `20-multi-hop-swap.ts`, `21-slippage-protection.ts`.
 

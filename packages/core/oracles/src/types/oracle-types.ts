@@ -95,6 +95,47 @@ export interface AggregationConfig {
   maxStalenessMs: number;
   enableOutlierDetection: boolean;
   outlierThreshold: number;
+  anomalyDetection: AnomalyDetectionConfig;
+}
+
+export type AggregationConfigOverrides = Partial<
+  Omit<AggregationConfig, 'anomalyDetection'>
+> & {
+  anomalyDetection?: Partial<AnomalyDetectionConfig>;
+};
+
+/**
+ * Oracle anomaly detection thresholds
+ * @interface AnomalyDetectionConfig
+ * @property {number} stalePriceMs - Max allowed age per sample
+ * @property {number} outlierStdDevMultiplier - Std-dev multiplier for outlier alerts
+ * @property {number} flashCrashPercent - Maximum drop allowed vs last aggregated price
+ * @property {number} sourceDisagreementPercent - Maximum spread allowed across sources
+ * @property {boolean} enforceFlashCrashProtection - Throw when flash crash is detected
+ * @property {boolean} enforceSourceDisagreement - Throw when source disagreement is detected
+ */
+export interface AnomalyDetectionConfig {
+  stalePriceMs: number;
+  outlierStdDevMultiplier: number;
+  flashCrashPercent: number;
+  sourceDisagreementPercent: number;
+  enforceFlashCrashProtection: boolean;
+  enforceSourceDisagreement: boolean;
+}
+
+export type OracleValidationErrorCode =
+  | 'INVALID_VALIDATION_CONFIG'
+  | 'INVALID_PRICE_FRAME'
+  | 'INSUFFICIENT_SOURCES'
+  | 'FLASH_CRASH_DETECTED'
+  | 'SOURCE_DISAGREEMENT'
+  | 'STALE_PRICE_DETECTED';
+
+export interface OracleValidationErrorPayload {
+  code: OracleValidationErrorCode;
+  message: string;
+  symbol?: string;
+  details?: Record<string, unknown>;
 }
 
 /**

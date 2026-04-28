@@ -2,6 +2,13 @@
 
 Real-world examples and use cases for Galaxy DevKit.
 
+## Frontend Playground Examples
+
+- Blend health-factor panel: `docs/examples/defi-protocols/05-frontend-blend-health.ts`
+- Security limits management panel: `docs/examples/defi-protocols/06-frontend-security-limits.ts`
+
+These examples focus on browser playground flows for borrow/repay and risk-limit management.
+
 ## 📋 Table of Contents
 
 - [Quick Start Examples](#-quick-start-examples)

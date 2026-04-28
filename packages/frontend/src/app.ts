@@ -6,6 +6,13 @@ import { WalletSignersPanel } from './panels/wallet-signers';
 import { WalletSessionPanel, type SessionEntry } from './panels/wallet-session';
 import { WalletTxPanel } from './panels/wallet-tx';
 import { LiquidityPanel } from './panels/liquidity';
+import { TxHistoryPanel } from './panels/tx-history';
+import { TxTrackerService } from './services/tx-tracker';
+import { TxBuilderClient } from './services/tx-builder.client';
+import { BlendPanel } from './panels/blend';
+import { BlendClient } from './services/blend.client';
+import { SecurityLimitsPanel } from './panels/security-limits';
+import { SecurityLimitsClient } from './services/security-limits.client';
 
 const RPC_URL = 'https://soroban-testnet.stellar.org';
 
@@ -117,6 +124,13 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
             </li>
             <li class="sidebar__nav-item">
               <a href="#liquidity" class="sidebar__nav-link" data-panel="liquidity-panel">Liquidity Pools</a>
+              <a href="#tx-history" class="sidebar__nav-link" data-panel="wallet-tx-history-panel">Tx History</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#blend" class="sidebar__nav-link" data-panel="blend-panel">Blend</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#security-limits" class="sidebar__nav-link" data-panel="security-limits-panel">Security Limits</a>
             </li>
           </ul>
         </nav>
@@ -127,6 +141,9 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <div id="wallet-session-panel" class="panel" hidden></div>
           <div id="wallet-tx-panel" class="panel" hidden></div>
           <div id="liquidity-panel" class="panel" hidden></div>
+          <div id="wallet-tx-history-panel" class="panel" hidden></div>
+          <div id="blend-panel" class="panel" hidden></div>
+          <div id="security-limits-panel" class="panel" hidden></div>
         </main>
       </div>
     </section>
@@ -135,12 +152,20 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
   const client = new SmartWalletClient();
+  const txTracker = new TxTrackerService();
   new WalletCreatePanel('wallet-create-panel', client);
   new WalletSignersPanel('wallet-signers-panel', client);
 
   mountSessionPanel(document.getElementById('wallet-session-panel')!);
   mountTxPanel(document.getElementById('wallet-tx-panel')!, client);
   mountLiquidityPanel(document.getElementById('liquidity-panel')!);
+  mountTxPanel(document.getElementById('wallet-tx-panel')!, client, txTracker);
+  mountTxHistoryPanel(
+    document.getElementById('wallet-tx-history-panel')!,
+    txTracker
+  );
+  new BlendPanel('blend-panel', new BlendClient());
+  new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
 
   bindNav();
   bindHamburger();
@@ -218,11 +243,16 @@ function mountLiquidityPanel(container: HTMLElement): void {
 
 function mountTxPanel(container: HTMLElement, client: SmartWalletClient): void {
   const { TxBuilderClient } = require('./services/tx-builder.client');
+function mountTxPanel(
+  container: HTMLElement,
+  client: SmartWalletClient,
+  txTracker: TxTrackerService
+): void {
   const txClient = new TxBuilderClient(RPC_URL);
 
   new WalletTxPanel(
     container,
-    { rpcUrl: RPC_URL },
+    { rpcUrl: RPC_URL, txTracker },
     {
       onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
         const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
@@ -233,6 +263,18 @@ function mountTxPanel(container: HTMLElement, client: SmartWalletClient): void {
       onSubmit: (signedXdr: string) => txClient.submitSignedXdr(signedXdr),
     }
   );
+}
+
+function mountTxHistoryPanel(
+  container: HTMLElement,
+  txTracker: TxTrackerService
+): void {
+  const txClient = new TxBuilderClient(RPC_URL);
+  new TxHistoryPanel(container, txTracker, {
+    onResimulateFailedTx: async (entry) => {
+      await txClient.resimulateXdr(entry.unsignedXdr);
+    },
+  });
 }
 
 function bindNav(): void {

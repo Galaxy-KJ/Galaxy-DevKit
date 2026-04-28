@@ -26,6 +26,7 @@ import {
   SwapAnalyticsRecord,
   PathAnalytics,
   PathCacheEntry,
+  PathPaymentManagerOptions,
   HIGH_PRICE_IMPACT_THRESHOLD,
 } from './types.js';
 import { Wallet } from '../types/stellar-types.js';
@@ -33,6 +34,9 @@ import { decryptPrivateKeyToString } from '../utils/encryption.utils.js';
 
 /** Default path cache TTL in milliseconds (5 minutes) */
 const DEFAULT_PATH_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_PATH_CACHE_MAX_ENTRIES = 100;
+const DEFAULT_VOLATILITY_LOOKBACK = 20;
+const DEFAULT_LARGE_SWAP_AMOUNT_THRESHOLD = '10000';
 
 /**
  * Path Payment Manager – find paths, rank by price, execute swaps with slippage protection
@@ -41,18 +45,27 @@ export class PathPaymentManager {
   private server: Horizon.Server;
   private networkPassphrase: string;
   private pathCache: Map<string, PathCacheEntry> = new Map();
+  private inFlightPathRequests: Map<string, Promise<PaymentPath[]>> = new Map();
   private pathCacheTtlMs: number;
+  private pathCacheMaxEntries: number;
+  private volatilityLookback: number;
+  private largeSwapAmountThreshold: BigNumber;
   private swapHistory: SwapAnalyticsRecord[] = [];
   private readonly maxHistorySize = 1000;
 
   constructor(
     server: Horizon.Server,
     networkPassphrase: string,
-    options?: { pathCacheTtlMs?: number }
+    options?: PathPaymentManagerOptions
   ) {
     this.server = server;
     this.networkPassphrase = networkPassphrase;
     this.pathCacheTtlMs = options?.pathCacheTtlMs ?? DEFAULT_PATH_CACHE_TTL_MS;
+    this.pathCacheMaxEntries = options?.pathCacheMaxEntries ?? DEFAULT_PATH_CACHE_MAX_ENTRIES;
+    this.volatilityLookback = options?.volatilityLookback ?? DEFAULT_VOLATILITY_LOOKBACK;
+    this.largeSwapAmountThreshold = new BigNumber(
+      options?.largeSwapAmountThreshold ?? DEFAULT_LARGE_SWAP_AMOUNT_THRESHOLD
+    );
   }
 
   /**
@@ -65,30 +78,40 @@ export class PathPaymentManager {
     type: 'strict_send' | 'strict_receive';
     limit?: number;
   }): Promise<PaymentPath[]> {
-    const cacheKey = this.getPathCacheKey(params.sourceAsset, params.destAsset, params.amount, params.type);
+    const limit = params.limit ?? 15;
+    const cacheKey = this.getPathCacheKey(params.sourceAsset, params.destAsset, params.amount, params.type, limit);
     const cached = this.getCachedPaths(cacheKey);
-    if (cached.length > 0) return cached;
+    if (cached) return cached;
 
-    let paths: PaymentPath[];
+    const queued = this.inFlightPathRequests.get(cacheKey);
+    if (queued) return queued;
 
-    if (params.type === 'strict_send') {
-      paths = await this.fetchStrictSendPaths({
-        sourceAsset: params.sourceAsset,
-        sourceAmount: params.amount,
-        destinationAsset: params.destAsset,
-        limit: params.limit ?? 15,
-      });
-    } else {
-      paths = await this.fetchStrictReceivePaths({
-        sourceAsset: params.sourceAsset,
-        destinationAsset: params.destAsset,
-        destinationAmount: params.amount,
-        limit: params.limit ?? 15,
-      });
+    const request = (async () => {
+      const paths =
+        params.type === 'strict_send'
+          ? await this.fetchStrictSendPaths({
+            sourceAsset: params.sourceAsset,
+            sourceAmount: params.amount,
+            destinationAsset: params.destAsset,
+            limit,
+          })
+          : await this.fetchStrictReceivePaths({
+            sourceAsset: params.sourceAsset,
+            destinationAsset: params.destAsset,
+            destinationAmount: params.amount,
+            limit,
+          });
+
+      this.setCachedPaths(cacheKey, paths);
+      return paths;
+    })();
+
+    this.inFlightPathRequests.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      this.inFlightPathRequests.delete(cacheKey);
     }
-
-    this.setCachedPaths(cacheKey, paths);
-    return paths;
   }
 
   /**
@@ -134,7 +157,6 @@ export class PathPaymentManager {
     const destinationAccountId = params.destinationAccount ?? sourceAccountId;
 
     const pathAssets = bestPath.path || [];
-    const destAmount = params.type === 'strict_send' ? estimate.minimumReceived! : params.amount;
     const sendMax = params.type === 'strict_receive' ? estimate.maximumCost! : params.amount;
 
     const op =
@@ -169,15 +191,17 @@ export class PathPaymentManager {
 
     const swapResult: SwapResult = {
       path: [params.sendAsset, ...pathAssets, params.destAsset],
-      inputAmount: params.amount,
-      outputAmount: bestPath.destination_amount,
+      inputAmount: params.type === 'strict_send' ? params.amount : bestPath.source_amount,
+      outputAmount: params.type === 'strict_send' ? bestPath.destination_amount : params.amount,
       price: bestPath.price,
       priceImpact: bestPath.priceImpact,
       transactionHash: result.hash,
       highImpactWarning: parseFloat(bestPath.priceImpact) >= HIGH_PRICE_IMPACT_THRESHOLD,
+      slippageApplied: (estimate.volatilityAdjustedSlippage ?? params.maxSlippage ?? 1).toFixed(2),
     };
 
     this.recordSwapAnalytics(swapResult, true, result.hash);
+    this.invalidatePairCacheIfLargeSwap(params, swapResult);
     return swapResult;
   }
 
@@ -269,11 +293,12 @@ export class PathPaymentManager {
     source: Asset,
     dest: Asset,
     amount: string,
-    type: string
+    type: string,
+    limit: number
   ): string {
     const s = this.assetToString(source);
     const d = this.assetToString(dest);
-    return `${type}:${s}:${d}:${amount}`;
+    return `${type}:${s}:${d}:${amount}:${limit}`;
   }
 
   private assetToString(asset: Asset): string {
@@ -281,22 +306,45 @@ export class PathPaymentManager {
     return `${asset.getCode()}:${asset.getIssuer()}`;
   }
 
-  private getCachedPaths(key: string): PaymentPath[] {
+  private getCachedPaths(key: string): PaymentPath[] | null {
     const entry = this.pathCache.get(key);
-    if (!entry) return [];
+    if (!entry) return null;
     if (Date.now() - entry.fetchedAt > entry.ttlMs) {
       this.pathCache.delete(key);
-      return [];
+      return null;
     }
+    entry.lastAccessedAt = Date.now();
+    entry.hits += 1;
     return entry.paths;
   }
 
   private setCachedPaths(key: string, paths: PaymentPath[]): void {
+    this.pruneCacheIfNeeded(key);
     this.pathCache.set(key, {
       paths,
       fetchedAt: Date.now(),
+      lastAccessedAt: Date.now(),
+      hits: 0,
       ttlMs: this.pathCacheTtlMs,
     });
+  }
+
+  private pruneCacheIfNeeded(incomingKey: string): void {
+    if (this.pathCache.has(incomingKey) || this.pathCache.size < this.pathCacheMaxEntries) return;
+
+    let oldestKey: string | null = null;
+    let oldestAccess = Number.POSITIVE_INFINITY;
+
+    for (const [key, entry] of this.pathCache.entries()) {
+      if (entry.lastAccessedAt < oldestAccess) {
+        oldestAccess = entry.lastAccessedAt;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey) {
+      this.pathCache.delete(oldestKey);
+    }
   }
 
   private async fetchStrictSendPaths(
@@ -373,7 +421,8 @@ export class PathPaymentManager {
     const sourceAmount = rec.source_amount ?? '0';
     const destAmount = rec.destination_amount ?? '0';
     const price = new BigNumber(sourceAmount).isZero() ? '0' : new BigNumber(destAmount).dividedBy(sourceAmount).toFixed(7);
-    const priceImpact = '0';
+    const pairKey = this.getPairKey(sourceAsset, destAsset);
+    const priceImpact = this.calculateHistoricalPriceImpact(pairKey, price);
     return {
       source_asset: sourceAsset,
       destination_asset: destAsset,
@@ -418,14 +467,25 @@ export class PathPaymentManager {
   }
 
   private estimateSwapFromPath(path: PaymentPath, params: SwapParams): SwapEstimate {
-    const maxSlippage = params.maxSlippage ?? 1;
+    const baseSlippage = params.maxSlippage ?? 1;
+    const historicalVolatility = this.calculateHistoricalVolatility(this.getPairKey(path.source_asset, path.destination_asset));
+    const volatilityPercent = historicalVolatility.times(100);
+    const volatilityBuffer = params.maxSlippage === undefined
+      ? BigNumber.minimum(volatilityPercent, new BigNumber(10))
+      : new BigNumber(0);
+    const adjustedSlippage = new BigNumber(baseSlippage).plus(volatilityBuffer);
     const minReceived = new BigNumber(path.destination_amount)
-      .times(1 - maxSlippage / 100)
+      .times(new BigNumber(1).minus(adjustedSlippage.dividedBy(100)))
       .toFixed(7);
     const maxCost = new BigNumber(path.source_amount)
-      .times(1 + maxSlippage / 100)
+      .times(new BigNumber(1).plus(adjustedSlippage.dividedBy(100)))
       .toFixed(7);
     const highImpact = parseFloat(path.priceImpact) >= HIGH_PRICE_IMPACT_THRESHOLD;
+    const suggestedMaxSlippage = BigNumber.maximum(
+      new BigNumber(baseSlippage),
+      new BigNumber(baseSlippage).plus(BigNumber.minimum(volatilityPercent, new BigNumber(10)))
+    );
+
     return {
       path: [path.source_asset, ...path.path, path.destination_asset],
       inputAmount: path.source_amount,
@@ -435,7 +495,11 @@ export class PathPaymentManager {
       minimumReceived: minReceived,
       maximumCost: maxCost,
       highImpact,
-      suggestedMaxSlippage: highImpact ? Math.max(maxSlippage, 2) : maxSlippage,
+      historicalVolatility: volatilityPercent.toFixed(2),
+      volatilityAdjustedSlippage: Number(adjustedSlippage.toFixed(2)),
+      suggestedMaxSlippage: Number(
+        BigNumber.maximum(suggestedMaxSlippage, new BigNumber(highImpact ? 2 : baseSlippage)).toFixed(2)
+      ),
     };
   }
 
@@ -467,18 +531,90 @@ export class PathPaymentManager {
         return asset.isNative?.() ? 'native' : `${asset.getCode?.() ?? ''}-${asset.getIssuer?.() ?? ''}`;
       })
       .join('|');
+    const sourceAsset = result.path[0] as Asset;
+    const destAsset = result.path[result.path.length - 1] as Asset;
     this.swapHistory.push({
       timestamp: new Date(),
       pathHash,
+      pairKey: this.getPairKey(sourceAsset, destAsset),
       pathDepth: result.path.length,
       inputAmount: result.inputAmount,
       outputAmount: result.outputAmount,
+      executedPrice: result.price,
       priceImpact: result.priceImpact,
       success,
       transactionHash: txHash,
     });
     if (this.swapHistory.length > this.maxHistorySize) {
       this.swapHistory = this.swapHistory.slice(-this.maxHistorySize);
+    }
+  }
+
+  private getPairKey(source: Asset, dest: Asset): string {
+    return `${this.assetToString(source)}->${this.assetToString(dest)}`;
+  }
+
+  private calculateHistoricalVolatility(pairKey: string): BigNumber {
+    const prices = this.swapHistory
+      .filter((record) => record.success && record.pairKey === pairKey)
+      .slice(-this.volatilityLookback)
+      .map((record) => new BigNumber(record.executedPrice))
+      .filter((price) => price.isFinite() && price.isGreaterThan(0));
+
+    if (prices.length < 2) return new BigNumber(0);
+
+    const returns: BigNumber[] = [];
+    for (let i = 1; i < prices.length; i++) {
+      const previous = prices[i - 1];
+      const current = prices[i];
+      returns.push(current.minus(previous).dividedBy(previous));
+    }
+
+    if (returns.length === 0) return new BigNumber(0);
+
+    const mean = returns.reduce((sum, value) => sum.plus(value), new BigNumber(0)).dividedBy(returns.length);
+    const variance = returns
+      .reduce((sum, value) => sum.plus(value.minus(mean).pow(2)), new BigNumber(0))
+      .dividedBy(returns.length);
+
+    return variance.sqrt();
+  }
+
+  private calculateHistoricalPriceImpact(pairKey: string, currentPrice: string): string {
+    const prices = this.swapHistory
+      .filter((record) => record.success && record.pairKey === pairKey)
+      .slice(-this.volatilityLookback)
+      .map((record) => new BigNumber(record.executedPrice))
+      .filter((price) => price.isFinite() && price.isGreaterThan(0));
+
+    if (prices.length === 0) return '0';
+
+    const baseline = BigNumber.maximum(...prices);
+    if (baseline.isZero()) return '0';
+
+    return baseline
+      .minus(currentPrice)
+      .dividedBy(baseline)
+      .times(100)
+      .absoluteValue()
+      .toFixed(2);
+  }
+
+  private invalidatePairCacheIfLargeSwap(params: SwapParams, result: SwapResult): void {
+    const notional = BigNumber.maximum(
+      new BigNumber(result.inputAmount),
+      new BigNumber(result.outputAmount)
+    );
+
+    if (notional.isLessThan(this.largeSwapAmountThreshold)) return;
+
+    const sourceAsset = this.assetToString(params.sendAsset);
+    const destAsset = this.assetToString(params.destAsset);
+    const pairFragment = `:${sourceAsset}:${destAsset}:`;
+    for (const key of this.pathCache.keys()) {
+      if (key.includes(pairFragment)) {
+        this.pathCache.delete(key);
+      }
     }
   }
 }

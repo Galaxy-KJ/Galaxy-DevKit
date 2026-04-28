@@ -1,23 +1,121 @@
-/**
- * @fileoverview Price validation utilities
- * @description Validation logic for price data
- * @author Galaxy DevKit Team
- * @version 1.0.0
- * @since 2024-01-15
- */
+import {
+  PriceData,
+  AggregationConfig,
+  AggregationConfigOverrides,
+  AnomalyDetectionConfig,
+  OracleValidationErrorPayload,
+} from '../types/oracle-types.js';
+import {
+  PriceAnomalyReport,
+  detectPriceAnomalies,
+} from './anomaly-detector.js';
 
-import { PriceData, AggregationConfig } from '../types/oracle-types.js';
+export const DEFAULT_ANOMALY_CONFIG: AnomalyDetectionConfig = {
+  stalePriceMs: 60000,
+  outlierStdDevMultiplier: 2.0,
+  flashCrashPercent: 25,
+  sourceDisagreementPercent: 15,
+  enforceFlashCrashProtection: true,
+  enforceSourceDisagreement: false,
+};
 
-/**
- * Default aggregation config
- */
 const DEFAULT_CONFIG: AggregationConfig = {
   minSources: 2,
   maxDeviationPercent: 10,
-  maxStalenessMs: 60000, // 60 seconds
+  maxStalenessMs: 60000,
   enableOutlierDetection: true,
   outlierThreshold: 2.0,
+  anomalyDetection: DEFAULT_ANOMALY_CONFIG,
 };
+
+export class OracleValidationError extends Error {
+  readonly payload: OracleValidationErrorPayload;
+
+  constructor(payload: OracleValidationErrorPayload) {
+    super(payload.message);
+    this.name = 'OracleValidationError';
+    this.payload = payload;
+  }
+
+  toJSON(): OracleValidationErrorPayload {
+    return this.payload;
+  }
+}
+
+function mergeConfig(config: AggregationConfigOverrides): AggregationConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    ...config,
+    anomalyDetection: {
+      ...DEFAULT_ANOMALY_CONFIG,
+      ...(config.anomalyDetection ?? {}),
+    },
+  };
+}
+
+function assertPositiveFinite(
+  value: number,
+  key: string,
+  details: Record<string, unknown>
+): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new OracleValidationError({
+      code: 'INVALID_VALIDATION_CONFIG',
+      message: `Validation config "${key}" must be a positive finite number`,
+      details,
+    });
+  }
+}
+
+function assertNonNegativeFinite(
+  value: number,
+  key: string,
+  details: Record<string, unknown>
+): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new OracleValidationError({
+      code: 'INVALID_VALIDATION_CONFIG',
+      message: `Validation config "${key}" must be a non-negative finite number`,
+      details,
+    });
+  }
+}
+
+export function validateValidationConfig(
+  config: AggregationConfigOverrides = {}
+): AggregationConfig {
+  const merged = mergeConfig(config);
+  const anomaly = merged.anomalyDetection;
+
+  assertPositiveFinite(merged.minSources, 'minSources', { minSources: merged.minSources });
+  assertNonNegativeFinite(merged.maxDeviationPercent, 'maxDeviationPercent', {
+    maxDeviationPercent: merged.maxDeviationPercent,
+  });
+  assertPositiveFinite(merged.maxStalenessMs, 'maxStalenessMs', {
+    maxStalenessMs: merged.maxStalenessMs,
+  });
+  assertPositiveFinite(merged.outlierThreshold, 'outlierThreshold', {
+    outlierThreshold: merged.outlierThreshold,
+  });
+  assertPositiveFinite(anomaly.stalePriceMs, 'anomalyDetection.stalePriceMs', {
+    stalePriceMs: anomaly.stalePriceMs,
+  });
+  assertPositiveFinite(
+    anomaly.outlierStdDevMultiplier,
+    'anomalyDetection.outlierStdDevMultiplier',
+    { outlierStdDevMultiplier: anomaly.outlierStdDevMultiplier }
+  );
+  assertNonNegativeFinite(anomaly.flashCrashPercent, 'anomalyDetection.flashCrashPercent', {
+    flashCrashPercent: anomaly.flashCrashPercent,
+  });
+  assertNonNegativeFinite(
+    anomaly.sourceDisagreementPercent,
+    'anomalyDetection.sourceDisagreementPercent',
+    { sourceDisagreementPercent: anomaly.sourceDisagreementPercent }
+  );
+
+  return merged;
+}
 
 /**
  * Check if price data is stale
@@ -38,9 +136,9 @@ export function checkStaleness(price: PriceData, maxAgeMs: number): boolean {
  */
 export function validatePrice(
   price: PriceData,
-  config: Partial<AggregationConfig> = {}
+  config: AggregationConfigOverrides = {}
 ): boolean {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = mergeConfig(config);
 
   // Check if price is valid number
   if (typeof price.price !== 'number' || !isFinite(price.price) || price.price <= 0) {
@@ -152,13 +250,14 @@ export function filterByDeviation(
  */
 export function validatePrices(
   prices: PriceData[],
-  config: Partial<AggregationConfig> = {}
+  config: AggregationConfigOverrides = {}
 ): { valid: PriceData[]; invalid: PriceData[] } {
+  const validatedConfig = mergeConfig(config);
   const valid: PriceData[] = [];
   const invalid: PriceData[] = [];
 
   for (const price of prices) {
-    if (validatePrice(price, config)) {
+    if (validatePrice(price, validatedConfig)) {
       valid.push(price);
     } else {
       invalid.push(price);
@@ -166,4 +265,53 @@ export function validatePrices(
   }
 
   return { valid, invalid };
+}
+
+export function validatePriceFrame(
+  symbol: string,
+  prices: PriceData[],
+  config: AggregationConfigOverrides = {},
+  previousAggregatedPrice: number | null = null
+): PriceAnomalyReport {
+  const validatedConfig = validateValidationConfig(config);
+  const anomalyReport = detectPriceAnomalies(
+    prices,
+    validatedConfig.anomalyDetection,
+    previousAggregatedPrice
+  );
+
+  if (anomalyReport.stale.length > 0) {
+    throw new OracleValidationError({
+      code: 'STALE_PRICE_DETECTED',
+      symbol,
+      message: `Detected ${anomalyReport.stale.length} stale prices`,
+      details: { anomalies: anomalyReport.stale },
+    });
+  }
+
+  if (
+    validatedConfig.anomalyDetection.enforceFlashCrashProtection &&
+    anomalyReport.flashCrash
+  ) {
+    throw new OracleValidationError({
+      code: 'FLASH_CRASH_DETECTED',
+      symbol,
+      message: anomalyReport.flashCrash.message,
+      details: { anomaly: anomalyReport.flashCrash },
+    });
+  }
+
+  if (
+    validatedConfig.anomalyDetection.enforceSourceDisagreement &&
+    anomalyReport.sourceDisagreement
+  ) {
+    throw new OracleValidationError({
+      code: 'SOURCE_DISAGREEMENT',
+      symbol,
+      message: anomalyReport.sourceDisagreement.message,
+      details: { anomaly: anomalyReport.sourceDisagreement },
+    });
+  }
+
+  return anomalyReport;
 }

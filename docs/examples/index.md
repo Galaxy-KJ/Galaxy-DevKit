@@ -5,6 +5,8 @@ Real-world examples and use cases for Galaxy DevKit.
 ## 📋 Table of Contents
 
 - [Examples Overview](./examples.md) - Complete examples documentation
+- [Blend Frontend Health Example](./defi-protocols/05-frontend-blend-health.ts) - Borrow/repay and health-factor monitoring
+- [Security Limits Frontend Example](./defi-protocols/06-frontend-security-limits.ts) - Limit management and transaction checks
 - [Payment Apps](./payment-apps.md) - Payment processing examples
 - [DeFi Platforms](./defi-platforms.md) - DeFi application examples
 - [Oracle Aggregation](./oracles/) - Oracle price aggregation examples
@@ -64,6 +66,7 @@ galaxy dev
 - **Aggregator Setup** - Basic aggregator configuration
 - **Custom Sources** - Implementing custom oracle sources
 - **Aggregation Strategies** - Using median, weighted average, and TWAP
+- **Anomaly Detection** - Flash-crash and source-disagreement threshold tuning
 
 ### NFT Marketplaces
 - **NFT Minting** - Create and deploy NFTs
