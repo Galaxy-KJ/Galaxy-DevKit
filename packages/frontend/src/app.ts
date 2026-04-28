@@ -30,6 +30,7 @@ import {
   syncNetworkPill,
   ReadOnlyNetworkError,
 } from './utils/network.js';
+import { logger } from './utils/logger.js';
 
 // ─── RPC URL is now driven by the active network config ───────────────────────
 // Do NOT use a module-level constant here — the config must be read after the
@@ -185,6 +186,9 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
             <li class="sidebar__nav-item">
               <a href="#security-limits" class="sidebar__nav-link" data-panel="security-limits-panel">Security Limits</a>
             </li>
+            <li class="sidebar__nav-item">
+              <a href="#activity-log" class="sidebar__nav-link" data-panel="activity-log-panel">Activity log</a>
+            </li>
           </ul>
         </nav>
 
@@ -196,6 +200,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <div id="wallet-tx-history-panel" class="panel" hidden></div>
           <div id="blend-panel" class="panel" hidden></div>
           <div id="security-limits-panel" class="panel" hidden></div>
+          <div id="activity-log-panel" class="panel" hidden></div>
         </main>
       </div>
     </section>
@@ -232,6 +237,10 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   );
   new BlendPanel('blend-panel', new BlendClient());
   new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
+
+  const logHost = document.getElementById('activity-log-panel');
+  if (logHost) logger.attach(logHost as HTMLElement);
+  logger.info('Playground ready', { scope: 'app', data: { network: networkStore.getNetwork() } });
 
   bindNav();
   bindHamburger();
