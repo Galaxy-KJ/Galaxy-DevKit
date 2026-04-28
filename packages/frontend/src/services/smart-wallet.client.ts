@@ -9,6 +9,8 @@ export interface WebAuthnCredential {
 
 export class SmartWalletClient {
   private service: SmartWalletService;
+  private rpcUrl: string;
+  private network: string;
 
   constructor(
     rpcUrl: string = 'https://soroban-testnet.stellar.org',
@@ -17,6 +19,8 @@ export class SmartWalletClient {
     // We use the default WebAuthnProvider which works in the browser
     const mockProvider = { relyingPartyId: window.location.hostname };
     this.service = new SmartWalletService(mockProvider, rpcUrl, undefined, network);
+    this.rpcUrl = rpcUrl;
+    this.network = network;
   }
 
   /**
@@ -112,7 +116,24 @@ export class SmartWalletClient {
     });
   }
 
+  /**
+   * Gets the underlying SmartWalletService instance.
+   */
   getService(): SmartWalletService {
     return this.service;
+  }
+
+  /**
+   * Gets the configured RPC URL for this client.
+   */
+  getRpcUrl(): string {
+    return this.rpcUrl;
+  }
+
+  /**
+   * Gets the configured network for this client.
+   */
+  getNetwork(): string {
+    return this.network;
   }
 }

@@ -240,8 +240,203 @@ Typical flow:
 3. Backend wraps or submits the transaction.
 4. Backend returns transaction hash and execution status.
 
+## WalletConnectorService API
+
+`WalletConnectorService` provides utilities to import and connect to existing smart wallets by their contract address.
+
+### Constructor
+
+```ts
+import { SmartWalletClient } from '@galaxy-kj/frontend/services/smart-wallet.client';
+import { WalletConnectorService } from '@galaxy-kj/frontend/services/wallet-connector';
+
+const client = new SmartWalletClient();
+const connector = new WalletConnectorService(
+  client,
+  'https://soroban-testnet.stellar.org',
+  Networks.TESTNET
+);
+```
+
+### Methods
+
+#### `validateContractAddress(address: string): string | undefined`
+
+Validates a contract address format without making network calls.
+
+**Parameters:**
+- `address`: The contract address to validate (must start with "C")
+
+**Returns:**
+- `undefined` if address is valid
+- Error message string if invalid
+
+**Example:**
+```ts
+const error = connector.validateContractAddress('CABC123...');
+if (error) {
+  console.log('Invalid:', error);
+}
+```
+
+#### `verifyContractExists(contractAddress: string): Promise<boolean>`
+
+Verifies if a contract address exists on-chain.
+
+**Parameters:**
+- `contractAddress`: The contract address to verify
+
+**Returns:**
+- `true` if contract exists on the network
+- `false` if contract not found or invalid format
+
+**Example:**
+```ts
+const exists = await connector.verifyContractExists('CABC123...');
+if (exists) {
+  console.log('Contract found on-chain');
+}
+```
+
+#### `isSmartWalletContract(contractAddress: string): Promise<boolean>`
+
+Determines if a contract is a smart wallet contract.
+
+**Parameters:**
+- `contractAddress`: The contract address to check
+
+**Returns:**
+- `true` if contract appears to be a smart wallet
+- `false` otherwise
+
+**Example:**
+```ts
+const isWallet = await connector.isSmartWalletContract('CABC123...');
+if (isWallet) {
+  console.log('Contract is a smart wallet');
+}
+```
+
+#### `importWallet(contractAddress: string): Promise<ImportedWalletInfo>`
+
+Imports an existing smart wallet by address with full verification.
+
+**Parameters:**
+- `contractAddress`: The contract address to import
+
+**Returns:**
+```ts
+interface ImportedWalletInfo {
+  address: string;           // The contract address
+  isValid: boolean;          // Address format is valid
+  isSmartWallet: boolean;    // Contract is a smart wallet
+  signers: WalletSigner[];   // Registered signers
+  errorMessage?: string;     // Error details if any
+}
+
+interface WalletSigner {
+  id: string;                // Signer identifier
+  type: 'admin' | 'session' | 'unknown';
+  publicKey?: string;        // Base64 public key if available
+  isActive: boolean;         // Whether signer is currently active
+}
+```
+
+**Example:**
+```ts
+const walletInfo = await connector.importWallet('CABC123...');
+
+if (walletInfo.isSmartWallet) {
+  console.log('Wallet verified:', walletInfo.address);
+  console.log('Signers:', walletInfo.signers);
+} else {
+  console.log('Error:', walletInfo.errorMessage);
+}
+```
+
+#### `connectToWallet(contractAddress: string): Promise<boolean>`
+
+Establishes a connection to an existing wallet for operations.
+
+**Parameters:**
+- `contractAddress`: Smart wallet contract address
+
+**Returns:**
+- `true` if connection successful
+- `false` if connection failed
+
+**Example:**
+```ts
+const connected = await connector.connectToWallet('CABC123...');
+if (connected) {
+  console.log('Ready to perform wallet operations');
+}
+```
+
+#### `fetchSigners(contractAddress: string): Promise<WalletSigner[]>`
+
+Fetches the list of signers registered on a smart wallet.
+
+**Parameters:**
+- `contractAddress`: Smart wallet contract address
+
+**Returns:**
+- Array of `WalletSigner` objects
+
+**Example:**
+```ts
+const signers = await connector.fetchSigners('CABC123...');
+signers.forEach(signer => {
+  console.log(`${signer.type}: ${signer.id} (${signer.isActive ? 'active' : 'inactive'})`);
+});
+```
+
+#### `getStoredConnections(): Array<StoredConnection>`
+
+Retrieves previously imported wallets from local storage.
+
+**Returns:**
+```ts
+interface StoredConnection {
+  address: string;           // Contract address
+  importedAt: string;        // ISO timestamp of import
+  isSmartWallet: boolean;    // Was verified as smart wallet
+  signerCount: number;       // Number of signers at import time
+}
+```
+
+**Example:**
+```ts
+const connections = connector.getStoredConnections();
+connections.forEach(conn => {
+  console.log(`${conn.address} - Imported at ${conn.importedAt}`);
+});
+```
+
+#### `removeStoredConnection(contractAddress: string): void`
+
+Removes a wallet from the stored connections list.
+
+**Parameters:**
+- `contractAddress`: The contract address to remove
+
+**Example:**
+```ts
+connector.removeStoredConnection('CABC123...');
+```
+
+### Error Scenarios
+
+The `ImportedWalletInfo.errorMessage` will contain details for:
+- Invalid address format
+- Contract not found on-chain
+- Contract is not a smart wallet
+- Network connectivity issues
+- On-chain verification failures
+
 ## Related Docs
 
+- [Import/Connect Guide](./import-guide.md)
 - [Integration Guide](./integration-guide.md)
 - [Smart Wallet Flow](../architecture/smart-wallet-flow.md)
 - [Wallet Package README](../../packages/core/wallet/README.md)
