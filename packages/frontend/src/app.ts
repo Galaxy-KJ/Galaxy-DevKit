@@ -1,4 +1,3 @@
-import { Buffer } from 'buffer';
 import { Keypair, Networks } from '@galaxy-kj/core-stellar-sdk';
 import { SmartWalletClient } from './services/smart-wallet.client';
 import { WalletCreatePanel } from './panels/wallet-create';
@@ -13,7 +12,10 @@ import { BlendClient } from './services/blend.client';
 import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
 
-const RPC_URL = 'https://soroban-testnet.stellar.org';
+import { networkManager, Network } from './utils/network';
+import { switchNetwork, handleRestrictedAction } from './actions';
+
+const RPC_URL = networkManager.getRpcUrl();
 
 export interface PlaygroundStatus {
   network: string;
@@ -25,7 +27,7 @@ export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
-    network: Networks.TESTNET,
+    network: networkManager.getNetwork(),
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
   };
@@ -81,7 +83,15 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <p class="eyebrow">Galaxy DevKit</p>
           <h1>Smart wallet playground</h1>
         </div>
-        <div class="network-pill">${status.network}</div>
+        <div class="network-controls">
+          <select id="network-switcher" class="network-select" aria-label="Switch network">
+            <option value="${Network.TESTNET}" ${status.network === Network.TESTNET ? 'selected' : ''}>Testnet</option>
+            <option value="${Network.MAINNET}" ${status.network === Network.MAINNET ? 'selected' : ''}>Mainnet</option>
+          </select>
+          <div class="network-pill ${status.network === Network.MAINNET ? 'pill--mainnet' : ''}">
+            ${status.network} ${networkManager.isReadOnly() ? '(Read-only)' : ''}
+          </div>
+        </div>
       </header>
 
       <section class="status-grid" aria-label="SDK status">
@@ -146,7 +156,6 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
     </section>
   `;
 
-  (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
   const client = new SmartWalletClient();
   const txTracker = new TxTrackerService();
@@ -164,6 +173,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
 
   bindNav();
   bindHamburger();
+  bindNetworkSwitcher();
 
   return status;
 }
@@ -173,8 +183,12 @@ function mountSessionPanel(container: HTMLElement): void {
   const sessions = getStoredSessions();
   const panel = new WalletSessionPanel(container, {
     onAddSessionKey: async (params) => {
+      if (handleRestrictedAction('Add Session Key')) {
+        throw new Error('Mainnet is read-only');
+      }
+
       const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
-      const { BrowserCredentialBackend } = await import('../core/wallet/src/credential-backends/browser.backend');
+      const { BrowserCredentialBackend } = await import('../../core/wallet/src/credential-backends/browser.backend');
       const svc = new SmartWalletService(
         { relyingPartyId: window.location.hostname },
         RPC_URL,
@@ -221,12 +235,20 @@ function mountTxPanel(
     { rpcUrl: RPC_URL, txTracker },
     {
       onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
-        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+        if (handleRestrictedAction('Sign Transaction')) {
+          throw new Error('Mainnet is read-only');
+        }
+        const { TransactionBuilder } = await import('@stellar/stellar-sdk');
         const service = client.getService();
-        const tx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkManager.getPassphrase());
         return service.sign(walletAddress, tx as any, credentialId);
       },
-      onSubmit: (signedXdr: string) => txClient.submitSignedXdr(signedXdr),
+      onSubmit: (signedXdr: string) => {
+        if (handleRestrictedAction('Submit Transaction')) {
+          return Promise.reject(new Error('Mainnet is read-only'));
+        }
+        return txClient.submitSignedXdr(signedXdr);
+      },
     }
   );
 }
@@ -304,4 +326,18 @@ function closeSidebar(): void {
   overlay?.classList.remove('visible');
   btn?.setAttribute('aria-expanded', 'false');
   btn?.setAttribute('aria-label', 'Open navigation menu');
+}
+
+function bindNetworkSwitcher(): void {
+  const switcher = document.getElementById('network-switcher') as HTMLSelectElement | null;
+  if (!switcher) return;
+
+  switcher.addEventListener('change', async () => {
+    const newNetwork = switcher.value as Network;
+    if (confirm(`Switch to ${newNetwork}? The page will reload.`)) {
+      await switchNetwork(newNetwork);
+    } else {
+      switcher.value = networkManager.getNetwork();
+    }
+  });
 }

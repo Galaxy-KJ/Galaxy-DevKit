@@ -1,3 +1,4 @@
+import './polyfills';
 import { renderPlayground } from './app';
 import './styles.css';
 
