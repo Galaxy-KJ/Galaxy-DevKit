@@ -1,6 +1,6 @@
 import { Asset } from '../types/defi-types.js';
 
-export type AggregatorVenue = 'soroswap' | 'sdex';
+export type AggregatorVenue = 'soroswap' | 'sdex' | 'aquarius';
 
 export interface AggregatorRoute {
   venue: AggregatorVenue;
