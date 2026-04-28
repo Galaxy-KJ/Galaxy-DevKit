@@ -100,14 +100,15 @@ h1 {
 }
 
 .read-only-badge {
-  background: #de5d45;
-  color: white;
+  background: `#de5d45`;
+  color: `#16211f`;
   font-size: 0.65rem;
   font-weight: 900;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   letter-spacing: 0.05em;
   white-space: nowrap;
+}
 }
 
 .status-grid,
