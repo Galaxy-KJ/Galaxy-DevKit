@@ -5,6 +5,7 @@
 import { WalletConnectorService, ImportedWalletInfo } from '../services/wallet-connector';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { setupWebAuthnMock } from './mock-webauthn';
+import { Buffer } from 'buffer';
 import { StrKey, Networks } from '@stellar/stellar-sdk';
 
 describe('WalletConnectorService', () => {
@@ -49,7 +50,7 @@ describe('WalletConnectorService', () => {
       // Generate a valid contract address using StrKey
       const contractId = new Uint8Array(32);
       crypto.getRandomValues(contractId);
-      const validAddress = StrKey.encodeContract(contractId);
+      const validAddress = StrKey.encodeContract(Buffer.from(contractId));
       
       const error = connectorService.validateContractAddress(validAddress);
       expect(error).toBeUndefined();
