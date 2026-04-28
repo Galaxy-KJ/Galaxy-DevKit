@@ -6,6 +6,23 @@ import { setupWebAuthnMock } from './mock-webauthn';
 import { WalletCreatePanel } from '../panels/wallet-create';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { Buffer } from 'buffer';
+import { Networks } from '@stellar/stellar-sdk';
+
+jest.mock('@stellar/stellar-sdk/rpc', () => {
+  return {
+    Server: jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn(() => Promise.resolve({ sequence: 12345 })),
+      getLedgerEntries: jest.fn(() => Promise.resolve({ entries: [{}] })),
+    })),
+  };
+});
+
+jest.mock('@stellar/stellar-sdk', () => {
+  const original = jest.requireActual('@stellar/stellar-sdk');
+  return {
+    ...original,
+  };
+});
 
 describe('WalletCreatePanel', () => {
   let container: HTMLElement;

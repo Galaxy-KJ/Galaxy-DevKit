@@ -16,6 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@galaxy-kj/core-wallet": ["../core/wallet/src/index.ts"],
+      "@galaxy-kj/core-wallet/*": ["../core/wallet/src/*"],
       "@galaxy-kj/core-stellar-sdk": ["../core/stellar-sdk/src/browser.ts"],
       "@galaxy-kj/core-defi-protocols": ["../core/defi-protocols/src"],
       "@galaxy-kj/core-oracles": ["../core/oracles/src"],

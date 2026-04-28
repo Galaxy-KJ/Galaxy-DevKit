@@ -1,5 +1,5 @@
 import { SmartWalletClient } from './smart-wallet.client';
-import { Address, StrKey, Networks } from '@stellar/stellar-sdk';
+import { Address, StrKey, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
 
 /**
@@ -64,13 +64,14 @@ export class WalletConnectorService {
       const contractScAddress = new Address(contractAddress).toScAddress();
       
       // Query the ledger for the contract's instance entry
-      // In Soroban, a contract exists if it has an instance entry or code
-      const response = await this.server.getLedgerEntries({
-        type: 'contractData',
-        contract: contractAddress,
-        key: 'Instance', // Soroban internal key for contract instance
-        durability: 'persistent'
-      });
+      // In Soroban, a contract exists if it has an instance entry
+      const ledgerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+        contract: contractScAddress,
+        key: xdr.ScVal.scvSymbol('Instance'),
+        durability: xdr.ContractDataDurability.persistent()
+      }));
+
+      const response = await this.server.getLedgerEntries(ledgerKey);
 
       return !!(response && response.entries && response.entries.length > 0);
     } catch (error) {
