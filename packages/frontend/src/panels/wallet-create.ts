@@ -216,57 +216,64 @@ export class WalletCreatePanel {
     const resultsContainer = document.getElementById('wc-import-results');
     if (!resultsContainer) return;
 
-    let html = `
-      <div class="result-item">
-        <strong>Contract Address:</strong>
-        <code>${walletInfo.address}</code>
-      </div>
-      <div class="result-item">
-        <strong>Status:</strong>
-        <span class="${walletInfo.isSmartWallet ? 'status-success' : 'status-error'}">
-          ${walletInfo.isSmartWallet ? '✓ Valid Smart Wallet' : '✗ Invalid or Unable to Verify'}
-        </span>
-      </div>
-    `;
+    // Clear previous results safely
+    resultsContainer.textContent = '';
+    resultsContainer.style.display = 'block';
+
+    // Helper to create and append elements
+    const createItem = (label: string, value: string, isCode = false, statusClass?: string) => {
+      const div = document.createElement('div');
+      div.className = 'result-item';
+      
+      const strong = document.createElement('strong');
+      strong.textContent = label + ': ';
+      div.appendChild(strong);
+
+      const span = document.createElement(isCode ? 'code' : 'span');
+      span.textContent = value;
+      if (statusClass) span.className = statusClass;
+      div.appendChild(span);
+      
+      resultsContainer.appendChild(div);
+      return div;
+    };
+
+    createItem('Contract Address', walletInfo.address, true);
+    
+    createItem(
+      'Status', 
+      walletInfo.isSmartWallet ? '✓ Valid Smart Wallet' : '✗ Invalid or Unable to Verify',
+      false,
+      walletInfo.isSmartWallet ? 'status-success' : 'status-error'
+    );
 
     if (walletInfo.errorMessage) {
-      html += `
-        <div class="result-item error">
-          <strong>Error:</strong>
-          <span>${walletInfo.errorMessage}</span>
-        </div>
-      `;
+      const errorDiv = createItem('Error', walletInfo.errorMessage);
+      errorDiv.classList.add('error');
     }
 
     if (walletInfo.signers && walletInfo.signers.length > 0) {
-      html += `
-        <div class="result-item">
-          <strong>Active Signers:</strong>
-          <div style="margin-top: 5px;">
-      `;
+      const signersHeader = document.createElement('div');
+      signersHeader.className = 'result-item';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Active Signers:';
+      signersHeader.appendChild(strong);
+      
+      const signersList = document.createElement('div');
+      signersList.style.marginTop = '5px';
+      
       walletInfo.signers.forEach((signer, idx) => {
-        html += `
-          <div style="margin: 5px 0; padding: 5px; background: #f0f0f0; border-radius: 3px;">
-            <span>#${idx + 1}</span> | <span>${signer.type}</span>
-            ${signer.isActive ? ' ✓ Active' : ' ✗ Inactive'}
-          </div>
-        `;
+        const item = document.createElement('div');
+        item.style.cssText = 'margin: 5px 0; padding: 5px; background: #f0f0f0; border-radius: 3px;';
+        item.textContent = `#${idx + 1} | ${signer.type}${signer.isActive ? ' ✓ Active' : ' ✗ Inactive'}`;
+        signersList.appendChild(item);
       });
-      html += `
-          </div>
-        </div>
-      `;
+      
+      signersHeader.appendChild(signersList);
+      resultsContainer.appendChild(signersHeader);
     } else if (walletInfo.isSmartWallet) {
-      html += `
-        <div class="result-item">
-          <strong>Signers:</strong>
-          <span>No signers fetched (implementation pending)</span>
-        </div>
-      `;
+      createItem('Signers', 'No signers fetched (implementation pending)');
     }
-
-    resultsContainer.innerHTML = html;
-    resultsContainer.style.display = 'block';
   }
 
   private updateStatus(msg: string, type: 'info' | 'success' | 'error') {

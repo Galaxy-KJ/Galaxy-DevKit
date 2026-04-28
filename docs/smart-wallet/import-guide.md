@@ -62,6 +62,7 @@ The results panel shows:
 ```typescript
 import { SmartWalletClient } from '@galaxy-kj/frontend/services/smart-wallet.client';
 import { WalletConnectorService } from '@galaxy-kj/frontend/services/wallet-connector';
+import { Networks } from '@stellar/stellar-sdk';
 
 // Initialize client and connector
 const client = new SmartWalletClient();

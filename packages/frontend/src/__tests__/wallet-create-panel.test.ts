@@ -11,6 +11,7 @@ describe('WalletCreatePanel', () => {
   let container: HTMLElement;
   let client: SmartWalletClient;
   let panel: WalletCreatePanel;
+  const testContractAddress = 'CBJLVS7PUHVFRRMOWIXXF5SGETGU7ELPSRU47WYXHAIOAIXF4XID27WV';
 
   beforeEach(() => {
     setupWebAuthnMock();
@@ -121,11 +122,12 @@ describe('WalletCreatePanel', () => {
       const registerBtn = document.getElementById('wc-register');
       registerBtn?.click();
       
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for registration to complete
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       const deployBtn = document.getElementById('wc-deploy') as HTMLButtonElement;
       // Button should be enabled after successful registration
-      expect(deployBtn).toBeTruthy();
+      expect(deployBtn.disabled).toBe(false);
     });
 
     it('should handle registration error', async () => {
@@ -213,28 +215,35 @@ describe('WalletCreatePanel', () => {
     it('should clear validation on valid address', async () => {
       const addressInput = document.getElementById('wc-import-address') as HTMLInputElement;
       
-      // Test valid format (starts with C and valid bech32)
-      const validAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2DAAAA';
+      // First set invalid to show error
+      addressInput.value = 'invalid';
+      addressInput.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(addressInput.style.borderColor).toBeTruthy(); // Should have error color
+
+      // Now set valid format
+      const validAddress = testContractAddress;
       addressInput.value = validAddress;
-      const event = new Event('input', { bubbles: true });
-      addressInput.dispatchEvent(event);
+      addressInput.dispatchEvent(new Event('input', { bubbles: true }));
       
-      // Note: actual validation depends on the address format
+      // Validation should clear (border color reset)
+      expect(addressInput.style.borderColor).toBe('');
     });
 
     it('should handle import verification', async () => {
       const addressInput = document.getElementById('wc-import-address') as HTMLInputElement;
-      const validAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2DAAAA';
-      addressInput.value = validAddress;
+      addressInput.value = testContractAddress;
       
       const verifyBtn = document.getElementById('wc-import-verify');
       verifyBtn?.click();
       
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Wait for verification and UI update
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Should show results container
+      // Should show results container with content
       const resultsContainer = document.getElementById('wc-import-results');
-      expect(resultsContainer).toBeTruthy();
+      expect(resultsContainer?.style.display).toBe('block');
+      expect(resultsContainer?.textContent).toContain('Contract Address');
+      expect(resultsContainer?.textContent).toContain(testContractAddress);
     });
 
     it('should show error for invalid address', async () => {
@@ -260,7 +269,7 @@ describe('WalletCreatePanel', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       const statusEl = document.getElementById('wc-status');
-      expect(statusEl?.textContent).toContain('Address');
+      expect(statusEl?.textContent?.toLowerCase()).toContain('address');
     });
   });
 

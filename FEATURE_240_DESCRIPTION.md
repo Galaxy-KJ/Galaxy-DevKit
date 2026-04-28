@@ -88,7 +88,7 @@ Comprehensive test coverage with 90%+ compliance:
 
 ### Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │  WalletCreatePanel (UI)                     │
 │  - Create Tab (new wallet)                  │
@@ -333,4 +333,4 @@ If issues are found:
 
 **Issue**: #240  
 **Feature Branch**: feature/240-import-wallet-by-address  
-**Created**: 2024-04-28
+**Created**: 2026-04-28

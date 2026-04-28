@@ -20,6 +20,7 @@ jest.mock('@stellar/stellar-sdk/rpc', () => {
   return {
     Server: jest.fn().mockImplementation(() => ({
       getLatestLedger: jest.fn(() => Promise.resolve({ sequence: 12345 })),
+      getLedgerEntries: jest.fn(() => Promise.resolve({ entries: [{}] })),
     })),
   };
 });
@@ -84,12 +85,16 @@ describe('WalletConnectorService', () => {
       expect(result).toBe(false);
     });
 
-    it('should validate but not require on-chain existence (format check only)', async () => {
-      // For unit tests, we verify the address format is acceptable
-      // Full on-chain verification would require a live network
+    it('should return true when contract exists on-chain', async () => {
       const result = await connectorService.verifyContractExists(testContractAddress);
-      // Should return true or false based on RPC availability, not throw
-      expect(typeof result).toBe('boolean');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when contract does not exist on-chain', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getLedgerEntries.mockResolvedValueOnce({ entries: [] });
+      const result = await connectorService.verifyContractExists(testContractAddress);
+      expect(result).toBe(false);
     });
   });
 
@@ -99,10 +104,16 @@ describe('WalletConnectorService', () => {
       expect(result).toBe(false);
     });
 
-    it('should return a boolean for valid address format', async () => {
-      // This checks the format, actual verification requires network
+    it('should return true for valid smart wallet address', async () => {
       const result = await connectorService.isSmartWalletContract(testContractAddress);
-      expect(typeof result).toBe('boolean');
+      expect(result).toBe(true);
+    });
+
+    it('should return false if contract verification fails', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getLedgerEntries.mockResolvedValueOnce({ entries: [] });
+      const result = await connectorService.isSmartWalletContract(testContractAddress);
+      expect(result).toBe(false);
     });
   });
 
@@ -149,10 +160,16 @@ describe('WalletConnectorService', () => {
       expect(result).toBe(false);
     });
 
-    it('should return boolean result', async () => {
-      // Test with valid format (actual verification requires network)
+    it('should return true for successful connection', async () => {
       const result = await connectorService.connectToWallet(testContractAddress);
-      expect(typeof result).toBe('boolean');
+      expect(result).toBe(true);
+    });
+
+    it('should return false if connection fails verification', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getLedgerEntries.mockResolvedValueOnce({ entries: [] });
+      const result = await connectorService.connectToWallet(testContractAddress);
+      expect(result).toBe(false);
     });
 
     it('should validate address format before attempting connection', async () => {
@@ -165,12 +182,15 @@ describe('WalletConnectorService', () => {
     it('should initialize with empty connections', () => {
       const connections = connectorService.getStoredConnections();
       expect(Array.isArray(connections)).toBe(true);
+      expect(connections).toHaveLength(0);
     });
 
     it('should handle corrupt localStorage gracefully', () => {
       localStorage.setItem('smart_wallet_connections', 'not-valid-json{');
       const connections = connectorService.getStoredConnections();
       expect(Array.isArray(connections)).toBe(true);
+      expect(connections).toHaveLength(0);
+      expect(localStorage.getItem('smart_wallet_connections')).toBeNull();
     });
 
     it('should remove stored connection', () => {
@@ -185,7 +205,7 @@ describe('WalletConnectorService', () => {
     it('should handle network errors gracefully', async () => {
       // Mock network error
       const mockServer = (connectorService as any).server;
-      mockServer.getLatestLedger.mockRejectedValueOnce(new Error('Network error'));
+      mockServer.getLedgerEntries.mockRejectedValueOnce(new Error('Network error'));
 
       const result = await connectorService.importWallet(testContractAddress);
       expect(result.isValid).toBe(false);

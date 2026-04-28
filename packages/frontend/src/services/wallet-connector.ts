@@ -1,5 +1,5 @@
 import { SmartWalletClient } from './smart-wallet.client';
-import { Contract, Address, StrKey, Networks, TransactionBuilder, BASE_FEE } from '@stellar/stellar-sdk';
+import { Address, StrKey, Networks } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
 
 /**
@@ -50,33 +50,31 @@ export class WalletConnectorService {
     try {
       // Validate the address format
       if (!contractAddress.startsWith('C')) {
-        throw new Error('Invalid contract address format. Must start with "C"');
+        return false;
       }
 
       // Try to decode to verify it's a valid bech32 address
       try {
         StrKey.decodeContract(contractAddress);
       } catch {
-        throw new Error('Invalid bech32 contract address format');
+        return false;
       }
 
-      // Check if the contract exists by trying to get contract data
+      // Convert to ScAddress for the RPC call
       const contractScAddress = new Address(contractAddress).toScAddress();
       
-      // Try a simple operation to verify contract exists
-      // We'll attempt to create a test transaction that would invoke the contract
-      const { sequence } = await this.server.getLatestLedger();
-      const testSourceAccount = {
-        accountId: () => 'GBRPYHIL2CI3WHZKJHXEMS5H47ONRV46LPYTWSTX47GQNFQ5HAKVZ6K7', // dummy account
-        sequenceNumber: () => String(sequence),
-        incrementSequenceNumber: () => {},
-      } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
+      // Query the ledger for the contract's instance entry
+      // In Soroban, a contract exists if it has an instance entry or code
+      const response = await this.server.getLedgerEntries({
+        type: 'contractData',
+        contract: contractAddress,
+        key: 'Instance', // Soroban internal key for contract instance
+        durability: 'persistent'
+      });
 
-      // Just verify we can construct a contract address - means it's valid format
-      new Contract(contractAddress);
-      
-      return true;
+      return !!(response && response.entries && response.entries.length > 0);
     } catch (error) {
+      // Return false on any network or parsing error
       return false;
     }
   }
@@ -93,21 +91,16 @@ export class WalletConnectorService {
         return false;
       }
 
-      // Get the underlying SmartWalletService to access internal methods
-      const service = this.client.getService();
+      // To verify it's a smart wallet, we check if it implements the required interface.
+      // We do this by attempting to simulate a call to a read-only method that 
+      // all our smart wallets should have, or by checking the contract spec.
       
-      // Try to read contract info to verify it has expected methods
-      // This is a basic check - a deployed smart wallet contract should:
-      // 1. Exist on-chain
-      // 2. Have specific methods (add_signer, remove_signer, etc.)
+      // For this implementation, we'll check for the 'add_signer' method in the interface
+      // by attempting to get the contract code and checking its exported functions
+      // (Simplified for this version - in a full implementation we'd use a spec check)
       
-      // For now, we verify by attempting a simple read operation
-      // In production, you might want to check the contract spec
-      const contractScAddress = new Address(contractAddress).toScAddress();
-      
-      // Contract exists and is valid format means it could be a smart wallet
-      // More thorough validation would require reading the contract spec
-      return true;
+      return true; // Assume true if verifyContractExists passes for now, 
+                   // as full interface check requires WASM inspection
     } catch (error) {
       console.error('Error checking if contract is smart wallet:', error);
       return false;
@@ -289,7 +282,9 @@ export class WalletConnectorService {
     try {
       const stored = localStorage.getItem('smart_wallet_connections');
       return stored ? JSON.parse(stored) : [];
-    } catch {
+    } catch (error) {
+      console.warn('Failed to parse smart_wallet_connections, clearing corrupted data:', error);
+      localStorage.removeItem('smart_wallet_connections');
       return [];
     }
   }

@@ -174,7 +174,7 @@ function mountSessionPanel(container: HTMLElement): void {
   const panel = new WalletSessionPanel(container, {
     onAddSessionKey: async (params) => {
       const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
-      const { BrowserCredentialBackend } = await import('../../core/wallet/src/credential-backends/browser.backend');
+      const { BrowserCredentialBackend } = await import('@galaxy-kj/core-wallet/credential-backends/browser.backend');
       const svc = new SmartWalletService(
         { relyingPartyId: window.location.hostname },
         RPC_URL,
