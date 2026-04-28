@@ -156,11 +156,12 @@ export class BlendPanel {
       return;
     }
 
-    this.setStatus(`${kind === 'borrow' ? 'Borrowing' : 'Repaying'}...`, 'info');
-
     try {
       assertWriteOperation();
+      this.setStatus(`${kind === 'borrow' ? 'Borrowing' : 'Repaying'}...`, 'info');
       const result = kind === 'borrow'
+        ? await this.client.borrow({ signerPublicKey: wallet, asset, amount, jwt })
+        : await this.client.repay({ signerPublicKey: wallet, asset, amount, jwt });
         ? await this.client.borrow({ signerPublicKey: wallet, asset, amount, jwt })
         : await this.client.repay({ signerPublicKey: wallet, asset, amount, jwt });
 
