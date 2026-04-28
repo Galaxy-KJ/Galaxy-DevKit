@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { Keypair, Networks } from '@galaxy-kj/core-stellar-sdk';
+import { Keypair } from '@galaxy-kj/core-stellar-sdk';
 import { SmartWalletClient } from './services/smart-wallet.client';
 import { WalletCreatePanel } from './panels/wallet-create';
 import { WalletSignersPanel } from './panels/wallet-signers';
@@ -12,8 +12,11 @@ import { BlendPanel } from './panels/blend';
 import { BlendClient } from './services/blend.client';
 import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
+import { getCurrentNetworkConfig, setSelectedNetwork, NetworkType, isMainnetReadOnly } from './utils/network';
+import { assertWriteOperation } from './actions';
 
-const RPC_URL = 'https://soroban-testnet.stellar.org';
+const networkConfig = getCurrentNetworkConfig();
+const RPC_URL = networkConfig.rpcUrl;
 
 export interface PlaygroundStatus {
   network: string;
@@ -25,7 +28,7 @@ export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
-    network: Networks.TESTNET,
+    network: networkConfig.type,
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
   };
@@ -81,7 +84,13 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <p class="eyebrow">Galaxy DevKit</p>
           <h1>Smart wallet playground</h1>
         </div>
-        <div class="network-pill">${status.network}</div>
+        <div class="network-switcher">
+          <select id="network-select" class="network-select" aria-label="Select network">
+            <option value="${NetworkType.TESTNET}" ${status.network === NetworkType.TESTNET ? 'selected' : ''}>Testnet</option>
+            <option value="${NetworkType.MAINNET}" ${status.network === NetworkType.MAINNET ? 'selected' : ''}>Mainnet (Read-only)</option>
+          </select>
+          ${isMainnetReadOnly() ? '<span class="read-only-badge">READ ONLY</span>' : ''}
+        </div>
       </header>
 
       <section class="status-grid" aria-label="SDK status">
@@ -148,7 +157,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
 
   (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
-  const client = new SmartWalletClient();
+  const client = new SmartWalletClient(networkConfig.rpcUrl, networkConfig.networkPassphrase);
   const txTracker = new TxTrackerService();
   new WalletCreatePanel('wallet-create-panel', client);
   new WalletSignersPanel('wallet-signers-panel', client);
@@ -164,6 +173,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
 
   bindNav();
   bindHamburger();
+  bindNetworkSwitcher();
 
   return status;
 }
@@ -173,13 +183,14 @@ function mountSessionPanel(container: HTMLElement): void {
   const sessions = getStoredSessions();
   const panel = new WalletSessionPanel(container, {
     onAddSessionKey: async (params) => {
+      assertWriteOperation();
       const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
-      const { BrowserCredentialBackend } = await import('../core/wallet/src/credential-backends/browser.backend');
+      const { BrowserCredentialBackend } = await import('../../core/wallet/src/credential-backends/browser.backend');
       const svc = new SmartWalletService(
         { relyingPartyId: window.location.hostname },
         RPC_URL,
         undefined,
-        undefined,
+        networkConfig.networkPassphrase,
         new BrowserCredentialBackend()
       );
       const xdr = await svc.addSessionSigner({
@@ -214,19 +225,23 @@ function mountTxPanel(
   client: SmartWalletClient,
   txTracker: TxTrackerService
 ): void {
-  const txClient = new TxBuilderClient(RPC_URL);
+  const txClient = new TxBuilderClient(RPC_URL, networkConfig.networkPassphrase);
 
   new WalletTxPanel(
     container,
-    { rpcUrl: RPC_URL, txTracker },
+    { rpcUrl: RPC_URL, network: networkConfig.networkPassphrase, txTracker },
     {
       onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
-        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+        assertWriteOperation();
+        const { TransactionBuilder } = await import('@stellar/stellar-sdk');
         const service = client.getService();
-        const tx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkConfig.networkPassphrase);
         return service.sign(walletAddress, tx as any, credentialId);
       },
-      onSubmit: (signedXdr: string) => txClient.submitSignedXdr(signedXdr),
+      onSubmit: (signedXdr: string) => {
+        assertWriteOperation();
+        return txClient.submitSignedXdr(signedXdr);
+      },
     }
   );
 }
@@ -235,7 +250,7 @@ function mountTxHistoryPanel(
   container: HTMLElement,
   txTracker: TxTrackerService
 ): void {
-  const txClient = new TxBuilderClient(RPC_URL);
+  const txClient = new TxBuilderClient(RPC_URL, networkConfig.networkPassphrase);
   new TxHistoryPanel(container, txTracker, {
     onResimulateFailedTx: async (entry) => {
       await txClient.resimulateXdr(entry.unsignedXdr);
@@ -304,4 +319,12 @@ function closeSidebar(): void {
   overlay?.classList.remove('visible');
   btn?.setAttribute('aria-expanded', 'false');
   btn?.setAttribute('aria-label', 'Open navigation menu');
+}
+
+function bindNetworkSwitcher(): void {
+  const select = document.getElementById('network-select') as HTMLSelectElement | null;
+  select?.addEventListener('change', (e) => {
+    const target = e.target as HTMLSelectElement;
+    setSelectedNetwork(target.value as NetworkType);
+  });
 }

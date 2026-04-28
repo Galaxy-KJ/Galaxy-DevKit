@@ -4,6 +4,7 @@ import {
   type BlendPositionResponse,
   type BlendTransactionResponse,
 } from '../services/blend.client';
+import { assertWriteOperation } from '../actions';
 
 interface BlendPanelClient {
   getPosition(publicKey: string): Promise<BlendPositionResponse>;
@@ -158,6 +159,7 @@ export class BlendPanel {
     this.setStatus(`${kind === 'borrow' ? 'Borrowing' : 'Repaying'}...`, 'info');
 
     try {
+      assertWriteOperation();
       const result = kind === 'borrow'
         ? await this.client.borrow({ signerPublicKey: wallet, asset, amount, jwt })
         : await this.client.repay({ signerPublicKey: wallet, asset, amount, jwt });

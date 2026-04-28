@@ -38,7 +38,7 @@ jest.mock('../panels/security-limits', () => ({
 describe('playground app', () => {
   it('reports that the Stellar SDK workspace import is usable', () => {
     expect(getPlaygroundStatus()).toEqual({
-      network: 'Test SDF Network ; September 2015',
+      network: 'TESTNET',
       sdkReady: true,
       generatedAccount: 'GPLAYGROUNDTESTACCOUNT',
     });

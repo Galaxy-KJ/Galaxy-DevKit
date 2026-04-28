@@ -1,4 +1,5 @@
 import { SmartWalletClient } from '../services/smart-wallet.client';
+import { assertWriteOperation } from '../actions';
 
 export class WalletCreatePanel {
   private container: HTMLElement;
@@ -73,6 +74,7 @@ export class WalletCreatePanel {
 
   private async handleDeploy() {
     try {
+      assertWriteOperation();
       this.updateStatus('Deploying smart wallet (simulating)...', 'info');
       const publicKey = this.publicKeyDisplay?.textContent;
       if (!publicKey || publicKey === '-') throw new Error('No public key found');
