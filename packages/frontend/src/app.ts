@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Playground entry point
+ * @description Renders the Smart Wallet playground and wires the network
+ *   switcher so testnet/mainnet state is persisted, all write-action buttons
+ *   are disabled on mainnet, and a DOM reload fires on every network change.
+ * @author Galaxy DevKit Team
+ * @version 1.1.0
+ */
+
+import { Buffer } from 'buffer';
 import { Keypair, Networks } from '@galaxy-kj/core-stellar-sdk';
 import { SmartWalletClient } from './services/smart-wallet.client';
 import { WalletCreatePanel } from './panels/wallet-create';
@@ -12,10 +22,23 @@ import { BlendClient } from './services/blend.client';
 import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
 
-import { networkManager, Network } from './utils/network';
-import { switchNetwork, handleRestrictedAction } from './actions';
+// Network utilities (new in v1.1.0)
+import {
+  networkStore,
+  renderNetworkSwitcher,
+  syncWriteActions,
+  syncNetworkPill,
+  ReadOnlyNetworkError,
+} from './utils/network.js';
 
-const RPC_URL = networkManager.getRpcUrl();
+// ─── RPC URL is now driven by the active network config ───────────────────────
+// Do NOT use a module-level constant here — the config must be read after the
+// store initialises so the persisted localStorage value is respected.
+function getRpcUrl(): string {
+  return networkStore.getConfig().rpcUrl;
+}
+
+// ─── Types (unchanged) ────────────────────────────────────────────────────────
 
 export interface PlaygroundStatus {
   network: string;
@@ -23,18 +46,22 @@ export interface PlaygroundStatus {
   generatedAccount: string;
 }
 
+// ─── Status (unchanged) ───────────────────────────────────────────────────────
+
 export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
-    network: networkManager.getNetwork(),
+    network: networkStore.getNetwork(),
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
   };
 }
 
+// ─── Ledger helper (unchanged) ────────────────────────────────────────────────
+
 async function getCurrentLedger(): Promise<number> {
-  const res = await fetch(RPC_URL, {
+  const res = await fetch(getRpcUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger', params: [] }),
@@ -46,6 +73,8 @@ async function getCurrentLedger(): Promise<number> {
   }
   return sequence;
 }
+
+// ─── Session storage (unchanged) ─────────────────────────────────────────────
 
 function getStoredSessions(): SessionEntry[] {
   try {
@@ -60,8 +89,11 @@ function storeSessions(sessions: SessionEntry[]): void {
   localStorage.setItem('galaxy_sessions', JSON.stringify(sessions));
 }
 
+// ─── renderPlayground ─────────────────────────────────────────────────────────
+
 export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   const status = getPlaygroundStatus();
+  const isMainnet = networkStore.isMainnet();
 
   root.innerHTML = `
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -83,16 +115,21 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <p class="eyebrow">Galaxy DevKit</p>
           <h1>Smart wallet playground</h1>
         </div>
-        <div class="network-controls">
-          <select id="network-switcher" class="network-select" aria-label="Switch network">
-            <option value="${Network.TESTNET}" ${status.network === Network.TESTNET ? 'selected' : ''}>Testnet</option>
-            <option value="${Network.MAINNET}" ${status.network === Network.MAINNET ? 'selected' : ''}>Mainnet</option>
-          </select>
-          <div class="network-pill ${status.network === Network.MAINNET ? 'pill--mainnet' : ''}">
-            ${status.network} ${networkManager.isReadOnly() ? '(Read-only)' : ''}
-          </div>
+        <!-- Network switcher slot (populated below) -->
+        <div id="network-switcher-slot" class="network-switcher"></div>
+
+        <!-- Legacy pill kept for CSS theming; text synced by syncNetworkPill() -->
+        <div class="network-pill" data-network="${networkStore.getNetwork()}">
+          ${networkStore.getConfig().label}
         </div>
       </header>
+
+      ${isMainnet ? `
+        <div class="mainnet-banner" role="alert" aria-live="polite">
+          🔴 <strong>Mainnet — read-only mode.</strong>
+          All write operations are disabled. Switch to Testnet to send transactions.
+        </div>
+      ` : ''}
 
       <section class="status-grid" aria-label="SDK status">
         <article>
@@ -106,6 +143,10 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
         <article>
           <span>USDC issuer</span>
           <code>GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5</code>
+        </article>
+        <article>
+          <span>Active network</span>
+          <strong>${networkStore.getConfig().label}</strong>
         </article>
       </section>
 
@@ -129,7 +170,10 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
               <a href="#session" class="sidebar__nav-link" data-panel="wallet-session-panel">Session Keys</a>
             </li>
             <li class="sidebar__nav-item">
-              <a href="#tx" class="sidebar__nav-link" data-panel="wallet-tx-panel">Send Transaction</a>
+              <a href="#tx" class="sidebar__nav-link" data-panel="wallet-tx-panel">
+                Send Transaction
+                ${isMainnet ? '<span class="sidebar__badge sidebar__badge--readonly" aria-label="disabled on mainnet">read-only</span>' : ''}
+              </a>
             </li>
             <li class="sidebar__nav-item">
               <a href="#tx-history" class="sidebar__nav-link" data-panel="wallet-tx-history-panel">Tx History</a>
@@ -156,7 +200,24 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
     </section>
   `;
 
+  // Polyfill Buffer for browser environments
+  (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
+  // ── Wire network switcher ────────────────────────────────────────────────
+  const switcherSlot = document.getElementById('network-switcher-slot');
+  if (switcherSlot) renderNetworkSwitcher(switcherSlot);
+
+  // Sync the pill text/colour and all write-action button states
+  syncNetworkPill();
+  syncWriteActions();
+
+  // Re-sync on any future network change (fires before the reload)
+  networkStore.subscribe(() => {
+    syncNetworkPill();
+    syncWriteActions();
+  });
+
+  // ── Mount panels ─────────────────────────────────────────────────────────
   const client = new SmartWalletClient();
   const txTracker = new TxTrackerService();
   new WalletCreatePanel('wallet-create-panel', client);
@@ -166,35 +227,35 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   mountTxPanel(document.getElementById('wallet-tx-panel')!, client, txTracker);
   mountTxHistoryPanel(
     document.getElementById('wallet-tx-history-panel')!,
-    txTracker
+    txTracker,
   );
   new BlendPanel('blend-panel', new BlendClient());
   new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
 
   bindNav();
   bindHamburger();
-  bindNetworkSwitcher();
 
   return status;
 }
+
+// ─── Panel mounts ─────────────────────────────────────────────────────────────
 
 function mountSessionPanel(container: HTMLElement): void {
   const LEDGER_CLOSE = 5;
   const sessions = getStoredSessions();
   const panel = new WalletSessionPanel(container, {
     onAddSessionKey: async (params) => {
-      if (handleRestrictedAction('Add Session Key')) {
-        throw new Error('Mainnet is read-only');
-      }
+      // Guard: session keys are write operations
+      networkStore.assertWritable('Add session key');
 
       const { SmartWalletService } = await import('@galaxy-kj/core-wallet');
       const { BrowserCredentialBackend } = await import('../../core/wallet/src/credential-backends/browser.backend');
       const svc = new SmartWalletService(
         { relyingPartyId: window.location.hostname },
-        RPC_URL,
+        getRpcUrl(),
         undefined,
         undefined,
-        new BrowserCredentialBackend()
+        new BrowserCredentialBackend(),
       );
       const xdr = await svc.addSessionSigner({
         walletAddress: params.walletAddress,
@@ -226,44 +287,46 @@ function mountSessionPanel(container: HTMLElement): void {
 function mountTxPanel(
   container: HTMLElement,
   client: SmartWalletClient,
-  txTracker: TxTrackerService
+  txTracker: TxTrackerService,
 ): void {
-  const txClient = new TxBuilderClient(RPC_URL);
+  const txClient = new TxBuilderClient(getRpcUrl());
 
   new WalletTxPanel(
     container,
-    { rpcUrl: RPC_URL, txTracker },
+    { rpcUrl: getRpcUrl(), txTracker },
     {
       onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
-        if (handleRestrictedAction('Sign Transaction')) {
-          throw new Error('Mainnet is read-only');
-        }
-        const { TransactionBuilder } = await import('@stellar/stellar-sdk');
+        // Guard: signing is a write operation
+        networkStore.assertWritable('Sign transaction');
+
+        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
         const service = client.getService();
-        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkManager.getPassphrase());
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkStore.getConfig().passphrase);
         return service.sign(walletAddress, tx as any, credentialId);
       },
-      onSubmit: (signedXdr: string) => {
-        if (handleRestrictedAction('Submit Transaction')) {
-          return Promise.reject(new Error('Mainnet is read-only'));
-        }
+      onSubmit: async (signedXdr: string) => {
+        // Guard: submitting is a write operation
+        networkStore.assertWritable('Submit transaction');
         return txClient.submitSignedXdr(signedXdr);
       },
-    }
   );
 }
 
 function mountTxHistoryPanel(
   container: HTMLElement,
-  txTracker: TxTrackerService
+  txTracker: TxTrackerService,
 ): void {
-  const txClient = new TxBuilderClient(RPC_URL);
+  // Tx history is read-only — no guard needed
+  const txClient = new TxBuilderClient(getRpcUrl());
   new TxHistoryPanel(container, txTracker, {
     onResimulateFailedTx: async (entry) => {
+      // Resimulation is read-only (no state change on-chain)
       await txClient.resimulateXdr(entry.unsignedXdr);
     },
   });
 }
+
+// ─── Navigation (unchanged) ───────────────────────────────────────────────────
 
 function bindNav(): void {
   const links = document.querySelectorAll<HTMLAnchorElement>('.sidebar__nav-link');
@@ -292,6 +355,8 @@ function bindNav(): void {
     if (e.key === 'Escape') closeSidebar();
   });
 }
+
+// ─── Hamburger (unchanged) ────────────────────────────────────────────────────
 
 function bindHamburger(): void {
   const btn = document.getElementById('hamburger-btn') as HTMLButtonElement | null;
@@ -328,16 +393,6 @@ function closeSidebar(): void {
   btn?.setAttribute('aria-label', 'Open navigation menu');
 }
 
-function bindNetworkSwitcher(): void {
-  const switcher = document.getElementById('network-switcher') as HTMLSelectElement | null;
-  if (!switcher) return;
+// ─── Re-export for downstream consumers ───────────────────────────────────────
 
-  switcher.addEventListener('change', async () => {
-    const newNetwork = switcher.value as Network;
-    if (confirm(`Switch to ${newNetwork}? The page will reload.`)) {
-      await switchNetwork(newNetwork);
-    } else {
-      switcher.value = networkManager.getNetwork();
-    }
-  });
-}
+export { networkStore, ReadOnlyNetworkError };
