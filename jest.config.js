@@ -33,11 +33,13 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(@stellar|@galaxy-kj)/)',
   ],
+  globalSetup: "<rootDir>/packages/core/test-utils/src/global-setup.ts",
   moduleNameMapper: {
     "^@galaxy/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^@galaxy-kj/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/browser.ts",
+    "^@galaxy-kj/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
     // Resolve relative .js imports to .ts (ESM-style imports in tools/cli)
