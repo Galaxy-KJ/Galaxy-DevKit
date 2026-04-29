@@ -12,6 +12,8 @@ import { networkWatchCommand } from './network.js';
 import { oracleWatchCommand } from './oracle.js';
 import { contractWatchCommand } from './contract.js';
 import { dashboardWatchCommand } from './dashboard.js';
+import { priceWatchCommand } from './price.js';
+import { poolWatchCommand } from './pool.js';
 
 const watchCommand = new Command('watch');
 
@@ -24,6 +26,8 @@ watchCommand
   .addCommand(oracleWatchCommand)
   .addCommand(contractWatchCommand)
   .addCommand(dashboardWatchCommand)
+  .addCommand(priceWatchCommand)
+  .addCommand(poolWatchCommand)
   .action(async options => {
     if (options.dashboard) {
       // Trigger the dashboard command logic

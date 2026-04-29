@@ -7,6 +7,10 @@ const chalk = {
   yellow: passthrough,
   gray: passthrough,
   cyan: passthrough,
+  bold: passthrough,
+  magenta: passthrough,
+  white: passthrough,
+  dim: passthrough,
 };
 
 export default chalk;

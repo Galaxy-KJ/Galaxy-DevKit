@@ -17,6 +17,14 @@ export { BaseProtocol } from './protocols/base-protocol.js';
 // Aggregator
 export { DexAggregatorService } from './aggregator/DexAggregatorService.js';
 export * from './aggregator/types.js';
+export { DexAggregator } from './services/dex-aggregator.js';
+export type {
+  IDexAggregator,
+  DexAggregatorConfig,
+  AggregatorExecutionParams,
+  AggregatorExecutionResult,
+  BestPriceResult,
+} from './types/aggregator-types.js';
 
 // Protocol Implementations
 export * from './protocols/blend/index.js';

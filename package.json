@@ -21,6 +21,9 @@
     "publish": "lerna publish",
     "test": "jest",
     "test:e2e": "playwright test",
+    "contracts:deploy": "bash scripts/deploy-contracts.sh",
+    "contracts:init": "bash scripts/init-contracts.sh",
+    "contracts:deploy-and-init": "npm run contracts:deploy && npm run contracts:init",
     "cli": "npm run start:ts --workspace=@galaxy-kj/cli",
     "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
     "serve:docs": "npx http-server docs -p 8080"
