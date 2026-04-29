@@ -52,7 +52,7 @@ export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
-    network: Networks.TESTNET,
+    network: networkStore.getNetwork(),
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
   };
@@ -115,7 +115,6 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <p class="eyebrow">Galaxy DevKit</p>
           <h1>Smart wallet playground</h1>
         </div>
-
         <!-- Network switcher slot (populated below) -->
         <div id="network-switcher-slot" class="network-switcher"></div>
 
@@ -302,7 +301,7 @@ function mountTxPanel(
 
         const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
         const service = client.getService();
-        const tx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkStore.getConfig().passphrase);
         return service.sign(walletAddress, tx as any, credentialId);
       },
       onSubmit: async (signedXdr: string) => {

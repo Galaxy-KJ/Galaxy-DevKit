@@ -294,11 +294,11 @@ export function renderNetworkSwitcher(container: HTMLElement): void {
         </option>
       </select>
     </div>
-    ${
+    \${
       networkStore.isMainnet()
-        ? `<p class="network-switcher__warning" role="alert">
+        ? \`<p class="network-switcher__warning" role="alert">
              ⚠️ Mainnet is <strong>read-only</strong>. Transaction buttons are disabled.
-           </p>`
+           </p>\`
         : ''
     }
   `;
@@ -310,3 +310,4 @@ export function renderNetworkSwitcher(container: HTMLElement): void {
       networkStore.switch(value); // triggers reload
     });
 }
+

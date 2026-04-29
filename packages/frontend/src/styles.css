@@ -82,6 +82,30 @@ h1 {
   margin: 0;
 }
 
+.network-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.network-select {
+  appearance: none;
+  background: #fbfffb;
+  border: 1px solid #adc0b8;
+  border-radius: 999px;
+  color: #173f36;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.65rem 1.2rem;
+  transition: all 0.2s ease;
+}
+
+.network-select:hover {
+  background: #ffffff;
+  border-color: #173f36;
+}
+
 .network-pill {
   border: 1px solid #adc0b8;
   border-radius: 999px;
@@ -89,6 +113,12 @@ h1 {
   font-weight: 800;
   padding: 0.65rem 0.9rem;
   white-space: nowrap;
+}
+
+.pill--mainnet {
+  background: #de5d45;
+  border-color: #de5d45;
+  color: #ffffff;
 }
 
 .status-grid,
