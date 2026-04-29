@@ -89,6 +89,24 @@ h1 {
 }
 
 .network-select {
+  appearance: none;
+  background: #fbfffb;
+  border: 1px solid #adc0b8;
+  border-radius: 999px;
+  color: #173f36;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.65rem 1.2rem;
+  transition: all 0.2s ease;
+}
+
+.network-select:hover {
+  background: #ffffff;
+  border-color: #173f36;
+}
+
+.network-pill {
   border: 1px solid #adc0b8;
   border-radius: 999px;
   color: #173f36;
@@ -109,6 +127,12 @@ h1 {
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
+}
+
+.pill--mainnet {
+  background: #de5d45;
+  border-color: #de5d45;
+  color: #ffffff;
 }
 
 .status-grid,
@@ -363,4 +387,145 @@ h1 {
   .blend-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Activity log panel (utils/logger.ts) ──────────────────────────────── */
+
+.log-panel {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid rgba(22, 33, 31, 0.14);
+  border-radius: 8px;
+  background: rgba(251, 255, 251, 0.86);
+  padding: 1rem 1rem 0.75rem;
+  font-size: 0.9rem;
+  max-height: 320px;
+  overflow: hidden;
+}
+
+.log-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.log-panel__header h3 {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.log-panel__filter {
+  border: 1px solid #b8c7bf;
+  border-radius: 6px;
+  background: #fbfffb;
+  padding: 0.3rem 0.5rem;
+}
+
+.log-panel__btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.log-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.log-panel__row {
+  display: grid;
+  grid-template-columns: max-content max-content auto 1fr;
+  align-items: baseline;
+  column-gap: 0.55rem;
+  row-gap: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(22, 33, 31, 0.03);
+  word-break: break-word;
+}
+
+.log-panel__row[hidden] {
+  display: none;
+}
+
+.log-panel__row time {
+  color: #52615d;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+
+.log-panel__level {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.log-panel__level--debug { background: #6e7c79; }
+.log-panel__level--info  { background: #2f7d6c; }
+.log-panel__level--warn  { background: #d18b1f; }
+.log-panel__level--error { background: #c34a35; }
+
+.log-panel__scope {
+  color: #2f4642;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.log-panel__message {
+  grid-column: 1 / -1;
+  white-space: pre-wrap;
+}
+
+.log-panel__tx {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.log-panel__tx code {
+  background: rgba(22, 33, 31, 0.08);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.log-panel__copy {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.74rem;
+  border-radius: 4px;
+}
+
+.log-panel__details {
+  grid-column: 1 / -1;
+  border-left: 2px solid rgba(22, 33, 31, 0.18);
+  padding-left: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.log-panel__details summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #2f4642;
+}
+
+.log-panel__details pre {
+  margin: 0.4rem 0 0;
+  padding: 0.5rem;
+  background: rgba(22, 33, 31, 0.06);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  max-height: 160px;
 }

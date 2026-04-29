@@ -27,13 +27,13 @@ export class SoroswapPanel {
   private network: 'testnet' | 'mainnet';
   
   // UI Elements
-  private tokenInInput: blessed.Widgets.TextboxElement;
-  private tokenOutInput: blessed.Widgets.TextboxElement;
-  private amountInput: blessed.Widgets.TextboxElement;
-  private slippageInput: blessed.Widgets.TextboxElement;
-  private quoteDisplay: blessed.Widgets.TextElement;
-  private statusDisplay: blessed.Widgets.TextElement;
-  private swapButton: blessed.Widgets.ButtonElement;
+  private tokenInInput!: blessed.Widgets.TextboxElement;
+  private tokenOutInput!: blessed.Widgets.TextboxElement;
+  private amountInput!: blessed.Widgets.TextboxElement;
+  private slippageInput!: blessed.Widgets.TextboxElement;
+  private quoteDisplay!: blessed.Widgets.TextElement;
+  private statusDisplay!: blessed.Widgets.TextElement;
+  private swapButton!: blessed.Widgets.ButtonElement;
 
   // State
   private amount: string = '';
@@ -80,7 +80,7 @@ export class SoroswapPanel {
       height: 1,
       inputOnFocus: true,
       content: this.tokenIn,
-      border: { type: 'line', fg: 'gray' },
+      border: { type: 'line' },
       style: { fg: 'white', focus: { border: { fg: 'blue' } } }
     });
 
@@ -100,7 +100,7 @@ export class SoroswapPanel {
       height: 1,
       inputOnFocus: true,
       content: this.tokenOut,
-      border: { type: 'line', fg: 'gray' },
+      border: { type: 'line' },
       style: { fg: 'white', focus: { border: { fg: 'blue' } } }
     });
 
@@ -119,7 +119,7 @@ export class SoroswapPanel {
       width: 15,
       height: 1,
       inputOnFocus: true,
-      border: { type: 'line', fg: 'gray' },
+      border: { type: 'line' },
       style: { fg: 'white', focus: { border: { fg: 'blue' } } }
     });
 
@@ -139,7 +139,7 @@ export class SoroswapPanel {
       height: 1,
       inputOnFocus: true,
       content: this.slippage,
-      border: { type: 'line', fg: 'gray' },
+      border: { type: 'line' },
       style: { fg: 'white', focus: { border: { fg: 'blue' } } }
     });
 

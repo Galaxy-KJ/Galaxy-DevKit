@@ -224,12 +224,34 @@ const removeCommand = new Command('remove')
           return;
         }
 
+        // Resolve tokens and pool address
+        let tokenA: Asset;
+        let tokenB: Asset;
+        let poolAddress: string;
+
+        if (pool.includes('-')) {
+          const [a, b] = pool.split('-');
+          tokenA = resolveAsset(a);
+          tokenB = resolveAsset(b);
+          // For now, we use a dummy pool address if only pair is provided
+          // In a real scenario, we'd fetch the pool address from the factory
+          poolAddress = pool; 
+        } else {
+          // If it's a contract address, we use placeholders for tokens
+          // This is a limitation of the current CLI command structure
+          tokenA = resolveAsset('XLM');
+          tokenB = resolveAsset('USDC');
+          poolAddress = pool;
+        }
+
         // Execute remove liquidity
         spinner?.start('Removing liquidity...');
         const result = await protocol.removeLiquidity(
           wallet.publicKey,
           wallet.secretKey,
-          pool,
+          tokenA,
+          tokenB,
+          poolAddress,
           amount
         );
 
