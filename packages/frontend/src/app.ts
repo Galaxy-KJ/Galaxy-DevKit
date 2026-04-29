@@ -309,6 +309,7 @@ function mountTxPanel(
         networkStore.assertWritable('Submit transaction');
         return txClient.submitSignedXdr(signedXdr);
       },
+    },
   );
 }
 
