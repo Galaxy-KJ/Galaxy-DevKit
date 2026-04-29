@@ -1,5 +1,7 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "baseUrl": "../../",
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -16,7 +18,23 @@
     "declarationMap": true,
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@galaxy-kj/core-wallet": ["packages/core/wallet/src/index.ts"],
+      "@galaxy-kj/core-wallet/*": ["packages/core/wallet/src/*"],
+      "@galaxy-kj/core-stellar-sdk": ["packages/core/stellar-sdk/src/index.ts"],
+      "@galaxy-kj/core-stellar-sdk/*": ["packages/core/stellar-sdk/src/*"],
+      "@galaxy-kj/core-defi-protocols": ["packages/core/defi-protocols/src/index.ts"],
+      "@galaxy-kj/core-defi-protocols/*": ["packages/core/defi-protocols/src/*"],
+      "@galaxy-kj/core-oracles": ["packages/core/oracles/src/index.ts"],
+      "@galaxy-kj/core-oracles/*": ["packages/core/oracles/src/*"],
+      "@galaxy-kj/core-defi": ["packages/core/defi/src/index.ts"],
+      "@galaxy-kj/core-defi/*": ["packages/core/defi/src/*"],
+      "@galaxy-kj/core-invisible-wallet": ["packages/core/invisible-wallet/src/index.ts"],
+      "@galaxy-kj/core-invisible-wallet/*": ["packages/core/invisible-wallet/src/*"],
+      "@galaxy-kj/core-automation": ["packages/core/automation/src/index.ts"],
+      "@galaxy-kj/core-automation/*": ["packages/core/automation/src/*"]
+    }
   },
   "include": [
     "src/**/*"

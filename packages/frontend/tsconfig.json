@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "noEmit": true,
     "strict": true,
     "moduleResolution": "Bundler",
@@ -16,7 +16,12 @@
     "baseUrl": ".",
     "paths": {
       "@galaxy-kj/core-wallet": ["../core/wallet/src/index.ts"],
+      "@galaxy-kj/core-wallet/*": ["../core/wallet/src/*"],
       "@galaxy-kj/core-stellar-sdk": ["../core/stellar-sdk/src/browser.ts"],
+      "@galaxy-kj/core-defi-protocols": ["../core/defi-protocols/src"],
+      "@galaxy-kj/core-oracles": ["../core/oracles/src"],
+      "@galaxy-kj/core-defi": ["../core/defi/src"],
+      "@galaxy-kj/core-invisible-wallet": ["../core/invisible-wallet/src"],
       "@stellar/stellar-sdk/rpc": ["./node_modules/@stellar/stellar-sdk/lib/rpc/index.d.ts"]
     }
   },
