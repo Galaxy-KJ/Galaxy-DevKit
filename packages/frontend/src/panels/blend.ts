@@ -162,8 +162,6 @@ export class BlendPanel {
       const result = kind === 'borrow'
         ? await this.client.borrow({ signerPublicKey: wallet, asset, amount, jwt })
         : await this.client.repay({ signerPublicKey: wallet, asset, amount, jwt });
-        ? await this.client.borrow({ signerPublicKey: wallet, asset, amount, jwt })
-        : await this.client.repay({ signerPublicKey: wallet, asset, amount, jwt });
 
       this.byId<HTMLElement>('blend-tx').textContent = JSON.stringify(result, null, 2);
       this.setStatus(`${kind === 'borrow' ? 'Borrow' : 'Repay'} transaction prepared.`, 'success');
