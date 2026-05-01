@@ -3,6 +3,7 @@ import {
   type LimitType,
   type RiskLevel,
 } from '../services/security-limits.client';
+import { assertWriteOperation } from '../actions';
 
 interface SecurityLimitsPanelClient {
   createSecurityLimit(input: {
@@ -179,6 +180,7 @@ export class SecurityLimitsPanel {
     }
 
     try {
+      assertWriteOperation();
       await this.client.createSecurityLimit({
         owner,
         asset,
@@ -201,6 +203,7 @@ export class SecurityLimitsPanel {
     }
 
     try {
+      assertWriteOperation();
       await this.client.setRiskProfile({
         owner,
         riskLevel: this.byId<HTMLSelectElement>('sl-risk-level').value as RiskLevel,
@@ -246,6 +249,7 @@ export class SecurityLimitsPanel {
     }
 
     try {
+      assertWriteOperation();
       await this.client.recordTransaction(owner, asset, amount);
       this.setStatus('Transaction recorded.', 'success');
       await this.refreshData();

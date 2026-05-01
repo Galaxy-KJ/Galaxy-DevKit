@@ -82,7 +82,7 @@ h1 {
   margin: 0;
 }
 
-.network-controls {
+.network-switcher {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -111,7 +111,20 @@ h1 {
   border-radius: 999px;
   color: #173f36;
   font-weight: 800;
-  padding: 0.65rem 0.9rem;
+  padding: 0.5rem 0.8rem;
+  background: rgba(251, 255, 251, 0.5);
+  cursor: pointer;
+  width: auto;
+}
+
+.read-only-badge {
+  background: `#de5d45`;
+  color: `#16211f`;
+  font-size: 0.65rem;
+  font-weight: 900;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
   white-space: nowrap;
 }
 

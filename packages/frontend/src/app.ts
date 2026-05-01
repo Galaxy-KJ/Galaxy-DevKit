@@ -8,7 +8,7 @@
  */
 
 import { Buffer } from 'buffer';
-import { Keypair, Networks } from '@galaxy-kj/core-stellar-sdk';
+import { Keypair } from '@galaxy-kj/core-stellar-sdk';
 import { SmartWalletClient } from './services/smart-wallet.client';
 import { WalletCreatePanel } from './panels/wallet-create';
 import { WalletSignersPanel } from './panels/wallet-signers';
@@ -22,7 +22,11 @@ import { BlendPanel } from './panels/blend';
 import { BlendClient } from './services/blend.client';
 import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
+import { getCurrentNetworkConfig, setSelectedNetwork, NetworkType, isMainnetReadOnly } from './utils/network';
+import { assertWriteOperation } from './actions';
 
+const networkConfig = getCurrentNetworkConfig();
+const RPC_URL = networkConfig.rpcUrl;
 // Network utilities (new in v1.1.0)
 import {
   networkStore,
@@ -54,6 +58,7 @@ export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
+    network: networkConfig.type,
     network: networkStore.getNetwork(),
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
@@ -117,6 +122,12 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <p class="eyebrow">Galaxy DevKit</p>
           <h1>Smart wallet playground</h1>
         </div>
+        <div class="network-switcher">
+          <select id="network-select" class="network-select" aria-label="Select network">
+            <option value="${NetworkType.TESTNET}" ${status.network === NetworkType.TESTNET ? 'selected' : ''}>Testnet</option>
+            <option value="${NetworkType.MAINNET}" ${status.network === NetworkType.MAINNET ? 'selected' : ''}>Mainnet (Read-only)</option>
+          </select>
+          ${isMainnetReadOnly() ? '<span class="read-only-badge">READ ONLY</span>' : ''}
         <!-- Network switcher slot (populated below) -->
         <div id="network-switcher-slot" class="network-switcher"></div>
 
@@ -211,6 +222,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   // Polyfill Buffer for browser environments
   (window as typeof window & { Buffer: typeof Buffer }).Buffer = Buffer;
 
+  const client = new SmartWalletClient(networkConfig.rpcUrl, networkConfig.networkPassphrase);
   // ── Wire network switcher ────────────────────────────────────────────────
   const switcherSlot = document.getElementById('network-switcher-slot');
   if (switcherSlot) renderNetworkSwitcher(switcherSlot);
@@ -226,7 +238,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   });
 
   // ── Mount panels ─────────────────────────────────────────────────────────
-  const client = new SmartWalletClient();
+//   const client = new SmartWalletClient();
   const txTracker = new TxTrackerService();
   new WalletCreatePanel('wallet-create-panel', client);
   new WalletSignersPanel('wallet-signers-panel', client);
@@ -248,6 +260,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
 
   bindNav();
   bindHamburger();
+  bindNetworkSwitcher();
 
   return status;
 }
@@ -259,6 +272,7 @@ function mountSessionPanel(container: HTMLElement): void {
   const sessions = getStoredSessions();
   const panel = new WalletSessionPanel(container, {
     onAddSessionKey: async (params) => {
+      assertWriteOperation();
       // Guard: session keys are write operations
       networkStore.assertWritable('Add session key');
 
@@ -268,8 +282,8 @@ function mountSessionPanel(container: HTMLElement): void {
         { relyingPartyId: window.location.hostname },
         getRpcUrl(),
         undefined,
-        undefined,
-        new BrowserCredentialBackend(),
+        networkConfig.networkPassphrase,
+        new BrowserCredentialBackend()
       );
       const xdr = await svc.addSessionSigner({
         walletAddress: params.walletAddress,
@@ -332,27 +346,24 @@ function mountTxPanel(
   client: SmartWalletClient,
   txTracker: TxTrackerService,
 ): void {
-  const txClient = new TxBuilderClient(getRpcUrl());
+  const txClient = new TxBuilderClient(RPC_URL, networkConfig.networkPassphrase);
 
   new WalletTxPanel(
     container,
-    { rpcUrl: getRpcUrl(), txTracker },
+    { rpcUrl: RPC_URL, network: networkConfig.networkPassphrase, txTracker },
     {
       onSign: async (walletAddress: string, unsignedXdr: string, credentialId: string) => {
-        // Guard: signing is a write operation
-        networkStore.assertWritable('Sign transaction');
-
-        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+        assertWriteOperation();
+        const { TransactionBuilder } = await import('@stellar/stellar-sdk');
         const service = client.getService();
-        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkStore.getConfig().passphrase);
+        const tx = TransactionBuilder.fromXDR(unsignedXdr, networkConfig.networkPassphrase);
         return service.sign(walletAddress, tx as any, credentialId);
       },
-      onSubmit: async (signedXdr: string) => {
-        // Guard: submitting is a write operation
-        networkStore.assertWritable('Submit transaction');
+      onSubmit: (signedXdr: string) => {
+        assertWriteOperation();
         return txClient.submitSignedXdr(signedXdr);
       },
-    },
+    }
   );
 }
 
@@ -360,8 +371,7 @@ function mountTxHistoryPanel(
   container: HTMLElement,
   txTracker: TxTrackerService,
 ): void {
-  // Tx history is read-only — no guard needed
-  const txClient = new TxBuilderClient(getRpcUrl());
+  const txClient = new TxBuilderClient(RPC_URL, networkConfig.networkPassphrase);
   new TxHistoryPanel(container, txTracker, {
     onResimulateFailedTx: async (entry) => {
       // Resimulation is read-only (no state change on-chain)
@@ -437,6 +447,13 @@ function closeSidebar(): void {
   btn?.setAttribute('aria-label', 'Open navigation menu');
 }
 
+function bindNetworkSwitcher(): void {
+  const select = document.getElementById('network-select') as HTMLSelectElement | null;
+  select?.addEventListener('change', (e) => {
+    const target = e.target as HTMLSelectElement;
+    setSelectedNetwork(target.value as NetworkType);
+  });
+}
 // ─── Re-export for downstream consumers ───────────────────────────────────────
 
 export { networkStore, ReadOnlyNetworkError };

@@ -1,4 +1,5 @@
 import { SmartWalletClient } from '../services/smart-wallet.client';
+import { assertWriteOperation } from '../actions';
 
 export class WalletSignersPanel {
   private container: HTMLElement;
@@ -69,6 +70,7 @@ export class WalletSignersPanel {
 
   private async handleAddSigner() {
     try {
+      assertWriteOperation();
       this.updateStatus('Preparing add_signer transaction...', 'info');
       const walletAddress = (document.getElementById('ws-wallet-address') as HTMLInputElement).value.trim();
       const authId = (document.getElementById('ws-auth-id') as HTMLInputElement).value.trim();
@@ -90,6 +92,7 @@ export class WalletSignersPanel {
 
   private async handleRemoveSigner() {
     try {
+      assertWriteOperation();
       this.updateStatus('Preparing remove_signer transaction...', 'info');
       const walletAddress = (document.getElementById('ws-wallet-address') as HTMLInputElement).value.trim();
       const authId = (document.getElementById('ws-auth-id') as HTMLInputElement).value.trim();
