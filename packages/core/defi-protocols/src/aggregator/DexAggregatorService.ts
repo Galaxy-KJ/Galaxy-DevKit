@@ -3,6 +3,7 @@ import { Asset as StellarAsset, Horizon } from '@stellar/stellar-sdk';
 
 import { Asset, ProtocolConfig, SwapQuote } from '../types/defi-types.js';
 import { ProtocolFactory } from '../services/protocol-factory.js';
+import { SmartRouter, SmartRoute } from '../services/smart-router.js';
 import { AggregatorQuote, AggregatorRoute, AggregatorVenue } from './types.js';
 
 const DEFAULT_SPLIT_PERCENTAGES = [10, 20, 30, 40, 50, 60, 70, 80, 90];
@@ -10,7 +11,11 @@ const DISPLAY_DECIMALS = 7;
 
 interface SoroswapQuoteProtocol {
   initialize(): Promise<void>;
-  getSwapQuote?(tokenIn: Asset, tokenOut: Asset, amountIn: string): Promise<SwapQuote>;
+  getSwapQuote?(
+    tokenIn: Asset,
+    tokenOut: Asset,
+    amountIn: string
+  ): Promise<SwapQuote>;
 }
 
 interface AggregatorProtocolFactory {
@@ -25,6 +30,7 @@ interface DexAggregatorDependencies {
   fetchImpl?: typeof fetch;
   horizonServer?: HorizonServerLike;
   protocolFactory?: AggregatorProtocolFactory;
+  smartRouter?: SmartRouter;
 }
 
 export class DexAggregatorService {
@@ -33,8 +39,12 @@ export class DexAggregatorService {
   private readonly fetchImpl: typeof fetch;
   private readonly horizonServer: HorizonServerLike;
   private readonly protocolFactory: AggregatorProtocolFactory;
+  private readonly smartRouter: SmartRouter | undefined;
 
-  constructor(config: ProtocolConfig, dependencies: DexAggregatorDependencies = {}) {
+  constructor(
+    config: ProtocolConfig,
+    dependencies: DexAggregatorDependencies = {}
+  ) {
     this.soroswapConfig = {
       ...config,
       protocolId: 'soroswap',
@@ -47,35 +57,79 @@ export class DexAggregatorService {
     this.fetchImpl = dependencies.fetchImpl ?? fetch;
     this.horizonServer =
       dependencies.horizonServer ??
-      ((new Horizon.Server(this.soroswapConfig.network.horizonUrl) as unknown) as HorizonServerLike);
-    this.protocolFactory = dependencies.protocolFactory ?? ProtocolFactory.getInstance();
+      (new Horizon.Server(
+        this.soroswapConfig.network.horizonUrl
+      ) as unknown as HorizonServerLike);
+    this.protocolFactory =
+      dependencies.protocolFactory ?? ProtocolFactory.getInstance();
+    this.smartRouter = dependencies.smartRouter;
   }
 
-  async getBestQuote(assetIn: Asset, assetOut: Asset, amountIn: string): Promise<AggregatorQuote> {
+  async getBestQuote(
+    assetIn: Asset,
+    assetOut: Asset,
+    amountIn: string
+  ): Promise<AggregatorQuote> {
     this.validateAsset(assetIn);
     this.validateAsset(assetOut);
     this.validateAmount(amountIn);
 
-    const singleRoutes = await this.fetchSingleVenueRoutes(assetIn, assetOut, amountIn);
+    let smartQuote: AggregatorQuote | null = null;
+    if (this.smartRouter) {
+      try {
+        await this.smartRouter.initialize();
+        const smartRoute = await this.smartRouter.findOptimalRoute(
+          assetIn,
+          assetOut,
+          amountIn
+        );
+        smartQuote = this.smartRouteToAggregatorQuote(smartRoute);
+      } catch {
+        // Fall back to single-venue routing if smart router fails
+      }
+    }
+
+    const singleRoutes = await this.fetchSingleVenueRoutes(
+      assetIn,
+      assetOut,
+      amountIn
+    );
     const bestSingleQuote = this.buildQuote(assetIn, assetOut, amountIn, [
       this.getBestRoute(singleRoutes),
     ]);
 
-    if (singleRoutes.length < 2) {
+    if (singleRoutes.length < 2 && !smartQuote) {
       return bestSingleQuote;
     }
 
     const splitQuotes = await Promise.all(
-      DEFAULT_SPLIT_PERCENTAGES.map(async (soroswapPercentage) =>
-        this.getSplitQuote(assetIn, assetOut, amountIn, [soroswapPercentage, 100 - soroswapPercentage])
+      DEFAULT_SPLIT_PERCENTAGES.map(async soroswapPercentage =>
+        this.getSplitQuote(assetIn, assetOut, amountIn, [
+          soroswapPercentage,
+          100 - soroswapPercentage,
+        ])
       )
     );
 
-    return splitQuotes.reduce(
+    const bestSplitQuote = splitQuotes.reduce(
       (best, candidate) =>
-        this.compareAmount(candidate.totalAmountOut, best.totalAmountOut) > 0 ? candidate : best,
+        this.compareAmount(candidate.totalAmountOut, best.totalAmountOut) > 0
+          ? candidate
+          : best,
       bestSingleQuote
     );
+
+    if (
+      smartQuote &&
+      this.compareAmount(
+        smartQuote.totalAmountOut,
+        bestSplitQuote.totalAmountOut
+      ) > 0
+    ) {
+      return smartQuote;
+    }
+
+    return bestSplitQuote;
   }
 
   async getSplitQuote(
@@ -103,7 +157,12 @@ export class DexAggregatorService {
             return null;
           }
 
-          return this.fetchRouteFromVenue(venue, assetIn, assetOut, allocatedAmount);
+          return this.fetchRouteFromVenue(
+            venue,
+            assetIn,
+            assetOut,
+            allocatedAmount
+          );
         })
       )
     ).filter((route): route is AggregatorRoute => route !== null);
@@ -112,10 +171,20 @@ export class DexAggregatorService {
       throw new Error('Split quote did not produce any executable routes');
     }
 
-    const bestSingleRoutes = await this.fetchSingleVenueRoutes(assetIn, assetOut, amountIn);
+    const bestSingleRoutes = await this.fetchSingleVenueRoutes(
+      assetIn,
+      assetOut,
+      amountIn
+    );
     const bestSingleRoute = this.getBestRoute(bestSingleRoutes);
 
-    return this.buildQuote(assetIn, assetOut, amountIn, routes, bestSingleRoute.amountOut);
+    return this.buildQuote(
+      assetIn,
+      assetOut,
+      amountIn,
+      routes,
+      bestSingleRoute.amountOut
+    );
   }
 
   private async fetchSingleVenueRoutes(
@@ -129,11 +198,16 @@ export class DexAggregatorService {
     ]);
 
     const routes = settled
-      .filter((result): result is PromiseFulfilledResult<AggregatorRoute> => result.status === 'fulfilled')
-      .map((result) => result.value);
+      .filter(
+        (result): result is PromiseFulfilledResult<AggregatorRoute> =>
+          result.status === 'fulfilled'
+      )
+      .map(result => result.value);
 
     if (routes.length === 0) {
-      throw new Error('No aggregator routes are available for the requested swap');
+      throw new Error(
+        'No aggregator routes are available for the requested swap'
+      );
     }
 
     return routes;
@@ -209,7 +283,8 @@ export class DexAggregatorService {
       .reduce((total, route) => total.plus(route.amountOut), new BigNumber(0))
       .toFixed(DISPLAY_DECIMALS);
 
-    const bestSingle = bestSingleAmountOut ?? this.getBestRoute(routes).amountOut;
+    const bestSingle =
+      bestSingleAmountOut ?? this.getBestRoute(routes).amountOut;
     const effectivePrice = new BigNumber(totalAmountOut)
       .dividedBy(amountIn)
       .decimalPlaces(DISPLAY_DECIMALS)
@@ -240,7 +315,10 @@ export class DexAggregatorService {
     );
   }
 
-  private allocateAmounts(amountIn: string, normalizedSplits: number[]): [string, string] {
+  private allocateAmounts(
+    amountIn: string,
+    normalizedSplits: number[]
+  ): [string, string] {
     const total = new BigNumber(amountIn);
     const soroswapAmount = total
       .multipliedBy(normalizedSplits[0])
@@ -248,15 +326,20 @@ export class DexAggregatorService {
       .decimalPlaces(DISPLAY_DECIMALS, BigNumber.ROUND_DOWN);
     const sdexAmount = total.minus(soroswapAmount);
 
-    return [soroswapAmount.toFixed(DISPLAY_DECIMALS), sdexAmount.toFixed(DISPLAY_DECIMALS)];
+    return [
+      soroswapAmount.toFixed(DISPLAY_DECIMALS),
+      sdexAmount.toFixed(DISPLAY_DECIMALS),
+    ];
   }
 
   private normalizeSplits(splits: number[]): [number, number] {
     if (splits.length !== 2) {
-      throw new Error('Split quotes require exactly two weights: [soroswap, sdex]');
+      throw new Error(
+        'Split quotes require exactly two weights: [soroswap, sdex]'
+      );
     }
 
-    if (splits.some((split) => !Number.isFinite(split) || split < 0)) {
+    if (splits.some(split => !Number.isFinite(split) || split < 0)) {
       throw new Error('Split weights must be finite positive numbers');
     }
 
@@ -265,10 +348,7 @@ export class DexAggregatorService {
       throw new Error('Split weights must add up to more than zero');
     }
 
-    return [
-      (splits[0] / totalWeight) * 100,
-      (splits[1] / totalWeight) * 100,
-    ];
+    return [(splits[0] / totalWeight) * 100, (splits[1] / totalWeight) * 100];
   }
 
   private validateAsset(asset: Asset): void {
@@ -302,5 +382,31 @@ export class DexAggregatorService {
 
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private smartRouteToAggregatorQuote(smartRoute: SmartRoute): AggregatorQuote {
+    const routes: AggregatorRoute[] = smartRoute.venues.map((venue, i) => ({
+      venue,
+      amountIn: i === 0 ? smartRoute.amountIn : '0',
+      amountOut:
+        i === smartRoute.venues.length - 1 ? smartRoute.netAmountOut : '0',
+      priceImpact: smartRoute.priceImpact,
+      path: smartRoute.path,
+    }));
+
+    return {
+      assetIn: { code: smartRoute.path[0], type: 'native' as const },
+      assetOut: {
+        code: smartRoute.path[smartRoute.path.length - 1],
+        type: 'native' as const,
+      },
+      amountIn: smartRoute.amountIn,
+      routes,
+      totalAmountOut: smartRoute.netAmountOut,
+      effectivePrice: new BigNumber(smartRoute.netAmountOut)
+        .dividedBy(smartRoute.amountIn)
+        .toNumber(),
+      savingsVsBestSingle: 0,
+    };
   }
 }

@@ -41,7 +41,7 @@ npm install @galaxy/core-defi-protocols
 import {
   getProtocolFactory,
   ProtocolConfig,
-  TESTNET_CONFIG
+  TESTNET_CONFIG,
 } from '@galaxy/core-defi-protocols';
 
 // 1. Create protocol configuration
@@ -50,9 +50,9 @@ const config: ProtocolConfig = {
   name: 'Blend Protocol',
   network: TESTNET_CONFIG,
   contractAddresses: {
-    pool: 'CBLEND_POOL_CONTRACT_ADDRESS'
+    pool: 'CBLEND_POOL_CONTRACT_ADDRESS',
   },
-  metadata: {}
+  metadata: {},
 };
 
 // 2. Get protocol instance from factory
@@ -69,7 +69,7 @@ const result = await blend.supply(
   {
     code: 'USDC',
     issuer: 'GAUSDC_ISSUER_ADDRESS',
-    type: 'credit_alphanum4'
+    type: 'credit_alphanum4',
   },
   '1000.00'
 );
@@ -128,8 +128,8 @@ const protocol = factory.createProtocol(config);
 
 ```typescript
 interface Asset {
-  code: string;                                    // e.g., 'USDC', 'XLM'
-  issuer?: string;                                 // Required for non-native assets
+  code: string; // e.g., 'USDC', 'XLM'
+  issuer?: string; // Required for non-native assets
   type: 'native' | 'credit_alphanum4' | 'credit_alphanum12';
 }
 ```
@@ -139,11 +139,11 @@ interface Asset {
 ```typescript
 interface Position {
   address: string;
-  supplied: PositionBalance[];                     // Supplied assets
-  borrowed: PositionBalance[];                     // Borrowed assets
-  healthFactor: string;                            // >1.0 is healthy
-  collateralValue: string;                         // Total collateral in USD
-  debtValue: string;                               // Total debt in USD
+  supplied: PositionBalance[]; // Supplied assets
+  borrowed: PositionBalance[]; // Borrowed assets
+  healthFactor: string; // >1.0 is healthy
+  collateralValue: string; // Total collateral in USD
+  debtValue: string; // Total debt in USD
 }
 ```
 
@@ -151,9 +151,9 @@ interface Position {
 
 ```typescript
 interface TransactionResult {
-  hash: string;                                    // Transaction hash
+  hash: string; // Transaction hash
   status: 'success' | 'failed' | 'pending';
-  ledger: number;                                  // Ledger number
+  ledger: number; // Ledger number
   createdAt: Date;
   metadata: Record<string, unknown>;
 }
@@ -167,7 +167,7 @@ import {
   SupplyOperation,
   SwapOperation,
   isSupplyOperation,
-  isSwapOperation
+  isSwapOperation,
 } from '@galaxy/core-defi-protocols';
 
 // All operation types: SupplyOperation, WithdrawOperation, BorrowOperation,
@@ -178,7 +178,7 @@ const supplyOp: SupplyOperation = {
   timestamp: new Date(),
   walletAddress: 'GBRPY...OX2H',
   asset: { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum4' },
-  amount: '1000.0000000'
+  amount: '1000.0000000',
 };
 
 // Use type guards to narrow types
@@ -195,7 +195,7 @@ import {
   InsufficientBalanceError,
   SlippageExceededError,
   isProtocolError,
-  wrapError
+  wrapError,
 } from '@galaxy/core-defi-protocols';
 
 // Available error classes:
@@ -218,6 +218,43 @@ try {
 ```
 
 ### Main Methods
+
+#### SmartRouter
+
+`SmartRouter` implements a BFS-based optimal path finding algorithm that compares prices across Soroswap, SDEX, and Aquarius to find the best execution path for token swaps.
+
+```typescript
+import { SmartRouter, SmartRoute } from '@galaxy-kj/core-defi-protocols';
+
+const router = new SmartRouter(config, {
+  maxHops: 3,
+  enabledVenues: ['soroswap', 'sdex'],
+  gasCosts: { soroswap: '1000', sdex: '500' },
+});
+
+await router.initialize();
+
+// Find the optimal route
+const optimalRoute = await router.findOptimalRoute(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum12' },
+  '10000000'
+);
+
+console.log(`Path: ${optimalRoute.path.join(' -> ')}`);
+console.log(`Net Amount Out: ${optimalRoute.netAmountOut}`);
+console.log(`Hops: ${optimalRoute.hops}`);
+
+// Or find all possible routes
+const allRoutes = await router.findAllRoutes(tokenIn, tokenOut, amountIn);
+```
+
+**Features:**
+
+- BFS algorithm to find paths up to 3 tokens deep
+- Prevents cyclical routes
+- Accounts for gas costs when selecting optimal path
+- Supports multi-hop routing across multiple DEXes
 
 #### DexAggregatorService
 
@@ -315,7 +352,7 @@ import {
   SoroswapProtocol,
   SOROSWAP_TESTNET_CONFIG,
   calculateSoroswapPoolAnalytics,
-  getSoroswapConfig
+  getSoroswapConfig,
 } from '@galaxy/core-defi-protocols';
 
 // Initialize Soroswap
@@ -368,7 +405,10 @@ const localAnalytics = calculateSoroswapPoolAnalytics({
 ### Factory Usage
 
 ```typescript
-import { getProtocolFactory, SOROSWAP_TESTNET_CONFIG } from '@galaxy/core-defi-protocols';
+import {
+  getProtocolFactory,
+  SOROSWAP_TESTNET_CONFIG,
+} from '@galaxy/core-defi-protocols';
 
 // Soroswap auto-registers with the factory on import
 const factory = getProtocolFactory();
@@ -389,10 +429,10 @@ The Soroswap integration currently includes:
 
 ### Contract Addresses
 
-| Network | Router | Factory |
-|---------|--------|---------|
+| Network | Router               | Factory             |
+| ------- | -------------------- | ------------------- |
 | Testnet | `CCJUD55AG...ZE7BRD` | `CDP3HMUH6...RJTBY` |
-| Mainnet | `CAG5LRYQ5...AJDDH` | `CA4HEQTL2...7AW2` |
+| Mainnet | `CAG5LRYQ5...AJDDH`  | `CA4HEQTL2...7AW2`  |
 
 ## 🛠️ Development
 
@@ -475,9 +515,9 @@ npm run dev
 1. **Unsigned Transaction Workflow** - Protocol methods can return unsigned XDRs when a `privateKey` is not provided (empty string). This allows for secure client-side signing (e.g., via Freighter or Hawkeye).
 2. **Never Store Private Keys** - Private keys are only used to sign transactions and are never stored.
 3. **Validate All Inputs** - Use built-in validation utilities for addresses, amounts, and assets.
-3. **Check Health Factors** - Always check position health before risky operations
-4. **Use Slippage Protection** - Set appropriate slippage tolerance for swaps
-5. **Test on Testnet First** - Always test your integration on testnet before mainnet
+4. **Check Health Factors** - Always check position health before risky operations
+5. **Use Slippage Protection** - Set appropriate slippage tolerance for swaps
+6. **Test on Testnet First** - Always test your integration on testnet before mainnet
 
 ### Input Validation
 
@@ -486,7 +526,7 @@ import {
   validateAddress,
   validateAmount,
   validateAsset,
-  validateSlippage
+  validateSlippage,
 } from '@galaxy/core-defi-protocols';
 
 // Validate Stellar address
@@ -499,7 +539,7 @@ validateAmount('1000.50', 'Deposit Amount');
 validateAsset({
   code: 'USDC',
   issuer: 'GAUS...XXXX',
-  type: 'credit_alphanum4'
+  type: 'credit_alphanum4',
 });
 
 // Validate slippage (0-1, e.g., 0.01 for 1%)
