@@ -35,7 +35,7 @@ gantt
 - [x] **#2** Setup oracles package structure (Issue #69 ✅)
 - [x] **#3** Create IDefiProtocol interface and base classes (Issue #70 ✅)
 - [x] **#4** Create IOracleSource interface and aggregator (Issue #71 ✅)
-- [ ] **#5** Setup integration tests infrastructure (Issue #72 🔄)
+- [ ] **#5** Setup integration tests infrastructure (Issue #266 🔄)
 
 ### Wallet Enhancements (5 issues)
 
@@ -49,18 +49,18 @@ gantt
 - [x] **#11** Add liquidity pool operations (Issue #78 ✅)
 - [x] **#12** Add claimable balances support (Issue #79 ✅)
 - [x] **#13** Add sponsored reserves functionality (Issue #80 ✅)
-- [ ] **#14** Implement path payment (swap) improvements (Issue #81 🔄)
+- [ ] **#14** Implement path payment (swap) improvements (Issue #267 🔄)
 - [x] **#15** Add Soroban contract invocation utilities (Issue #82 ✅)
 
 ### CLI Improvements (5 issues)
 
-- [ ] **#16** Implement wallet management commands
-- [ ] **#17** Add protocol interaction commands
+- [ ] **#16** Implement wallet management commands (Issue #268 🔄)
+- [ ] **#17** Add protocol interaction commands (Issue #269 🔄)
 - [X] **#18** Create oracle data query commands
 - [X] **#207** Implement WebAuthn registration UI (Issue #207 ✅)
 - [X] **#208** Implement signer management UI (Issue #208 ✅)
-- [ ] **#19** Add interactive mode with prompts
-- [ ] **#20** Implement watch mode for real-time monitoring
+- [ ] **#19** Add interactive mode with prompts (Issue #270 🔄)
+- [ ] **#20** Implement watch mode for real-time monitoring (Issue #271 🔄)
 
 ---
 
@@ -83,23 +83,23 @@ gantt
 - [x] **#27** Add token swap functionality ✅
 - [x] **#28** Add liquidity provision operations ✅
 - [x] **#29** Implement price quote system ✅
-- [ ] **#30** Add liquidity pool analytics
+- [ ] **#30** Add liquidity pool analytics (Issue #272 🔄)
 
 ### DEX Aggregator (5 issues)
 
-- [ ] **#31** Create DEX aggregator service
+- [ ] **#31** Create DEX aggregator service (Issue #273 🔄)
 - [ ] **#32** Integrate Stellar DEX (SDEX)
 - [ ] **#33** Integrate Aquarius protocol
-- [ ] **#34** Implement smart routing algorithm
-- [ ] **#35** Add split trade execution
+- [ ] **#34** Implement smart routing algorithm (Issue #274 🔄)
+- [ ] **#35** Add split trade execution (Issue #275 🔄)
 
 ### Oracle System (5 issues)
 
-- [ ] **#36** Create on-chain oracle Soroban contract
-- [ ] **#37** Implement off-chain oracle aggregator service
-- [ ] **#38** Add price feed integrations (CoinGecko, CMC)
-- [ ] **#39** Implement TWAP (Time-Weighted Average Price)
-- [ ] **#40** Add oracle data validation and anomaly detection
+- [ ] **#36** Create on-chain oracle Soroban contract (Issue #276 🔄)
+- [ ] **#37** Implement off-chain oracle aggregator service (Issue #277 🔄)
+- [ ] **#38** Add price feed integrations (CoinGecko, CMC) (Issue #278 🔄)
+- [ ] **#39** Implement TWAP (Time-Weighted Average Price) (Issue #279 🔄)
+- [ ] **#40** Add oracle data validation and anomaly detection (Issue #280 🔄)
 
 ---
 
@@ -110,8 +110,8 @@ gantt
 
 ### Yield Strategies (5 issues)
 
-- [ ] **#41** Create yield vault Soroban contract
-- [ ] **#42** Implement auto-compounding strategy
+- [ ] **#41** Create yield vault Soroban contract (Issue #281 🔄)
+- [ ] **#42** Implement auto-compounding strategy (Issue #282 🔄)
 - [ ] **#43** Add yield farming aggregator
 - [ ] **#44** Implement strategy analytics dashboard
 - [ ] **#45** Add APY/APR calculation utilities
@@ -121,7 +121,7 @@ gantt
 - [ ] **#46** Add price oracle triggers to automation
 - [ ] **#47** Implement event-based triggers (blockchain events)
 - [ ] **#48** Add volume-based triggers
-- [ ] **#49** Create strategy templates (DCA, Grid, Stop-loss)
+- [ ] **#49** Create strategy templates (DCA, Grid, Stop-loss) (Issue #283 🔄)
 - [ ] **#50** Implement execution chain (multi-step actions)
 
 ### Risk Management (5 issues)
@@ -129,7 +129,7 @@ gantt
 - [ ] **#51** Enhance security limits contract
 - [ ] **#52** Add risk scoring system
 - [ ] **#53** Implement position monitoring alerts
-- [ ] **#54** Add impermanent loss calculator
+- [ ] **#54** Add impermanent loss calculator (Issue #284 🔄)
 - [ ] **#55** Create risk dashboard UI
 
 ### Smart Contracts (5 issues)
