@@ -51,7 +51,7 @@ const listCmd = new Command('list')
                 reserveB: p.reserveB?.toString() || '0',
                 tvl: p.tvl || p.totalLiquidity || '0',
                 apy: p.apy || '0',
-                fee: p.fee || '0.003',
+                fee: p.fee ?? '0.003',
                 address: p.address || '',
               })),
               total: pools.length,
@@ -93,7 +93,7 @@ const listCmd = new Command('list')
           formatAmount(p.reserveB),
           `$${formatAmount(tvl)}`,
           apy > 0 ? `${apy.toFixed(2)}%` : 'N/A',
-          p.fee ? `${(parseFloat(p.fee) * 100).toFixed(1)}%` : '0.3%',
+          p.fee != null ? `${(parseFloat(p.fee) * 100).toFixed(1)}%` : '0.3%',
         ]);
       }
 

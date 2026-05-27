@@ -27,11 +27,17 @@ export interface DcaTemplateResult {
 }
 
 export function dcaTemplate(config: DCAConfig): DcaTemplateResult {
-  const totalInvestments = Math.floor(
-    parseFloat(config.totalBudget) / parseFloat(config.buyAmount)
-  );
+  const parsedBudget = parseFloat(config.totalBudget);
+  const parsedBuyAmount = parseFloat(config.buyAmount);
 
-  const estimatedDurationMs = totalInvestments * config.intervalMs;
+  if (!isFinite(parsedBudget) || !isFinite(parsedBuyAmount) || parsedBuyAmount <= 0) {
+    throw new Error(
+      `Invalid DCA config: totalBudget must be a finite number and buyAmount must be a positive finite number`
+    );
+  }
+
+  const totalInvestments = Math.floor(parsedBudget / parsedBuyAmount);
+  const estimatedDurationMs = isFinite(totalInvestments) ? totalInvestments * config.intervalMs : 0;
 
   const conditionGroup: ConditionGroup = {
     logic: ConditionLogic.AND,
@@ -84,18 +90,23 @@ function generateId(): string {
 }
 
 function msToCron(intervalMs: number): string {
-  if (intervalMs < 60000) {
-    const seconds = Math.floor(intervalMs / 1000);
-    return `*/${seconds} * * * * *`;
+  const safeMs = Math.max(1000, intervalMs);
+
+  const rawSeconds = Math.ceil(safeMs / 1000);
+  if (rawSeconds < 60) {
+    return `*/${rawSeconds} * * * * *`;
   }
-  if (intervalMs < 3600000) {
-    const minutes = Math.floor(intervalMs / 60000);
-    return `*/${minutes} * * * *`;
+
+  const rawMinutes = Math.ceil(safeMs / 60000);
+  if (rawMinutes < 60) {
+    return `*/${rawMinutes} * * * *`;
   }
-  if (intervalMs < 86400000) {
-    const hours = Math.floor(intervalMs / 3600000);
-    return `0 */${hours} * * *`;
+
+  const rawHours = Math.ceil(safeMs / 3600000);
+  if (rawHours < 24) {
+    return `0 */${rawHours} * * *`;
   }
-  const days = Math.floor(intervalMs / 86400000);
-  return `0 0 */${days} * *`;
+
+  const rawDays = Math.ceil(safeMs / 86400000);
+  return `0 0 */${rawDays} * *`;
 }

@@ -60,14 +60,6 @@ export const swapCommand = new Command('swap')
       }
       const network = options.network as 'testnet' | 'mainnet';
 
-      spinner?.stop();
-      const wallet = await selectWallet({
-        wallet: options.wallet,
-        network,
-        json: options.json,
-      });
-      spinner?.start('Getting swap quote...');
-
       const protocol = await getProtocolInstance(PROTOCOL_IDS.SOROSWAP, network);
       await protocol.initialize();
 
@@ -82,6 +74,14 @@ export const swapCommand = new Command('swap')
       if (options.quoteOnly) {
         return;
       }
+
+      spinner?.stop();
+      const wallet = await selectWallet({
+        wallet: options.wallet,
+        network,
+        json: options.json,
+      });
+      spinner?.start('Preparing swap...');
 
       const preview: TransactionPreview = {
         operation: 'SWAP',

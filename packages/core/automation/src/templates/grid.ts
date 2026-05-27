@@ -48,7 +48,26 @@ export interface GridTemplateResult {
 
 export function gridTemplate(config: GridConfig): GridTemplateResult {
   const { lowerPrice, upperPrice, gridLevels, amountPerLevel } = config;
+
+  if (!Number.isInteger(gridLevels) || gridLevels < 1) {
+    throw new Error(`gridLevels must be a positive integer, got ${gridLevels}`);
+  }
+  if (!isFinite(lowerPrice) || !isFinite(upperPrice)) {
+    throw new Error('lowerPrice and upperPrice must be finite numbers');
+  }
+  if (lowerPrice >= upperPrice) {
+    throw new Error(`lowerPrice (${lowerPrice}) must be less than upperPrice (${upperPrice})`);
+  }
+
+  const parsedAmount = parseFloat(amountPerLevel);
+  if (!isFinite(parsedAmount) || parsedAmount <= 0) {
+    throw new Error(`amountPerLevel must be a positive finite number, got "${amountPerLevel}"`);
+  }
+
   const step = (upperPrice - lowerPrice) / gridLevels;
+  if (!isFinite(step) || step <= 0) {
+    throw new Error('Computed step is not positive; check price range and gridLevels');
+  }
 
   const levels: GridLevel[] = [];
   let totalInvestment = 0;

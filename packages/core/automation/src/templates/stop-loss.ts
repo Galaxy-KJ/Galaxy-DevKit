@@ -18,6 +18,7 @@ export interface StopLossConfig {
   asset: string;
   quoteAsset: string;
   triggerPrice: number;
+  entryPrice: number;
   sellPercent: number;
   userId: string;
   userPublicKey: string;
@@ -47,7 +48,9 @@ export function stopLossTemplate(config: StopLossConfig): StopLossTemplateResult
   ).toFixed(7);
 
   const maxLossPercent =
-    ((config.triggerPrice - config.triggerPrice) / config.triggerPrice) * 100;
+    config.entryPrice && isFinite(config.entryPrice) && config.entryPrice > 0
+      ? ((config.entryPrice - config.triggerPrice) / config.entryPrice) * 100
+      : 0;
 
   const conditionGroup: ConditionGroup = {
     logic: ConditionLogic.AND,
@@ -89,6 +92,7 @@ export function stopLossTemplate(config: StopLossConfig): StopLossTemplateResult
     updatedAt: new Date(),
     executionCount: 0,
     failureCount: 0,
+    maxExecutions: 1,
   };
 
   return {

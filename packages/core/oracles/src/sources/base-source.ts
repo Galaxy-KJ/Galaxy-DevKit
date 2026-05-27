@@ -14,6 +14,7 @@ export abstract class BaseSource implements IOracleSource {
 
   protected readonly config: BaseSourceConfig;
   private lastRequestTime = 0;
+  private _rateLimitPromise: Promise<void> | null = null;
   private cache = new Map<string, { data: PriceData; expiresAt: number }>();
   private batchCache = new Map<string, { data: PriceData[]; expiresAt: number }>();
 
@@ -41,13 +42,24 @@ export abstract class BaseSource implements IOracleSource {
   }
 
   protected async rateLimit(): Promise<void> {
-    const minInterval = 1000 / this.config.rateLimitPerSec;
-    const now = Date.now();
-    const elapsed = now - this.lastRequestTime;
-    if (elapsed < minInterval) {
-      await sleep(minInterval - elapsed);
+    while (this._rateLimitPromise) {
+      await this._rateLimitPromise;
     }
-    this.lastRequestTime = Date.now();
+    const self = this;
+    this._rateLimitPromise = (async () => {
+      const minInterval = 1000 / self.config.rateLimitPerSec;
+      const now = Date.now();
+      const elapsed = now - self.lastRequestTime;
+      if (elapsed < minInterval) {
+        await sleep(minInterval - elapsed);
+      }
+      self.lastRequestTime = Date.now();
+    })();
+    try {
+      await this._rateLimitPromise;
+    } finally {
+      this._rateLimitPromise = null;
+    }
   }
 
   protected async fetchWithRetry(
@@ -64,13 +76,14 @@ export abstract class BaseSource implements IOracleSource {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
+        const headers = new Headers(options.headers);
+        if (!headers.has('Content-Type')) {
+          headers.set('Content-Type', 'application/json');
+        }
         const response = await fetch(url, {
           ...options,
           signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(options.headers as Record<string, string>),
-          },
+          headers,
         });
 
         clearTimeout(timeout);
@@ -118,7 +131,7 @@ export abstract class BaseSource implements IOracleSource {
   }
 
   protected getBatchCache(symbols: string[]): PriceData[] | undefined {
-    const key = symbols.sort().join(',');
+    const key = symbols.slice().sort().join(',');
     const entry = this.batchCache.get(key);
     if (entry && entry.expiresAt > Date.now()) {
       return entry.data;
@@ -128,7 +141,7 @@ export abstract class BaseSource implements IOracleSource {
   }
 
   protected setBatchCache(symbols: string[], data: PriceData[]): void {
-    const key = symbols.sort().join(',');
+    const key = symbols.slice().sort().join(',');
     this.batchCache.set(key, {
       data,
       expiresAt: Date.now() + this.config.cacheTtlMs,
