@@ -5,6 +5,12 @@ export { CronManager } from './src/utils/cron-manager.js';
 
 export * from './src/types/automation-types.js';
 
+export {
+  dcaTemplate,
+  gridTemplate,
+  stopLossTemplate,
+} from './src/templates/index.js';
+export type { DCAConfig, GridConfig, StopLossConfig, DcaTemplateResult, GridTemplateResult, StopLossTemplateResult } from './src/templates/index.js';
 
 import { AutomationService } from './src/services/automation.service.js';
 export default AutomationService;

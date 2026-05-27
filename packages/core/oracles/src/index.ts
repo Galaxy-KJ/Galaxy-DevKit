@@ -26,6 +26,7 @@ export { PriceCache } from './cache/price-cache.js';
 // Validation
 export * from './validation/price-validator.js';
 export * from './validation/anomaly-detector.js';
+export { AlertEmitter, type AlertEvent, type AlertSeverity, type AlertCallback, type AlertEmitterConfig } from './validation/alert-emitter.js';
 
 // Utils
 export * from './utils/outlier-detection.js';
@@ -33,3 +34,4 @@ export * from './utils/retry-utils.js';
 
 export * from './sources/mocks/MockOracleSources.js';
 export * from './sources/real/index.js';
+export { BaseSource, type BaseSourceConfig } from './sources/base-source.js';
