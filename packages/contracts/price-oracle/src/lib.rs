@@ -320,31 +320,7 @@ impl PriceOracleContract {
         }
 
         let now = env.ledger().timestamp();
-        let mut weighted_sum: i128 = 0;
-        let mut total_time: i128 = 0;
-
-        for i in 0..history.len() {
-            let entry = history.get(i).unwrap();
-            let end_time: u64 = if i + 1 < history.len() {
-                history.get(i + 1).unwrap().timestamp
-            } else {
-                now
-            };
-            let duration = end_time.saturating_sub(entry.timestamp) as i128;
-            weighted_sum += entry.price * duration;
-            total_time += duration;
-        }
-
-        if total_time == 0 {
-            // All entries share the same timestamp → simple average
-            let mut sum: i128 = 0;
-            for e in history.iter() {
-                sum += e.price;
-            }
-            return sum / history.len() as i128;
-        }
-
-        weighted_sum / total_time
+        compute_twap(&history, now)
     }
 
     // =======================================================================
