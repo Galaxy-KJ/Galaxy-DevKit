@@ -5,3 +5,4 @@
 
 export { CoinGeckoSource } from './CoinGeckoSource.js';
 export { CoinMarketCapSource } from './CoinMarketCapSource.js';
+export { OnChainOracleSource, OnChainOracle } from './OnChainOracleSource.js';
