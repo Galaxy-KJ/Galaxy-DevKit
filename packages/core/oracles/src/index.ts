@@ -20,6 +20,11 @@ export { MeanStrategy } from './aggregator/strategies/MeanStrategy.js';
 export { WeightedAverageStrategy } from './aggregator/strategies/WeightedAverageStrategy.js';
 export { TWAPStrategy } from './aggregator/strategies/TWAPStrategy.js';
 
+// TWAP helpers
+export type { TWAPConfig } from './twap/twap-calculator.js';
+export { PriceHistoryStore } from './twap/price-history-store.js';
+export { TWAPCalculator } from './twap/twap-calculator.js';
+
 // Cache
 export { PriceCache } from './cache/price-cache.js';
 
