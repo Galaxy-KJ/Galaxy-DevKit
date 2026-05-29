@@ -30,3 +30,11 @@ export {
   type LiquidityDepthSnapshot,
   type LiquidityDepthEntry,
 } from './liquidity-depth.js';
+export {
+  calculateImpermanentLoss,
+  projectImpermanentLoss,
+} from '../utils/il-calculator.js';
+export {
+  buildLPPosition,
+  type LPPosition,
+} from '../utils/lp-position.js';

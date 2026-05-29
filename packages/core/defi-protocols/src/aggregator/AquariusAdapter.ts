@@ -77,10 +77,14 @@ export class AquariusAdapter {
     if (!body.amount_out) {
       throw new Error('Aquarius quote response missing amount_out');
     }
+    const amountOut = new BigNumber(body.amount_out);
+    if (!amountOut.isFinite() || amountOut.lte(0)) {
+      throw new Error('Aquarius quote response returned an invalid amount_out');
+    }
     return {
       venue: 'aquarius',
       amountIn,
-      amountOut: new BigNumber(body.amount_out)
+      amountOut: amountOut
         .decimalPlaces(DISPLAY_DECIMALS)
         .toFixed(DISPLAY_DECIMALS),
       priceImpact: this.toNumber(body.price_impact),

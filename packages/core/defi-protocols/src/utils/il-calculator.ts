@@ -80,9 +80,9 @@ export function calculateImpermanentLoss(input: ILCalcInput): ILResult {
     .plus(amountB.multipliedBy(current.priceBUSD));
 
   // priceRatio = (currentPriceA / entryPriceA) / (currentPriceB / entryPriceB)
-  const priceRatio = new BigNumber(current.priceAUSD / entry.priceAUSD).dividedBy(
-    new BigNumber(current.priceBUSD / entry.priceBUSD),
-  );
+  const priceRatioA = new BigNumber(current.priceAUSD).dividedBy(entry.priceAUSD);
+  const priceRatioB = new BigNumber(current.priceBUSD).dividedBy(entry.priceBUSD);
+  const priceRatio = priceRatioA.dividedBy(priceRatioB);
 
   const sqrtPriceRatio = priceRatio.sqrt();
   const denom = priceRatio.plus(1);
