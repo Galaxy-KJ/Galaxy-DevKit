@@ -509,4 +509,40 @@ describe('DexAggregatorService', () => {
     expect(numericImpactQuote.routes[0].priceImpact).toBe(1.25);
     expect(undefinedImpactQuote.routes[0].priceImpact).toBe(0);
   });
+
+  it('throws when a split quote results in all legs having 0 allocation', async () => {
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    // An extremely small input amount (0.00000001) split evenly 50/50
+    // will round down both allocations to 0.0000000 and throw the error.
+    await expect(
+      aggregator.getSplitQuote(XLM, USDC, '0.00000001', [50, 50])
+    ).rejects.toThrow('Split quote did not produce any executable routes');
+  });
+
+  it('throws when the SDEX protocol does not expose getSwapQuote', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    await expect(
+      aggregator.getSplitQuote(XLM, USDC, '100', [0, 100])
+    ).rejects.toThrow('SDEX protocol does not implement getSwapQuote');
+  });
 });
+

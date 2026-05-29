@@ -1,6 +1,7 @@
 import { SmartRouter, findOptimalRoute } from '../../src/aggregator/router.js';
 import { DexAggregatorService } from '../../src/aggregator/DexAggregatorService.js';
 import { Asset, ProtocolConfig } from '../../src/types/defi-types.js';
+import { LiquidityGraph } from '../../src/aggregator/graph.js';
 
 const XLM: Asset = { code: 'XLM', type: 'native' };
 const USDC: Asset = { code: 'USDC', issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', type: 'credit_alphanum4' };
@@ -121,4 +122,31 @@ describe('SmartRouter', () => {
       expect(route.estimatedOutput).toBe('80');
   });
 
+  it('throws an error if no paths are found (maxHops = 0)', async () => {
+    const router = new SmartRouter(mockAggregator);
+    await expect(router.findOptimalRoute(XLM, TEST_TOKEN, '100', 0))
+      .rejects
+      .toThrow('No paths found from XLM to TEST');
+  });
+
+  it('throws an error if all route evaluations fail with errors', async () => {
+    mockAggregator.getBestQuote.mockRejectedValue(new Error('Liquidity error'));
+
+    const router = new SmartRouter(mockAggregator);
+    await expect(router.findOptimalRoute(XLM, TEST_TOKEN, '100'))
+      .rejects
+      .toThrow('No valid routes could be executed to find quotes');
+  });
 });
+
+describe('LiquidityGraph', () => {
+  it('registers source and destination assets in findAllPaths if they were not registered', () => {
+    const graph = new LiquidityGraph();
+    const assetA: Asset = { code: 'AAA', type: 'native' };
+    const assetB: Asset = { code: 'BBB', issuer: 'GABBB', type: 'credit_alphanum4' };
+    
+    const paths = graph.findAllPaths(assetA, assetB);
+    expect(paths).toEqual([]);
+  });
+});
+

@@ -94,7 +94,6 @@ export class SmartRouter {
       let currentAmount = initialAmount;
       const hops: RouteHop[] = [];
       let cumulativeFeePercent = 0;
-      let totalExpectedOutputWithoutImpact = new BigNumber(initialAmount);
 
       for (let i = 0; i < path.length - 1; i++) {
         const assetIn = path[i];
@@ -106,12 +105,6 @@ export class SmartRouter {
         
         // Typical fee for DEX hops (e.g. 0.3%)
         const hopFee = 0.3; 
-        
-        // Find price impact
-        const weightedPriceImpact = quote.routes.reduce((acc, route) => {
-            const weight = new BigNumber(route.amountOut).div(quote.totalAmountOut).toNumber();
-            return acc + (route.priceImpact * weight);
-        }, 0) || 0;
 
         hops.push({
           venue: venueName,
@@ -126,10 +119,6 @@ export class SmartRouter {
         currentAmount = quote.totalAmountOut;
       }
 
-      // Compute total price impact
-      // This is a simplified calculation for cumulative price impact.
-      const priceImpact = hops.reduce((acc, hop) => acc + (hop.feePercent), 0); // Placeholder, ideally calculated dynamically
-
       return {
         path,
         hops,
@@ -137,7 +126,7 @@ export class SmartRouter {
         estimatedOutput: currentAmount,
         priceImpact: 0 // Placeholder, we can refine this later
       };
-    } catch (err) {
+    } catch {
       // If any hop fails (e.g., no liquidity for that pair), this path is invalid
       return null;
     }
