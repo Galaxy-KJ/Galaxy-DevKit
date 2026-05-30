@@ -1,5 +1,5 @@
 import BigNumber from 'bignumber.js';
-import { Asset as StellarAsset, Horizon } from '@stellar/stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
 
 import { Asset, ProtocolConfig, SwapQuote } from '../types/defi-types.js';
 import { ProtocolFactory } from '../services/protocol-factory.js';
