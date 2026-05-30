@@ -245,6 +245,7 @@ describe('Watch Commands', () => {
             expect(subcommands).toContain('oracle');
             expect(subcommands).toContain('contract');
             expect(subcommands).toContain('dashboard');
+            expect(subcommands).toContain('position');
         });
     });
 });

@@ -42,5 +42,19 @@ export * from './constants/protocols.js';
 export * from './utils/validation.js';
 export * from './utils/type-guards.js';
 
+// Strategies
+export {
+  AutoCompoundStrategy,
+  type AutoCompoundConfig,
+  type CompoundAuditEvent,
+  type HarvestResult,
+} from './strategies/auto-compound.js';
+export {
+  optimizeHarvestTiming,
+  estimateCompoundedApy,
+  type HarvestOptimizerInput,
+  type HarvestOptimizerResult,
+} from './strategies/harvest-optimizer.js';
+
 // Errors
 export * from './errors/index.js';

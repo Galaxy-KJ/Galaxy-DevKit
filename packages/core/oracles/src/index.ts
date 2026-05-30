@@ -12,6 +12,18 @@ export * from './types/IOracleSource.js';
 
 // Aggregator
 export { OracleAggregator } from './aggregator/OracleAggregator.js';
+export {
+  PriceAggregatorService,
+  calculateDeviationPercent,
+  type AggregatorConfig,
+  type PricePushEvent,
+} from './aggregator/price-aggregator.js';
+export { AggregatorScheduler, type SchedulerOptions } from './aggregator/scheduler.js';
+export {
+  createOracleSources,
+  type OracleSourceConfig,
+  type OracleSourceKind,
+} from './aggregator/sources/index.js';
 
 // Strategies
 export type { AggregationStrategy } from './aggregator/strategies/AggregationStrategy.js';

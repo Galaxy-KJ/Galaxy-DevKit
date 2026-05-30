@@ -20,6 +20,8 @@ import { TxTrackerService } from './services/tx-tracker';
 import { TxBuilderClient } from './services/tx-builder.client';
 import { BlendPanel } from './panels/blend';
 import { BlendClient } from './services/blend.client';
+import { SmartSwapPanel } from './panels/smart-swap';
+import { SmartSwapClient } from './services/smart-swap.client';
 import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
 import { getCurrentNetworkConfig, setSelectedNetwork, NetworkType, isMainnetReadOnly } from './utils/network';
@@ -199,6 +201,12 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
               <a href="#security-limits" class="sidebar__nav-link" data-panel="security-limits-panel">Security Limits</a>
             </li>
             <li class="sidebar__nav-item">
+              <a href="#smart-swap" class="sidebar__nav-link" data-panel="smart-swap-panel">
+                Smart Swap
+                ${isMainnet ? '<span class="sidebar__badge sidebar__badge--readonly" aria-label="disabled on mainnet">read-only</span>' : ''}
+              </a>
+            </li>
+            <li class="sidebar__nav-item">
               <a href="#activity-log" class="sidebar__nav-link" data-panel="activity-log-panel">Activity log</a>
             </li>
           </ul>
@@ -213,6 +221,7 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
           <div id="wallet-tx-history-panel" class="panel" hidden></div>
           <div id="blend-panel" class="panel" hidden></div>
           <div id="security-limits-panel" class="panel" hidden></div>
+          <div id="smart-swap-panel" class="panel" hidden></div>
           <div id="activity-log-panel" class="panel" hidden></div>
         </main>
       </div>
@@ -253,6 +262,10 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   );
   new BlendPanel('blend-panel', new BlendClient());
   new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
+  new SmartSwapPanel('smart-swap-panel', new SmartSwapClient({
+    rpcUrl: getRpcUrl(),
+    networkPassphrase: networkConfig.networkPassphrase,
+  }));
 
   const logHost = document.getElementById('activity-log-panel');
   if (logHost) logger.attach(logHost as HTMLElement);
