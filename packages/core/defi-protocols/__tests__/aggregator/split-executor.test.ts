@@ -139,7 +139,11 @@ describe('LiquidityDepthAnalyzer (#275)', () => {
     expect(split).toEqual([]);
   });
 
-  it('falls back to an even split when amountIn is not positive', () => {
+  it('falls back to an even split when amountIn is negative', () => {
+    // BigNumber treats 0 as positive, so the non-positive fallback
+    // only fires for negative inputs. The function still has to
+    // return a deterministic answer rather than divide by a
+    // negative weight.
     const split = analyzer.optimalSplit(
       {
         entries: [
@@ -147,7 +151,7 @@ describe('LiquidityDepthAnalyzer (#275)', () => {
           { venue: 'sdex', depthIn: '4000' },
         ],
       },
-      { amountIn: '0' },
+      { amountIn: '-100' },
     );
     expect(split[0].percentage).toBeCloseTo(50);
     expect(split[1].percentage).toBeCloseTo(50);
