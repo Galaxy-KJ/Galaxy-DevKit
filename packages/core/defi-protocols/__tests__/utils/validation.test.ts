@@ -181,5 +181,13 @@ describe('Validation Utils', () => {
       expect(compareAmounts('100.5', '100.49')).toBe(1);
       expect(compareAmounts('100.49', '100.5')).toBe(-1);
     });
+
+    it('returns 0 when comparedTo cannot be computed (NaN operand)', () => {
+      // BigNumber.comparedTo returns null when either operand is NaN.
+      // The function defends against that by falling back to 0; this
+      // covers the `: 0` branch of the ternary.
+      expect(compareAmounts('NaN', '100')).toBe(0);
+      expect(compareAmounts('100', 'NaN')).toBe(0);
+    });
   });
 });

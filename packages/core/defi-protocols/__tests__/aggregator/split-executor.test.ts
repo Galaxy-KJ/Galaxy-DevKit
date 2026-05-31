@@ -133,4 +133,78 @@ describe('LiquidityDepthAnalyzer (#275)', () => {
     expect(split[0].percentage).toBeCloseTo(50);
     expect(split[1].percentage).toBeCloseTo(50);
   });
+
+  it('returns an empty split when the snapshot has no entries', () => {
+    const split = analyzer.optimalSplit({ entries: [] }, { amountIn: '1000' });
+    expect(split).toEqual([]);
+  });
+
+  it('falls back to an even split when amountIn is not positive', () => {
+    const split = analyzer.optimalSplit(
+      {
+        entries: [
+          { venue: 'soroswap', depthIn: '6000' },
+          { venue: 'sdex', depthIn: '4000' },
+        ],
+      },
+      { amountIn: '0' },
+    );
+    expect(split[0].percentage).toBeCloseTo(50);
+    expect(split[1].percentage).toBeCloseTo(50);
+  });
+
+  it('keeps the raw split when every venue falls below minVenueShare', () => {
+    const split = analyzer.optimalSplit(
+      {
+        entries: [
+          { venue: 'soroswap', depthIn: '100' },
+          { venue: 'sdex', depthIn: '100' },
+        ],
+      },
+      // Both venues sit at 50% — set minVenueShare above that so the
+      // survivors-after-filter set is empty and the helper falls back
+      // to the unfiltered split.
+      { amountIn: '1000', minVenueShare: 0.9 },
+    );
+    expect(split).toHaveLength(2);
+    expect(split[0].percentage).toBeCloseTo(50);
+    expect(split[1].percentage).toBeCloseTo(50);
+  });
+});
+
+describe('executeSplitTrade — additional edge paths', () => {
+  it('returns an empty result when no route meets minSplitInput', async () => {
+    const q = quote([
+      route('soroswap', '5', '5'),
+      route('sdex', '4', '4'),
+    ]);
+    const submit = jest.fn();
+    const out = await executeSplitTrade(q, submit, { minSplitInput: '10' });
+    expect(submit).not.toHaveBeenCalled();
+    expect(out.splits).toEqual([]);
+    expect(out.totalOutput).toBe('0');
+    expect(out.allSucceeded).toBe(false);
+  });
+
+  it('coerces non-Error rejection values into a readable message', async () => {
+    const q = quote([route('soroswap', '100', '101'), route('sdex', '100', '101')]);
+    const submit = jest
+      .fn()
+      // First leg fails with a plain string — exercises errorMessage's
+      // `typeof err === 'string'` branch.
+      .mockResolvedValueOnce({ outputAmount: '101' })
+      .mockRejectedValueOnce('string-only failure');
+    const out = await executeSplitTrade(q, submit, { abortOnError: false });
+    expect(out.splits[1]).toMatchObject({ ok: false, error: 'string-only failure' });
+  });
+
+  it('falls back to a default message for non-string non-Error rejections', async () => {
+    const q = quote([route('soroswap', '100', '101'), route('sdex', '100', '101')]);
+    const submit = jest
+      .fn()
+      .mockResolvedValueOnce({ outputAmount: '101' })
+      .mockRejectedValueOnce({ unexpected: true });
+    const out = await executeSplitTrade(q, submit, { abortOnError: false });
+    expect(out.splits[1]).toMatchObject({ ok: false, error: 'unknown submitter error' });
+  });
 });

@@ -59,6 +59,50 @@ describe('calculateImpermanentLoss (#284)', () => {
       }),
     ).toThrow(/positive finite/);
   });
+
+  it('rejects non-finite prices (NaN / Infinity)', () => {
+    expect(() =>
+      calculateImpermanentLoss({
+        entry: { amountA: '1', amountB: '1', priceAUSD: NaN, priceBUSD: 1 },
+        current: { priceAUSD: 1, priceBUSD: 1 },
+      }),
+    ).toThrow(/positive finite/);
+    expect(() =>
+      calculateImpermanentLoss({
+        entry: { amountA: '1', amountB: '1', priceAUSD: 1, priceBUSD: 1 },
+        current: { priceAUSD: Number.POSITIVE_INFINITY, priceBUSD: 1 },
+      }),
+    ).toThrow(/positive finite/);
+  });
+
+  it('rejects negative token amounts via assertNonNeg', () => {
+    expect(() =>
+      calculateImpermanentLoss({
+        entry: { amountA: '-1', amountB: '1', priceAUSD: 1, priceBUSD: 1 },
+        current: { priceAUSD: 1, priceBUSD: 1 },
+      }),
+    ).toThrow(/non-negative finite/);
+  });
+
+  it('rejects non-finite token amounts via assertNonNeg', () => {
+    expect(() =>
+      calculateImpermanentLoss({
+        entry: { amountA: 'NaN', amountB: '1', priceAUSD: 1, priceBUSD: 1 },
+        current: { priceAUSD: 1, priceBUSD: 1 },
+      }),
+    ).toThrow(/non-negative finite/);
+  });
+
+  it('returns zero percentages when entry & hold values are zero (degenerate input)', () => {
+    const r = calculateImpermanentLoss({
+      entry: { amountA: '0', amountB: '0', priceAUSD: 1, priceBUSD: 1 },
+      current: { priceAUSD: 2, priceBUSD: 1 },
+    });
+    expect(r.entryValueUSD).toBe(0);
+    expect(r.holdValueUSD).toBe(0);
+    expect(r.impermanentLossPercent).toBe(0);
+    expect(r.netReturnPercent).toBe(0);
+  });
 });
 
 describe('projectImpermanentLoss (#284)', () => {

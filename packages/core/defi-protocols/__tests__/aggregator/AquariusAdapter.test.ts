@@ -68,4 +68,44 @@ describe('AquariusAdapter (#273)', () => {
     const url = fetchImpl.mock.calls[0][0] as string;
     expect(url.startsWith('https://amm-staging.example/quote?')).toBe(true);
   });
+
+  it('throws when amount_out is a non-positive numeric string', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ amount_out: '0' }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(
+      adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' }),
+    ).rejects.toThrow(/invalid amount_out/);
+  });
+
+  it('throws when amount_out is non-finite (NaN string)', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ amount_out: 'NaN' }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(
+      adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' }),
+    ).rejects.toThrow(/invalid amount_out/);
+  });
+
+  it('falls back to priceImpact=0 when price_impact is missing or non-numeric', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ amount_out: '5' }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
+    expect(route.priceImpact).toBe(0);
+    expect(route.path).toEqual([]);
+  });
+
+  it('coerces numeric price_impact passed as a number', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ amount_out: '5', price_impact: 0.025 }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
+    expect(route.priceImpact).toBe(0.025);
+  });
+
+  it('coerces a non-numeric price_impact string to 0', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse({ amount_out: '5', price_impact: 'not-a-number' }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
+    expect(route.priceImpact).toBe(0);
+  });
 });
