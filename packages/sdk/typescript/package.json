@@ -25,10 +25,11 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.41",
     "@types/ws": "^8.5.10",
-    "jest": "^30.0.5",
-    "ts-jest": "^29.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.8.3"
   },
   "keywords": [
