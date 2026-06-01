@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { walletStorage } from '../../utils/wallet-storage.js';
-import { Keypair, Server, Networks } from '@stellar/stellar-sdk';
+import { Horizon, Networks } from '@stellar/stellar-sdk';
 
 export const infoWalletCommand = new Command('info')
     .description('Display detailed wallet information')
@@ -39,7 +39,7 @@ export const infoWalletCommand = new Command('info')
             }
 
             const network = walletData.network || 'testnet';
-            const server = new Server(
+            const server = new Horizon.Server(
                 network === 'mainnet'
                     ? 'https://horizon.stellar.org'
                     : 'https://horizon-testnet.stellar.org'

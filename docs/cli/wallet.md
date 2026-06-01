@@ -11,6 +11,8 @@ Complete guide to managing Stellar wallets using the Galaxy CLI.
   - [Create Wallet](#create-wallet)
   - [Import Wallet](#import-wallet)
   - [List Wallets](#list-wallets)
+  - [Wallet Balance](#wallet-balance)
+  - [Send Payment](#send-payment)
   - [Multi-Signature Wallets](#multi-signature-wallets)
   - [Ledger Hardware Wallet](#ledger-hardware-wallet)
   - [Biometric Authentication](#biometric-authentication)
@@ -50,7 +52,13 @@ galaxy wallet create --name my-wallet --testnet
 galaxy wallet list
 
 # Import an existing wallet
-galaxy wallet import <SECRET_KEY> --name imported-wallet
+galaxy wallet import --secret <SECRET_KEY> --name imported-wallet
+
+# Check balances
+galaxy wallet balance GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Send XLM
+galaxy wallet send my-wallet GYYYYY... 10 XLM
 ```
 
 ## Commands
@@ -107,13 +115,11 @@ Import an existing wallet using its secret key.
 
 **Syntax:**
 ```bash
-galaxy wallet import [secret-key] [options]
+galaxy wallet import --secret <key> [options]
 ```
 
-**Arguments:**
-- `secret-key` - Stellar secret key (will prompt if not provided)
-
 **Options:**
+- `--secret <key>` - Stellar secret key (required)
 - `-n, --name <name>` - Wallet name (will prompt if not provided)
 - `--testnet` - Use Stellar testnet (default)
 - `--mainnet` - Use Stellar mainnet
@@ -122,17 +128,14 @@ galaxy wallet import [secret-key] [options]
 **Examples:**
 
 ```bash
-# Import with all parameters
-galaxy wallet import SXXXXXX... --name imported-wallet
-
-# Interactive import (prompts for secret)
-galaxy wallet import
+# Import with secret and name
+galaxy wallet import --secret SXXXXXX... --name imported-wallet
 
 # Import mainnet wallet with JSON output
-galaxy wallet import SXXXXXX... --name prod-wallet --mainnet --json
+galaxy wallet import --secret SXXXXXX... --name prod-wallet --mainnet --json
 ```
 
-**Security Note:** When entering secret keys interactively, they are masked for security.
+**Security Note:** Secret keys are encrypted at rest using AES-256-GCM. The encryption key is stored in the OS keychain (macOS Keychain, Windows Credential Vault, Linux Secret Service) via `keytar`.
 
 ---
 
@@ -184,6 +187,77 @@ galaxy wallet list --json
     }
   ]
 }
+```
+
+---
+
+### Wallet Balance
+
+Show XLM and custom asset balances for any Stellar address.
+
+**Syntax:**
+```bash
+galaxy wallet balance <address> [options]
+```
+
+**Arguments:**
+- `address` - Stellar public key (G…)
+
+**Options:**
+- `--mainnet` - Query mainnet (default: testnet)
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Testnet balances
+galaxy wallet balance GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Mainnet with JSON output
+galaxy wallet balance GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX --mainnet --json
+```
+
+**JSON Output:**
+```json
+{
+  "address": "GXXXXXX...",
+  "network": "testnet",
+  "balances": [
+    { "asset": "XLM", "balance": "10000.0000000" },
+    { "asset": "USDC:GBBD47IF6LWK7P7MDEVSC6777KQEFHZFHH6LPAUKNUIYBNHZXLF5SWD2", "balance": "250.0000000" }
+  ]
+}
+```
+
+---
+
+### Send Payment
+
+Transfer XLM or a custom asset from a managed wallet.
+
+**Syntax:**
+```bash
+galaxy wallet send <from> <to> <amount> <asset> [options]
+```
+
+**Arguments:**
+- `from` - Saved wallet name or managed public key (G…)
+- `to` - Destination public key (G…)
+- `amount` - Amount to send
+- `asset` - `XLM` or `CODE:ISSUER` (e.g. `USDC:GBBD47IF6LWK7P7MDEVSC6777KQEFHZFHH6LPAUKNUIYBNHZXLF5SWD2`)
+
+**Options:**
+- `--mainnet` - Use mainnet (default: testnet, or wallet network)
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Send 25 XLM from a named wallet
+galaxy wallet send my-wallet GYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY 25 XLM
+
+# Send USDC
+galaxy wallet send my-wallet GYYYYY... 100 USDC:GBBD47IF6LWK7P7MDEVSC6777KQEFHZFHH6LPAUKNUIYBNHZXLF5SWD2 --json
 ```
 
 ---
@@ -454,7 +528,9 @@ The command will prompt for the decryption password.
 
 ### Wallet Storage
 
-Wallets are stored in `~/.galaxy/wallets/` directory:
+Wallets are stored encrypted in `~/.galaxy/wallets/` (AES-256-GCM). The master encryption key is stored in the system keychain via `keytar`, with fallbacks for headless environments (`GALAXY_WALLET_ENCRYPTION_KEY` or `~/.galaxy/.wallet-key`).
+
+Directory layout:
 
 ```
 ~/.galaxy/
@@ -471,7 +547,7 @@ Wallets are stored in `~/.galaxy/wallets/` directory:
 
 ### Security Best Practices
 
-1. **Secret Keys**: Store secret keys securely. Consider using backups with strong encryption passwords.
+1. **Secret Keys**: Wallet files on disk contain encrypted secrets only. Use `galaxy wallet backup create` for additional backups.
 
 2. **Permissions**: Ensure `.galaxy` directory has appropriate permissions:
    ```bash
@@ -513,7 +589,11 @@ galaxy wallet multisig create \
 galaxy wallet backup create
 
 # 5. Import existing wallet
-galaxy wallet import --name legacy-wallet
+galaxy wallet import --secret SXXXXXX... --name legacy-wallet
+
+# 6. Check balance and send funds
+galaxy wallet balance GXXXXXX...
+galaxy wallet send my-wallet GYYYYY... 5 XLM
 ```
 
 ### Automation with JSON
