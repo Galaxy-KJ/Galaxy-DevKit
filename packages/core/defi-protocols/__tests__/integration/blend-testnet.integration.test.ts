@@ -6,6 +6,7 @@
 import { Keypair } from '@stellar/stellar-sdk';
 import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
 import { ProtocolConfig } from '../../src/types/defi-types.js';
+import { loadFundedAccountsFromEnv } from '../../../test-utils/src/testnet-helpers.js';
 
 // Real testnet contract addresses
 const BLEND_TESTNET_CONFIG: ProtocolConfig = {
@@ -31,15 +32,8 @@ describe('Blend Protocol Testnet Integration', () => {
   let testWallet: Keypair;
 
   beforeAll(async () => {
-    // Create test wallet
-    testWallet = Keypair.random();
-
-    // Fund account using Friendbot
-    const friendbotUrl = `https://friendbot.stellar.org?addr=${testWallet.publicKey()}`;
-    await fetch(friendbotUrl);
-
-    // Wait for account creation
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    const [account] = await loadFundedAccountsFromEnv();
+    testWallet = Keypair.fromSecret(account.secretKey);
 
     // Initialize Blend
     blend = new BlendProtocol(BLEND_TESTNET_CONFIG);

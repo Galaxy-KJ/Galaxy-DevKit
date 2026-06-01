@@ -417,11 +417,19 @@ Integration layer for Stellar DeFi protocols providing unified interfaces for:
 **Services:**
 
 - `packages/core/defi-protocols/src/services/protocol-factory.ts` - Factory for protocol instantiation
+- `packages/core/defi-protocols/src/services/smart-router.ts` - Gas-aware multi-hop DEX route selection
 
 **Utilities:**
 
 - `packages/core/defi-protocols/src/utils/validation.ts` - Input validation helpers
 - `packages/core/defi-protocols/src/constants/` - Network configs and constants
+
+**Smart Routing Pattern:**
+
+- Use `SmartRouter` when callers need route discovery beyond a direct pair quote.
+- The router builds acyclic paths up to three hops by default, asks `DexAggregatorService` for each hop quote, subtracts estimated gas, and ranks by net output.
+- Configure `gasCostInOutputAsset` for simple fixed execution cost or `gasCostEstimator` when tests or integrations need venue-specific costs.
+- Keep live testnet routing tests behind `GALAXY_TESTNET_INTEGRATION=1`; unit tests should mock `SmartRouterQuoteService`.
 
 **Usage Example:**
 
@@ -1551,6 +1559,27 @@ transaction.addSignature(publicKey, signature.signature);
 // 6. Submit to network
 const result = await stellarService.submitTransaction(transaction);
 ```
+
+### Shared Testnet Integration Helpers
+
+Use `packages/core/test-utils/src/testnet-helpers.ts` for live Stellar testnet
+suites instead of funding inside each test file. Jest global setup only calls
+Friendbot when `GALAXY_TESTNET_INTEGRATION=1`, creates one funded account per
+worker, and stores the account list in `GALAXY_TESTNET_ACCOUNTS_FILE`.
+
+```typescript
+import {
+  createTestnetHelperContext,
+  loadFundedAccountsFromEnv,
+} from '@galaxy-kj/core-test-utils';
+
+const accounts = await loadFundedAccountsFromEnv();
+const testnet = createTestnetHelperContext(accounts);
+const workerAccount = testnet.getAccountForWorker();
+```
+
+For reusable Soroban setup, define fixtures with
+`createContractFixture()` and clean them with `ContractFixtureRegistry`.
 
 ### Testing
 

@@ -35,7 +35,7 @@ gantt
 - [x] **#2** Setup oracles package structure (Issue #69 ✅)
 - [x] **#3** Create IDefiProtocol interface and base classes (Issue #70 ✅)
 - [x] **#4** Create IOracleSource interface and aggregator (Issue #71 ✅)
-- [ ] **#5** Setup integration tests infrastructure (Issue #266 🔄)
+- [x] **#5** Setup integration tests infrastructure (Issue #227 ✅)
 
 ### Wallet Enhancements (5 issues)
 
@@ -90,8 +90,8 @@ gantt
 - [ ] **#31** Create DEX aggregator service (Issue #273 🔄)
 - [ ] **#32** Integrate Stellar DEX (SDEX)
 - [ ] **#33** Integrate Aquarius protocol
-- [ ] **#34** Implement smart routing algorithm (Issue #274 🔄)
-- [ ] **#35** Add split trade execution (Issue #275 🔄)
+- [x] **#34** Implement smart routing algorithm (Issue #231 ✅)
+- [x] **#35** Add split trade execution (Issue #275 ✅)
 
 ### Oracle System (5 issues)
 

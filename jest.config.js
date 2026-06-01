@@ -5,6 +5,7 @@ const tsJestTransformCfg = createDefaultPreset().transform;
 /** @type {import("jest").Config} **/
 module.exports = {
   testEnvironment: "node",
+  globalSetup: "<rootDir>/packages/core/test-utils/src/jest-global-setup.ts",
   setupFiles: ["<rootDir>/packages/frontend/src/tests/jest.setup.ts"],
   testPathIgnorePatterns: [
     "/node_modules/",
@@ -36,6 +37,8 @@ module.exports = {
   moduleNameMapper: {
     "^@galaxy/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^@galaxy-kj/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
+    "^@galaxy/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
+    "^@galaxy-kj/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/browser.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
