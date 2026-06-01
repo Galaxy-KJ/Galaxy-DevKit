@@ -6,6 +6,7 @@
 import { Keypair } from '@stellar/stellar-sdk';
 import { BlendProtocol } from '../../src/protocols/blend/blend-protocol.js';
 import { ProtocolConfig, Asset } from '../../src/types/defi-types.js';
+import { loadFundedAccountsFromEnv } from '../../../test-utils/src/testnet-helpers.js';
 
 const TESTNET_CONFIG: ProtocolConfig = {
   protocolId: 'blend',
@@ -40,21 +41,13 @@ describe('Blend Protocol - Live Testnet Transactions', () => {
     console.log('║       BLEND PROTOCOL - LIVE TRANSACTION TEST                  ║');
     console.log('╚═══════════════════════════════════════════════════════════════╝\n');
 
-    // Create wallet
-    wallet = Keypair.random();
+    const [account] = await loadFundedAccountsFromEnv();
+    wallet = Keypair.fromSecret(account.secretKey);
     address = wallet.publicKey();
 
     console.log('🔑 Test Wallet:');
     console.log(`   Address: ${address}`);
     console.log(`   Secret:  ${wallet.secret()}\n`);
-
-    // Fund account
-    console.log('💰 Funding account...');
-    const response = await fetch(`https://friendbot.stellar.org?addr=${address}`);
-    expect(response.ok).toBe(true);
-    console.log('✅ Account funded\n');
-
-    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Initialize Blend
     console.log('🚀 Initializing Blend...');

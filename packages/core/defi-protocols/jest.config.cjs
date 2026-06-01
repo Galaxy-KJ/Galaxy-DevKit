@@ -1,8 +1,14 @@
+const runTestnetIntegration = process.env.GALAXY_TESTNET_INTEGRATION === '1';
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  globalSetup: '<rootDir>/../test-utils/src/jest-global-setup.ts',
   roots: ['<rootDir>/__tests__'],
   testMatch: ['**/__tests__/**/*.test.ts'],
+  testPathIgnorePatterns: runTestnetIntegration
+    ? []
+    : ['<rootDir>/__tests__/integration/'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
