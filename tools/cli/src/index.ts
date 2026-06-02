@@ -23,6 +23,7 @@ import {
   launchInteractiveMode,
   shouldLaunchInteractive,
 } from './commands/interactive/index.js';
+import { registerInteractiveFlag } from './commands/interactive/interactive.js';
 
 const program = new Command();
 
@@ -38,8 +39,11 @@ program.addCommand(walletCommand);
 program.addCommand(protocolCommand);
 program.addCommand(blendCommand);
 
-// Register interactive command
+// Register interactive command (REPL + guided menus)
 program.addCommand(createInteractiveCommand(program));
+
+// Register -i / --interactive flag for guided prompt mode
+registerInteractiveFlag(program);
 
 // Watch command
 import { watchCommand } from './commands/watch/index.js';
