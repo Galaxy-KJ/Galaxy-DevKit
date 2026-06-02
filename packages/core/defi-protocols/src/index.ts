@@ -18,6 +18,18 @@ export { BaseProtocol } from './protocols/base-protocol.js';
 export { DexAggregatorService } from './aggregator/DexAggregatorService.js';
 export * from './aggregator/types.js';
 export { DexAggregator } from './services/dex-aggregator.js';
+export {
+  SmartRouter,
+  findOptimalRoute,
+  DEFAULT_TRANSIT_ASSETS,
+} from './services/smart-router.js';
+export type {
+  GasCostContext,
+  Route,
+  RouteHop,
+  SmartRouterOptions,
+  SmartRouterQuoteService,
+} from './services/smart-router.js';
 export type {
   IDexAggregator,
   DexAggregatorConfig,
@@ -41,6 +53,20 @@ export * from './constants/protocols.js';
 // Utils
 export * from './utils/validation.js';
 export * from './utils/type-guards.js';
+
+// Strategies
+export {
+  AutoCompoundStrategy,
+  type AutoCompoundConfig,
+  type CompoundAuditEvent,
+  type HarvestResult,
+} from './strategies/auto-compound.js';
+export {
+  optimizeHarvestTiming,
+  estimateCompoundedApy,
+  type HarvestOptimizerInput,
+  type HarvestOptimizerResult,
+} from './strategies/harvest-optimizer.js';
 
 // Errors
 export * from './errors/index.js';

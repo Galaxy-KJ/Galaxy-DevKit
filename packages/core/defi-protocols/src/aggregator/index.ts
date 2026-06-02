@@ -8,6 +8,18 @@
 
 export { DexAggregatorService } from './DexAggregatorService.js';
 export { AquariusAdapter } from './AquariusAdapter.js';
+export {
+  SmartRouter,
+  findOptimalRoute,
+  DEFAULT_TRANSIT_ASSETS,
+} from '../services/smart-router.js';
+export type {
+  GasCostContext,
+  Route,
+  RouteHop,
+  SmartRouterOptions,
+  SmartRouterQuoteService,
+} from '../services/smart-router.js';
 export type {
   AquariusAdapterOptions,
   AquariusQuoteRequest,
