@@ -126,6 +126,32 @@ const cache = new PriceCache({ ttlMs: 60000 });
 aggregator.setStrategy(new TWAPStrategy(cache, 60000));
 ```
 
+### Time-weighted average price (TWAP) calculator
+
+`TWAPCalculator` and `PriceHistoryStore` provide a lightweight in-memory TWAP engine for off-chain price history handling.
+
+```typescript
+import {
+  PriceHistoryStore,
+  TWAPCalculator,
+  TWAPConfig,
+} from '@galaxy-kj/core-oracles';
+
+const historyStore = new PriceHistoryStore();
+const twap = new TWAPCalculator(historyStore);
+
+const config: TWAPConfig = {
+  windowMs: 60 * 60 * 1000, // 1 hour
+  minDataPoints: 2,
+};
+
+await twap.recordPrice('XLM', 100);
+await twap.recordPrice('XLM', 101);
+
+const twapPrice = await twap.getTWAP('XLM', config);
+console.log('TWAP', twapPrice);
+```
+
 ### Price Validation
 
 The aggregator validates prices using multiple checks:

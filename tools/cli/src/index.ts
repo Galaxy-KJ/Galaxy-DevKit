@@ -18,6 +18,7 @@ import { oracleCommand } from './commands/oracle/index.js';
 import { walletCommand } from './commands/wallet/index.js';
 import { protocolCommand } from './commands/protocol/index.js';
 import { blendCommand } from './commands/blend/index.js';
+import { defiCommand } from './commands/defi/index.js';
 import {
   createInteractiveCommand,
   launchInteractiveMode,
@@ -38,6 +39,7 @@ program.addCommand(oracleCommand);
 program.addCommand(walletCommand);
 program.addCommand(protocolCommand);
 program.addCommand(blendCommand);
+program.addCommand(defiCommand);
 
 // Register interactive command (REPL + guided menus)
 program.addCommand(createInteractiveCommand(program));
@@ -147,6 +149,7 @@ program
     console.log(chalk.gray('  galaxy oracle <cmd>    Oracle price data'));
     console.log(chalk.gray('  galaxy protocol <cmd>  DeFi protocol interactions'));
     console.log(chalk.gray('  galaxy blend <cmd>     Blend Protocol DeFi'));
+    console.log(chalk.gray('  galaxy defi <cmd>      DeFi CLI (blend, swap, pools)'));
     console.log(chalk.gray('  galaxy help            Show this help'));
     console.log(chalk.gray('\nRun galaxy <command> --help for detailed command help.'));
   });

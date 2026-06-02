@@ -469,6 +469,39 @@ describe('DexAggregatorService', () => {
     expect(quote.totalAmountOut).toBe('97.0000000');
   });
 
+  it('throws when the SDEX protocol does not expose getSwapQuote', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '95.0000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      // SDEX protocol returned without getSwapQuote — exercises the
+      // line-202 throw.
+      return { initialize: jest.fn().mockResolvedValue(undefined) };
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    await expect(aggregator.getSplitQuote(XLM, USDC, '100', [0, 100])).rejects.toThrow(
+      'SDEX protocol does not implement getSwapQuote'
+    );
+  });
+
   it('handles numeric and undefined Soroswap price impacts', async () => {
     let callCount = 0;
     protocolFactory.createProtocol.mockImplementation((cfg) => {
@@ -509,4 +542,40 @@ describe('DexAggregatorService', () => {
     expect(numericImpactQuote.routes[0].priceImpact).toBe(1.25);
     expect(undefinedImpactQuote.routes[0].priceImpact).toBe(0);
   });
+
+  it('throws when a split quote results in all legs having 0 allocation', async () => {
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    // An extremely small input amount (0.00000001) split evenly 50/50
+    // will round down both allocations to 0.0000000 and throw the error.
+    await expect(
+      aggregator.getSplitQuote(XLM, USDC, '0.00000001', [50, 50])
+    ).rejects.toThrow('Split quote did not produce any executable routes');
+  });
+
+  it('throws when the SDEX protocol does not expose getSwapQuote', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    await expect(
+      aggregator.getSplitQuote(XLM, USDC, '100', [0, 100])
+    ).rejects.toThrow('SDEX protocol does not implement getSwapQuote');
+  });
 });
+

@@ -1,9 +1,10 @@
 import BigNumber from 'bignumber.js';
-import { Asset as StellarAsset, Horizon } from '@stellar/stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
 
 import { Asset, ProtocolConfig, SwapQuote } from '../types/defi-types.js';
 import { ProtocolFactory } from '../services/protocol-factory.js';
-import { AggregatorQuote, AggregatorRoute, AggregatorVenue } from './types.js';
+import { AggregatorQuote, AggregatorRoute, AggregatorVenue, IDEXAggregator } from './types.js';
+import { AquariusAdapter } from './AquariusAdapter.js';
 
 const DEFAULT_SPLIT_PERCENTAGES = [10, 20, 30, 40, 50, 60, 70, 80, 90];
 const DISPLAY_DECIMALS = 7;
@@ -25,14 +26,16 @@ interface DexAggregatorDependencies {
   fetchImpl?: typeof fetch;
   horizonServer?: HorizonServerLike;
   protocolFactory?: AggregatorProtocolFactory;
+  aquariusAdapter?: Pick<AquariusAdapter, 'fetchRoute'>;
 }
 
-export class DexAggregatorService {
+export class DexAggregatorService implements IDEXAggregator {
   private readonly soroswapConfig: ProtocolConfig;
   private readonly sdexConfig: ProtocolConfig;
   private readonly fetchImpl: typeof fetch;
   private readonly horizonServer: HorizonServerLike;
   private readonly protocolFactory: AggregatorProtocolFactory;
+  private readonly aquariusAdapter: Pick<AquariusAdapter, 'fetchRoute'>;
 
   constructor(config: ProtocolConfig, dependencies: DexAggregatorDependencies = {}) {
     this.soroswapConfig = {
@@ -49,6 +52,8 @@ export class DexAggregatorService {
       dependencies.horizonServer ??
       ((new Horizon.Server(this.soroswapConfig.network.horizonUrl) as unknown) as HorizonServerLike);
     this.protocolFactory = dependencies.protocolFactory ?? ProtocolFactory.getInstance();
+    this.aquariusAdapter =
+      dependencies.aquariusAdapter ?? new AquariusAdapter({ fetchImpl: this.fetchImpl });
   }
 
   async getBestQuote(assetIn: Asset, assetOut: Asset, amountIn: string): Promise<AggregatorQuote> {
@@ -123,9 +128,14 @@ export class DexAggregatorService {
     assetOut: Asset,
     amountIn: string
   ): Promise<AggregatorRoute[]> {
+    // #273: query all three venues (Soroswap, SDEX, Aquarius) in
+    // parallel and rank by output. `Promise.allSettled` means a single
+    // failing venue doesn't take down the whole quote — the
+    // aggregator returns whatever subset succeeded.
     const settled = await Promise.allSettled([
       this.fetchRouteFromVenue('soroswap', assetIn, assetOut, amountIn),
       this.fetchRouteFromVenue('sdex', assetIn, assetOut, amountIn),
+      this.fetchRouteFromVenue('aquarius', assetIn, assetOut, amountIn),
     ]);
 
     const routes = settled
@@ -147,6 +157,11 @@ export class DexAggregatorService {
   ): Promise<AggregatorRoute> {
     if (venue === 'soroswap') {
       return this.fetchSoroswapRoute(assetIn, assetOut, amountIn);
+    }
+    if (venue === 'aquarius') {
+      // #273: delegated to the AquariusAdapter so the HTTP shape
+      // can be tested without spinning the aggregator's full graph.
+      return this.aquariusAdapter.fetchRoute({ assetIn, assetOut, amountIn });
     }
 
     return this.fetchSdexRoute(assetIn, assetOut, amountIn);

@@ -12,6 +12,18 @@ export * from './types/IOracleSource.js';
 
 // Aggregator
 export { OracleAggregator } from './aggregator/OracleAggregator.js';
+export {
+  PriceAggregatorService,
+  calculateDeviationPercent,
+  type AggregatorConfig,
+  type PricePushEvent,
+} from './aggregator/price-aggregator.js';
+export { AggregatorScheduler, type SchedulerOptions } from './aggregator/scheduler.js';
+export {
+  createOracleSources,
+  type OracleSourceConfig,
+  type OracleSourceKind,
+} from './aggregator/sources/index.js';
 
 // Strategies
 export type { AggregationStrategy } from './aggregator/strategies/AggregationStrategy.js';
@@ -20,12 +32,18 @@ export { MeanStrategy } from './aggregator/strategies/MeanStrategy.js';
 export { WeightedAverageStrategy } from './aggregator/strategies/WeightedAverageStrategy.js';
 export { TWAPStrategy } from './aggregator/strategies/TWAPStrategy.js';
 
+// TWAP helpers
+export type { TWAPConfig } from './twap/twap-calculator.js';
+export { PriceHistoryStore } from './twap/price-history-store.js';
+export { TWAPCalculator } from './twap/twap-calculator.js';
+
 // Cache
 export { PriceCache } from './cache/price-cache.js';
 
 // Validation
 export * from './validation/price-validator.js';
 export * from './validation/anomaly-detector.js';
+export { AlertEmitter, type AlertEvent, type AlertSeverity, type AlertCallback, type AlertEmitterConfig } from './validation/alert-emitter.js';
 
 // Utils
 export * from './utils/outlier-detection.js';
@@ -33,3 +51,4 @@ export * from './utils/retry-utils.js';
 
 export * from './sources/mocks/MockOracleSources.js';
 export * from './sources/real/index.js';
+export { BaseSource, type BaseSourceConfig } from './sources/base-source.js';

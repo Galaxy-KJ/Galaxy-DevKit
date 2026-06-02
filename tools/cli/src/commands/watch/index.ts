@@ -14,6 +14,7 @@ import { contractWatchCommand } from './contract.js';
 import { dashboardWatchCommand } from './dashboard.js';
 import { priceWatchCommand } from './price.js';
 import { poolWatchCommand } from './pool.js';
+import { positionWatchCommand } from './position.js';
 
 const watchCommand = new Command('watch');
 
@@ -28,6 +29,7 @@ watchCommand
   .addCommand(dashboardWatchCommand)
   .addCommand(priceWatchCommand)
   .addCommand(poolWatchCommand)
+  .addCommand(positionWatchCommand)
   .action(async options => {
     if (options.dashboard) {
       // Trigger the dashboard command logic

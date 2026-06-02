@@ -251,6 +251,42 @@ const splitQuote = await aggregator.getSplitQuote(
 );
 ```
 
+#### SmartRouter
+
+`SmartRouter` builds multi-hop candidate paths, requests quotes from the
+aggregator for every hop, subtracts estimated execution gas, and selects the
+route with the highest net output.
+
+```typescript
+import {
+  DexAggregatorService,
+  SmartRouter,
+  TESTNET_CONFIG,
+} from '@galaxy-kj/core-defi-protocols';
+
+const quoteService = new DexAggregatorService({
+  protocolId: 'soroswap',
+  name: 'Soroswap',
+  network: TESTNET_CONFIG,
+  contractAddresses: {},
+  metadata: {},
+});
+
+const router = new SmartRouter(quoteService, {
+  gasCostInOutputAsset: '0.0001',
+});
+
+const route = await router.findOptimalRoute(
+  { code: 'XLM', type: 'native' },
+  { code: 'USDC', issuer: 'GAUS...', type: 'credit_alphanum4' },
+  '100',
+  3
+);
+
+console.log(route.path.map((asset) => asset.code));
+console.log(route.estimatedOutput);
+```
+
 #### initialize()
 
 Initialize protocol connection and validate configuration.
