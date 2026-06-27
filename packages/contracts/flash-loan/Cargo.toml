@@ -1,0 +1,22 @@
+[package]
+name = "flash-loan"
+version = "1.0.0"
+edition = "2021"
+description = "Flash loan Soroban contract for Galaxy DevKit"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "21.0.0"
+
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true
+codegen-units = 1
