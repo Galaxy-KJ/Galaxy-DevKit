@@ -7,6 +7,7 @@ module.exports = {
 
   moduleNameMapper: {
     '^@galaxy-kj/core-defi-protocols$': '<rootDir>/../../core/defi-protocols/src/index.ts',
+    '^@galaxy-kj/core-wallet$': '<rootDir>/../../core/wallet/src/index.ts',
     '^(\\.\\.?/.*)\\.js$': '$1',
   },
 
