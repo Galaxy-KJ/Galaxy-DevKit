@@ -11,6 +11,7 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { getPromptFlow, runPromptFlow } from './prompts/index.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,16 +23,27 @@ export interface MenuParam {
   choices?: string[];
   // Accepts any runtime value (number, boolean, string) and supports async validators
   validate?: (value: any) => boolean | string | Promise<boolean | string>;
+  /**
+   * When true, emit the value as a positional argument instead of `--name value`.
+   * Positional params are appended in declaration order, after the base command
+   * tokens and before any flags.
+   */
+  positional?: boolean;
 }
 
 export interface MenuEntry {
   /** Display label shown in the list */
   label: string;
-  /** CLI command string to execute, e.g. "account info" — required if children is absent */
+  /** CLI command string to execute, e.g. "wallet info" — required if children and promptFlow are absent */
   command?: string;
+  /**
+   * Id of a guided PromptFlow to run (see prompts/index.ts). When set,
+   * `command` and `params` are ignored — the flow drives its own prompts.
+   */
+  promptFlow?: string;
   /** Parameters to collect before running the command */
   params?: MenuParam[];
-  /** Nested submenu entries — required if command is absent */
+  /** Nested submenu entries — required if command and promptFlow are absent */
   children?: MenuEntry[];
   /** Human-readable description shown as a hint */
   description?: string;
@@ -52,174 +64,90 @@ const EXIT = '__EXIT__';
 /**
  * Top-level menu structure.
  * Extend this array to register new commands in the interactive UI.
- * Every entry must have either `children` (submenu) or `command` (action).
+ * Every entry must have one of: `children` (submenu), `command` (direct), or `promptFlow` (guided).
+ *
+ * Use `promptFlow` for multi-step guided flows with validation + confirmation
+ * (see prompts/index.ts). Use `command` + `params` for simple one-shot inputs.
  */
 export const ROOT_MENU: MenuEntry[] = [
   {
-    label: '🔑  Account',
-    description: 'Manage Stellar accounts and keypairs',
+    label: '🔑  Wallet',
+    description: 'Create, import and manage local wallets',
     children: [
       {
-        label: 'Show account info',
-        command: 'account info',
+        label: 'Create wallet (guided)',
+        description: 'Generate a new keypair with optional encryption',
+        promptFlow: 'wallet:create',
+      },
+      {
+        label: 'Import wallet (guided)',
+        description: 'Import from a secret key',
+        promptFlow: 'wallet:import',
+      },
+      {
+        label: 'List wallets',
+        command: 'wallet list',
+      },
+      {
+        label: 'Wallet info',
+        command: 'wallet info',
         params: [
           {
-            name: 'address',
-            message: 'Stellar account address (G…):',
+            name: 'target',
+            message: 'Wallet name or public key:',
             type: 'input',
+            positional: true,
             validate: (v: string) =>
-              v.startsWith('G') && v.length === 56
-                ? true
-                : 'Enter a valid Stellar public key (56 chars, starts with G)',
+              v && v.trim().length > 0 ? true : 'Required',
           },
         ],
       },
       {
-        label: 'Generate new keypair',
-        command: 'account generate',
+        label: 'Check balance (guided)',
+        description: 'Lookup by wallet name or address',
+        promptFlow: 'wallet:balance',
       },
       {
-        label: 'Fund account (testnet friendbot)',
-        command: 'account fund',
-        params: [
-          {
-            name: 'address',
-            message: 'Account address to fund:',
-            type: 'input',
-            validate: (v: string) =>
-              v.startsWith('G') && v.length === 56
-                ? true
-                : 'Enter a valid Stellar public key',
-          },
-        ],
+        label: 'Fund testnet wallet (guided)',
+        description: 'Request XLM from friendbot',
+        promptFlow: 'wallet:fund',
       },
     ],
   },
   {
     label: '💸  Payments',
-    description: 'Send payments and manage assets',
+    description: 'Send XLM and issued assets',
     children: [
       {
-        label: 'Send XLM payment',
-        command: 'payment send',
-        params: [
-          {
-            name: 'from',
-            message: 'Source account (G…):',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'to',
-            message: 'Destination account (G…):',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'amount',
-            message: 'Amount (XLM):',
-            type: 'number',
-            // inquirer number prompt returns NaN for empty/invalid input
-            validate: (v: number) =>
-              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
-          },
-          {
-            name: 'memo',
-            message: 'Memo (optional):',
-            type: 'input',
-            default: '',
-          },
-        ],
-      },
-      {
-        label: 'Check payment history',
-        command: 'payment history',
-        params: [
-          {
-            name: 'address',
-            message: 'Account address:',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'limit',
-            message: 'Number of records:',
-            type: 'number',
-            default: 10,
-            validate: (v: number) =>
-              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
-          },
-        ],
+        label: 'Send payment (guided)',
+        description: 'Transfer XLM or an issued asset — asks for confirmation',
+        promptFlow: 'wallet:send',
       },
     ],
   },
   {
     label: '🌊  DeFi / Liquidity',
-    description: 'Interact with AMMs, liquidity pools, and swap protocols',
+    description: 'Soroswap swaps, Blend lending, liquidity pools',
     children: [
       {
+        label: 'Swap tokens (Soroswap, guided)',
+        description: 'Swap with quote preview + confirmation',
+        promptFlow: 'defi:swap',
+      },
+      {
+        label: 'Blend — supply (guided)',
+        description: 'Supply assets to Blend Protocol',
+        promptFlow: 'defi:blend-supply',
+      },
+      {
+        label: 'Blend — borrow (guided)',
+        description: 'Borrow assets from Blend Protocol',
+        promptFlow: 'defi:blend-borrow',
+      },
+      {
         label: 'List liquidity pools',
-        command: 'defi pools',
-        params: [
-          {
-            name: 'asset',
-            message: 'Filter by asset (leave blank for all):',
-            type: 'input',
-            default: '',
-          },
-        ],
-      },
-      {
-        label: 'Swap assets',
-        command: 'defi swap',
-        params: [
-          {
-            name: 'sell',
-            message: 'Asset to sell (e.g. XLM):',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'buy',
-            message: 'Asset to buy (e.g. USDC):',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'amount',
-            message: 'Amount to sell:',
-            type: 'number',
-            validate: (v: number) =>
-              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
-          },
-          {
-            name: 'slippage',
-            message: 'Max slippage % (e.g. 0.5):',
-            type: 'number',
-            default: 0.5,
-            validate: (v: number) =>
-              !isNaN(v) && v >= 0 ? true : 'Must be a non-negative number',
-          },
-        ],
-      },
-      {
-        label: 'Add liquidity',
-        command: 'defi add-liquidity',
-        params: [
-          {
-            name: 'pool',
-            message: 'Pool ID or asset pair (e.g. XLM/USDC):',
-            type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
-          },
-          {
-            name: 'amount',
-            message: 'Amount to deposit:',
-            type: 'number',
-            validate: (v: number) =>
-              !isNaN(v) && v > 0 ? true : 'Must be a positive number',
-          },
-        ],
+        description: 'Show TVL and APY across Soroswap pools',
+        promptFlow: 'defi:pools',
       },
     ],
   },
@@ -232,43 +160,36 @@ export const ROOT_MENU: MenuEntry[] = [
         command: 'oracle price',
         params: [
           {
-            name: 'asset',
-            message: 'Asset symbol (e.g. XLM, BTC):',
+            name: 'symbol',
+            message: 'Asset symbol (e.g. XLM/USD):',
             type: 'input',
-            validate: (v: string) => (v.length > 0 ? true : 'Required'),
+            positional: true,
+            default: 'XLM/USD',
+            validate: (v: string) => (v && v.length > 0 ? true : 'Required'),
           },
-        ],
-      },
-      {
-        label: 'List supported assets',
-        command: 'oracle assets',
-      },
-    ],
-  },
-  {
-    label: '⚙️   Network',
-    description: 'Switch networks and inspect ledger state',
-    children: [
-      {
-        label: 'Switch network',
-        command: 'network switch',
-        params: [
+          {
+            name: 'strategy',
+            message: 'Aggregation strategy:',
+            type: 'list',
+            choices: ['median', 'mean', 'twap', 'weighted'],
+            default: 'median',
+          },
           {
             name: 'network',
-            message: 'Select network:',
+            message: 'Network:',
             type: 'list',
-            choices: ['mainnet', 'testnet', 'futurenet', 'localnet'],
+            choices: ['testnet', 'mainnet'],
             default: 'testnet',
           },
         ],
       },
       {
-        label: 'Show current network',
-        command: 'network current',
+        label: 'List configured oracle sources',
+        command: 'oracle sources list',
       },
       {
-        label: 'Ledger info',
-        command: 'network ledger',
+        label: 'List supported strategies',
+        command: 'oracle strategies',
       },
     ],
   },
@@ -337,7 +258,11 @@ function isAbortError(err: unknown): boolean {
  * Returns string[] safe to pass directly into Commander's parseAsync —
  * no shell splitting needed, whitespace in values is fully preserved.
  *
- * e.g. ['payment', 'send', '--from', 'G...', '--to', 'G...', '--amount', '10']
+ * Params marked `positional: true` are emitted in declaration order, immediately
+ * after the base command tokens. Remaining params become `--flag value` pairs.
+ *
+ * e.g. for `wallet send <from> <to> <amount> <asset> [--memo X]`:
+ *   ['wallet', 'send', 'alice', 'G...', '10', 'XLM', '--memo', 'gift']
  *
  * For human-readable display use buildCommandPreview() instead.
  */
@@ -347,21 +272,35 @@ function buildCommandArgs(
 ): string[] {
   if (!entry.command) return [];
 
-  // Split the base command into individual tokens (e.g. "payment send" → ['payment', 'send'])
   const base = entry.command.split(/\s+/).filter(Boolean);
+  const positionals: string[] = [];
   const flags: string[] = [];
 
+  // Walk declared params in order so positionals stay aligned with the command signature.
+  const positionalNames = new Set<string>(
+    (entry.params ?? []).filter((p) => p.positional).map((p) => p.name),
+  );
+
+  if (entry.params) {
+    for (const p of entry.params) {
+      if (!p.positional) continue;
+      const v = params[p.name];
+      if (v === '' || v === undefined || v === null) continue;
+      positionals.push(String(v));
+    }
+  }
+
   for (const [k, v] of Object.entries(params)) {
+    if (positionalNames.has(k)) continue;
     if (v === '' || v === undefined || v === null) continue;
     if (typeof v === 'boolean') {
-      if (v) flags.push(`--${k}`); // omit the flag entirely when false
+      if (v) flags.push(`--${k}`);
       continue;
     }
-    // Push key and value as separate array elements — whitespace in v is preserved
     flags.push(`--${k}`, String(v));
   }
 
-  return [...base, ...flags];
+  return [...base, ...positionals, ...flags];
 }
 
 /**
@@ -461,8 +400,7 @@ async function stepRoot(
   const selected = ROOT_MENU[Number(answer.choice)];
 
   if (!selected.children || selected.children.length === 0) {
-    // Guard: entry with no children must have a command registered
-    if (!selected.command) {
+    if (!selected.command && !selected.promptFlow) {
       console.log(chalk.yellow(`\n  ⚠  No command registered for "${selected.label}". Skipping.\n`));
       return { tag: 'root' };
     }
@@ -513,8 +451,7 @@ async function stepSubmenu(
     return { tag: 'submenu', parent: selected, entries: selected.children };
   }
 
-  // Guard: entry with no children must have a command registered
-  if (!selected.command) {
+  if (!selected.command && !selected.promptFlow) {
     console.log(chalk.yellow(`\n  ⚠  No command registered for "${selected.label}". Skipping.\n`));
     return { tag: 'submenu', parent: state.parent, entries: state.entries };
   }
@@ -526,13 +463,29 @@ async function stepSubmenu(
 }
 
 /**
- * Collect params (if any) for an entry and forward a structured string[]
- * to the executor — no shell splitting at the call site.
+ * Run an entry: either delegate to a registered PromptFlow (guided multi-step
+ * flow with confirmation) or collect params and run a direct command.
  */
 async function executeEntry(
   entry: MenuEntry,
   executor: (args: string[]) => Promise<void>,
 ): Promise<void> {
+  if (entry.promptFlow) {
+    const flow = getPromptFlow(entry.promptFlow);
+    if (!flow) {
+      console.log(chalk.yellow(`\n  ⚠  Unknown prompt flow: ${entry.promptFlow}\n`));
+      return;
+    }
+    hr();
+    const result = await runPromptFlow(flow, executor);
+    if (result.error) {
+      console.error(chalk.red(`\n  ✖  Error: ${result.error.message}\n`));
+    }
+    hr();
+    console.log('');
+    return;
+  }
+
   const params = await collectParams(entry);
 
   if (params === null) {
@@ -540,7 +493,6 @@ async function executeEntry(
     return;
   }
 
-  // entry.command is guaranteed to be set by all callers (checked before this call)
   const args = buildCommandArgs(entry, params);
   const preview = buildCommandPreview(entry, params);
 

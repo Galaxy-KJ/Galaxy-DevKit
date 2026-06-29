@@ -23,6 +23,7 @@ import {
   createInteractiveCommand,
   launchInteractiveMode,
   shouldLaunchInteractive,
+  attachMenuCommand,
 } from './commands/interactive/index.js';
 
 const program = new Command();
@@ -40,8 +41,9 @@ program.addCommand(protocolCommand);
 program.addCommand(blendCommand);
 program.addCommand(defiCommand);
 
-// Register interactive command
+// Register interactive command (raw REPL) and the guided menu command
 program.addCommand(createInteractiveCommand(program));
+attachMenuCommand(program);
 
 // Watch command
 import { watchCommand } from './commands/watch/index.js';
@@ -134,8 +136,10 @@ program
     console.log(chalk.blue('🌟 Galaxy DevKit CLI'));
     console.log(chalk.gray('Build Stellar applications with ease\n'));
     console.log(chalk.yellow('Available commands:'));
-    console.log(chalk.gray('  galaxy                 Launch interactive mode'));
-    console.log(chalk.gray('  galaxy interactive     Launch interactive mode (explicit)'));
+    console.log(chalk.gray('  galaxy                 Launch interactive REPL (raw)'));
+    console.log(chalk.gray('  galaxy -i              Launch guided menu (recommended for new users)'));
+    console.log(chalk.gray('  galaxy menu            Launch guided menu (explicit)'));
+    console.log(chalk.gray('  galaxy interactive     Launch interactive REPL (explicit)'));
     console.log(chalk.gray('  galaxy create <name>   Create new project'));
     console.log(chalk.gray('  galaxy init            Initialize in current dir'));
     console.log(chalk.gray('  galaxy build           Build project'));
@@ -150,15 +154,26 @@ program
     console.log(chalk.gray('\nRun galaxy <command> --help for detailed command help.'));
   });
 
+function wantsGuidedMenu(argv: string[]): boolean {
+  const args = argv.slice(2);
+  return args.some((a) => a === '-i' || a === '--interactive');
+}
+
 // Main execution
 async function main(): Promise<void> {
-  // Check if we should launch interactive mode
+  // `galaxy -i` and `--interactive` launch the guided menu — the experience
+  // promised by the AC: "All major operations available through prompts".
+  if (wantsGuidedMenu(process.argv)) {
+    await program.parseAsync(['node', 'galaxy', 'menu']);
+    return;
+  }
+
+  // No arguments at all → raw REPL (back-compat with existing usage and tests).
   if (shouldLaunchInteractive(process.argv)) {
     await launchInteractiveMode(program);
     return;
   }
 
-  // Parse command line arguments normally
   await program.parseAsync();
 }
 
