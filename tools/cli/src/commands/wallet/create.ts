@@ -10,6 +10,8 @@ export const createWalletCommand = new Command('create')
     .option('-n, --name <name>', 'Wallet name')
     .option('--testnet', 'Use testnet (default)')
     .option('--mainnet', 'Use mainnet')
+    .option('--encrypt', 'Encrypt the secret key at rest with a password')
+    .option('--password <password>', 'Password for encryption (required in --json mode when --encrypt is set)')
     .option('--json', 'Output as JSON')
     .action(async (options: any) => {
         const spinner = ora('Creating new wallet...').start();
@@ -59,7 +61,42 @@ export const createWalletCommand = new Command('create')
                 createdAt: new Date().toISOString()
             };
 
-            await walletStorage.saveWallet(walletName, walletData);
+            // 5. Optional encryption
+            let encryptionPassword: string | undefined;
+            if (options.encrypt) {
+                encryptionPassword = options.password;
+                if (!encryptionPassword) {
+                    if (options.json) {
+                        console.error(JSON.stringify({ error: '--password is required when using --encrypt in --json mode' }));
+                        process.exit(1);
+                    }
+                    spinner.stop();
+                    const answers = await inquirer.prompt([
+                        {
+                            type: 'password',
+                            name: 'password',
+                            message: 'Enter a password to encrypt the wallet:',
+                            mask: '*',
+                            validate: (input: string) => input.length >= 8 ? true : 'Password must be at least 8 characters'
+                        },
+                        {
+                            type: 'password',
+                            name: 'confirm',
+                            message: 'Confirm password:',
+                            mask: '*'
+                        }
+                    ]);
+                    if (answers.password !== answers.confirm) {
+                        spinner.fail(chalk.red('Passwords do not match'));
+                        process.exit(1);
+                    }
+                    encryptionPassword = answers.password;
+                    spinner.start('Creating new wallet...');
+                }
+                await walletStorage.saveWalletEncrypted(walletName, walletData, encryptionPassword!);
+            } else {
+                await walletStorage.saveWallet(walletName, walletData);
+            }
 
             if (options.json) {
                 console.log(JSON.stringify({
@@ -69,6 +106,7 @@ export const createWalletCommand = new Command('create')
                     secretKey: secret,
                     network: walletData.network,
                     createdAt: walletData.createdAt,
+                    encrypted: !!options.encrypt,
                     path: walletStorage.getWalletPath(walletName)
                 }, null, 2));
             } else {
@@ -78,7 +116,11 @@ export const createWalletCommand = new Command('create')
                 console.log(chalk.gray(`  Public Key: ${publicKey}`));
                 console.log(chalk.gray(`  Secret Key: ${secret}`));
                 console.log(chalk.gray(`  Network: ${walletData.network}`));
+                console.log(chalk.gray(`  Encrypted: ${options.encrypt ? 'yes' : 'no'}`));
                 console.log(chalk.yellow('\n⚠️  WARNING: Keep your secret key safe! Do not share it with anyone.'));
+                if (options.encrypt) {
+                    console.log(chalk.yellow('⚠️  Lose the password and the secret cannot be recovered from the file.'));
+                }
                 console.log(chalk.gray(`  Saved to: ${walletStorage.getWalletPath(walletName)}`));
             }
 
