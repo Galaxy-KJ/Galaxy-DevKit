@@ -62,7 +62,6 @@ export function getPlaygroundStatus(): PlaygroundStatus {
   const keypair = Keypair.random();
 
   return {
-    network: networkConfig.type,
     network: networkStore.getNetwork(),
     sdkReady: true,
     generatedAccount: keypair.publicKey(),
@@ -128,8 +127,8 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
         </div>
         <div class="network-switcher">
           <select id="network-select" class="network-select" aria-label="Select network">
-            <option value="${NetworkType.TESTNET}" ${status.network === NetworkType.TESTNET ? 'selected' : ''}>Testnet</option>
-            <option value="${NetworkType.MAINNET}" ${status.network === NetworkType.MAINNET ? 'selected' : ''}>Mainnet (Read-only)</option>
+            <option value="testnet" ${status.network === 'testnet' ? 'selected' : ''}>Testnet</option>
+            <option value="mainnet" ${status.network === 'mainnet' ? 'selected' : ''}>Mainnet (Read-only)</option>
           </select>
           ${isMainnetReadOnly() ? '<span class="read-only-badge">READ ONLY</span>' : ''}
         <!-- Network switcher slot (populated below) -->
@@ -259,7 +258,6 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   new WalletSignersPanel('wallet-signers-panel', client);
 
   mountSessionPanel(document.getElementById('wallet-session-panel')!);
-  mountTxPanel(document.getElementById('wallet-tx-panel')!, client);
   mountLiquidityPanel(document.getElementById('liquidity-panel')!);
   mountTxPanel(document.getElementById('wallet-tx-panel')!, client, txTracker);
   mountTxHistoryPanel(
@@ -359,8 +357,6 @@ function mountLiquidityPanel(container: HTMLElement): void {
   });
 }
 
-function mountTxPanel(container: HTMLElement, client: SmartWalletClient): void {
-  const { TxBuilderClient } = require('./services/tx-builder.client');
 function mountTxPanel(
   container: HTMLElement,
   client: SmartWalletClient,

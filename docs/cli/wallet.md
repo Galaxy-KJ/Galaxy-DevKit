@@ -11,6 +11,9 @@ Complete guide to managing Stellar wallets using the Galaxy CLI.
   - [Create Wallet](#create-wallet)
   - [Import Wallet](#import-wallet)
   - [List Wallets](#list-wallets)
+  - [Balance](#balance)
+  - [Send](#send)
+  - [Encrypt Existing Wallet](#encrypt-existing-wallet)
   - [Multi-Signature Wallets](#multi-signature-wallets)
   - [Ledger Hardware Wallet](#ledger-hardware-wallet)
   - [Biometric Authentication](#biometric-authentication)
@@ -68,6 +71,8 @@ galaxy wallet create [options]
 - `-n, --name <name>` - Wallet name (will prompt if not provided)
 - `--testnet` - Use Stellar testnet (default)
 - `--mainnet` - Use Stellar mainnet
+- `--encrypt` - Encrypt the secret key at rest with a password (AES-256-GCM + scrypt)
+- `--password <password>` - Password for encryption (required in `--json` mode when `--encrypt` is set)
 - `--json` - Output result as JSON
 
 **Examples:**
@@ -78,6 +83,12 @@ galaxy wallet create
 
 # Create with specific name
 galaxy wallet create --name my-wallet
+
+# Create with encrypted-at-rest secret (prompts for password)
+galaxy wallet create --name vault --encrypt
+
+# Same, non-interactive
+galaxy wallet create --name vault --encrypt --password "correcthorsebattery" --json
 
 # Create mainnet wallet
 galaxy wallet create --name prod-wallet --mainnet
@@ -117,6 +128,8 @@ galaxy wallet import [secret-key] [options]
 - `-n, --name <name>` - Wallet name (will prompt if not provided)
 - `--testnet` - Use Stellar testnet (default)
 - `--mainnet` - Use Stellar mainnet
+- `--encrypt` - Encrypt the secret key at rest with a password (AES-256-GCM + scrypt)
+- `--password <password>` - Password for encryption (required in `--json` mode when `--encrypt` is set)
 - `--json` - Output result as JSON
 
 **Examples:**
@@ -124,6 +137,9 @@ galaxy wallet import [secret-key] [options]
 ```bash
 # Import with all parameters
 galaxy wallet import SXXXXXX... --name imported-wallet
+
+# Import and encrypt at rest in one go
+galaxy wallet import --name imported --encrypt
 
 # Interactive import (prompts for secret)
 galaxy wallet import
@@ -185,6 +201,147 @@ galaxy wallet list --json
   ]
 }
 ```
+
+---
+
+### Balance
+
+Show XLM and asset balances for any Stellar account.
+
+**Syntax:**
+```bash
+galaxy wallet balance [address] [options]
+```
+
+**Arguments:**
+- `address` - Stellar public key (`G...`). Optional when `--name` is used.
+
+**Options:**
+- `-n, --name <name>` - Resolve address from a stored wallet name
+- `--network <network>` - Override network (`testnet` | `mainnet`). Defaults to the wallet's network, or `testnet` for raw addresses.
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# By address
+galaxy wallet balance GBZX...QO5J
+
+# By stored wallet name (uses its saved network)
+galaxy wallet balance --name my-wallet
+
+# Force mainnet lookup
+galaxy wallet balance GBZX...QO5J --network mainnet --json
+```
+
+**JSON Output:**
+```json
+{
+  "address": "GBZX...QO5J",
+  "network": "testnet",
+  "exists": true,
+  "balances": [
+    { "asset": "XLM", "balance": "100.5000000", "type": "native" },
+    {
+      "asset": "USDC",
+      "balance": "42.0000000",
+      "limit": "1000000.0000000",
+      "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "type": "credit_alphanum4"
+    }
+  ]
+}
+```
+
+When the account does not yet exist on the network, `exists` is `false` and `balances` is an empty array — non-error so it can be scripted.
+
+---
+
+### Send
+
+Transfer XLM or an issued asset from a stored wallet to another Stellar address.
+
+**Syntax:**
+```bash
+galaxy wallet send <from> <to> <amount> <asset> [options]
+```
+
+**Arguments:**
+- `from` - Source wallet name (must be stored locally)
+- `to` - Destination Stellar public key (`G...`)
+- `amount` - Amount to send as a decimal string (e.g. `"1.5"`)
+- `asset` - `XLM` for native, or `CODE:ISSUER` for issued assets
+
+**Options:**
+- `--memo <text>` - Optional memo text (max 28 bytes UTF-8)
+- `--password <password>` - Password to decrypt the source wallet (required for encrypted wallets in `--json` mode)
+- `--network <network>` - Override network. Defaults to the source wallet's network.
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Native XLM transfer on testnet
+galaxy wallet send alice GBOB...XYZ 1.5 XLM
+
+# Issued asset (USDC) with a memo
+galaxy wallet send alice GBOB...XYZ 25 USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN --memo "invoice-42"
+
+# Encrypted source wallet, scripted
+galaxy wallet send vault GBOB...XYZ 10 XLM --password "$PW" --json
+```
+
+**Behavior:**
+- Validates the destination public key, parses the asset, and rejects non-positive amounts.
+- For non-native assets, checks that the destination has the right trustline (unless it is the issuer itself) before submitting.
+- Builds a single `payment` operation with `BASE_FEE`, signs with the source wallet's keypair, and submits via Horizon.
+- On Horizon failures, surfaces `extras.result_codes` (e.g. `op_underfunded`, `op_no_trust`) in the error output.
+
+**JSON Output:**
+```json
+{
+  "success": true,
+  "from": "GALI...CE",
+  "fromWallet": "alice",
+  "to": "GBOB...XYZ",
+  "amount": "1.5",
+  "asset": "XLM",
+  "memo": null,
+  "network": "testnet",
+  "hash": "f1e2...",
+  "ledger": 12345678
+}
+```
+
+---
+
+### Encrypt Existing Wallet
+
+Encrypt a previously created plaintext wallet, replacing the file on disk with an encrypted version. Use this to migrate wallets created before the `--encrypt` flag existed.
+
+**Syntax:**
+```bash
+galaxy wallet encrypt <name> [options]
+```
+
+**Arguments:**
+- `name` - Existing wallet name
+
+**Options:**
+- `--password <password>` - Password (required in `--json` mode; prompted otherwise)
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Interactive (will prompt + confirm password)
+galaxy wallet encrypt my-wallet
+
+# Scripted
+galaxy wallet encrypt my-wallet --password "$PW" --json
+```
+
+> ⚠️ Lose the password and the secret cannot be recovered from the file. Keep a separate backup of the secret key (see `galaxy wallet backup`) before encrypting if you do not have one.
 
 ---
 
@@ -469,9 +626,31 @@ Wallets are stored in `~/.galaxy/wallets/` directory:
 └── social-recovery.json
 ```
 
+### Encryption at Rest
+
+Wallets can be stored encrypted with a password using AES-256-GCM and a scrypt-derived key. There are three entry points:
+
+- `galaxy wallet create --encrypt` — encrypt on creation
+- `galaxy wallet import --encrypt` — encrypt on import
+- `galaxy wallet encrypt <name>` — migrate an existing plaintext wallet
+
+Encrypted wallet files have shape:
+
+```json
+{
+  "publicKey": "G...",
+  "encryptedSecret": { "salt": "...", "iv": "...", "authTag": "...", "content": "..." },
+  "network": "testnet",
+  "createdAt": "2024-01-29T10:30:00.000Z",
+  "encrypted": true
+}
+```
+
+Commands that need the secret (`wallet send`, etc.) prompt for the password on demand; in `--json` mode pass `--password`.
+
 ### Security Best Practices
 
-1. **Secret Keys**: Store secret keys securely. Consider using backups with strong encryption passwords.
+1. **Secret Keys**: Store secret keys securely. Prefer `--encrypt` for any wallet that holds real value.
 
 2. **Permissions**: Ensure `.galaxy` directory has appropriate permissions:
    ```bash

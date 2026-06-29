@@ -16,6 +16,14 @@ import { HistoryManager, getHistoryManager, resetHistoryManager } from './histor
 import { AutocompleteManager, getAutocompleteManager, resetAutocompleteManager, COMMAND_REGISTRY } from './autocomplete.js';
 import { WorkflowManager, getWorkflowManager, resetWorkflowManager, runWorkflow, WORKFLOWS, listWorkflows } from './workflows.js';
 import { attachMenuCommand, runInteractiveMenus, ROOT_MENU } from './menus.js';
+import {
+  runPromptFlow,
+  getPromptFlow,
+  listPromptFlows,
+  PROMPT_FLOWS,
+  WALLET_PROMPTS,
+  DEFI_PROMPTS,
+} from './prompts/index.js';
 
 // Re-export types
 export type {
@@ -63,6 +71,27 @@ export {
 };
 
 export type { MenuEntry, MenuParam } from './menus.js';
+export type {
+  PromptFlow,
+  PromptStep,
+  PromptChoice,
+  PromptStepType,
+  PromptExecutor,
+  PromptFlowResult,
+  RunPromptFlowOptions,
+  SummaryLine,
+  Summarizer,
+  ArgBuilder,
+} from './prompts/index.js';
+
+export {
+  runPromptFlow,
+  getPromptFlow,
+  listPromptFlows,
+  PROMPT_FLOWS,
+  WALLET_PROMPTS,
+  DEFI_PROMPTS,
+};
 
 /**
  * Create the interactive REPL command for Commander.js.
