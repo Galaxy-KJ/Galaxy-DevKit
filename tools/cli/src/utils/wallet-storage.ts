@@ -11,6 +11,13 @@ import crypto from 'crypto';
 const WALLETS_DIR = 'wallets';
 const GALAXY_DIR = '.galaxy';
 
+export interface EncryptedPayload {
+    salt: string;
+    iv: string;
+    authTag: string;
+    content: string;
+}
+
 export interface WalletData {
     publicKey: string;
     secretKey: string;
@@ -20,10 +27,20 @@ export interface WalletData {
     name?: string;
 }
 
+export interface EncryptedWalletData {
+    publicKey: string;
+    encryptedSecret: EncryptedPayload;
+    network: 'testnet' | 'mainnet';
+    createdAt: string;
+    importedAt?: string;
+    encrypted: true;
+}
+
 export interface WalletInfo {
     name: string;
     publicKey: string;
     network: string;
+    encrypted?: boolean;
 }
 
 export class WalletStorage {
@@ -73,14 +90,64 @@ export class WalletStorage {
     }
 
     /**
-     * Load wallet data
+     * Save wallet with secret encrypted at rest using password (AES-256-GCM + scrypt).
      */
-    async loadWallet(name: string): Promise<WalletData | null> {
+    async saveWalletEncrypted(name: string, data: WalletData, password: string): Promise<void> {
+        await this.ensureDir();
+        const walletPath = this.getWalletPath(name);
+        const encryptedSecret = WalletStorage.encrypt(data.secretKey, password);
+        const payload: EncryptedWalletData = {
+            publicKey: data.publicKey,
+            encryptedSecret,
+            network: data.network,
+            createdAt: data.createdAt,
+            ...(data.importedAt ? { importedAt: data.importedAt } : {}),
+            encrypted: true
+        };
+        await fs.writeJson(walletPath, payload, { spaces: 2 });
+    }
+
+    /**
+     * Load wallet data (raw on-disk shape, may be encrypted).
+     */
+    async loadWallet(name: string): Promise<WalletData | EncryptedWalletData | null> {
         const walletPath = this.getWalletPath(name);
         if (!await fs.pathExists(walletPath)) {
             return null;
         }
         return await fs.readJson(walletPath);
+    }
+
+    /**
+     * Returns true if the on-disk wallet stores its secret encrypted.
+     */
+    async isWalletEncrypted(name: string): Promise<boolean> {
+        const raw = await this.loadWallet(name);
+        return !!raw && (raw as EncryptedWalletData).encrypted === true;
+    }
+
+    /**
+     * Load a wallet and return it with secretKey decrypted. Throws if password is wrong.
+     * For unencrypted wallets, password is ignored.
+     */
+    async loadWalletDecrypted(name: string, password?: string): Promise<WalletData | null> {
+        const raw = await this.loadWallet(name);
+        if (!raw) return null;
+        if ((raw as EncryptedWalletData).encrypted) {
+            const enc = raw as EncryptedWalletData;
+            if (!password) {
+                throw new Error(`Wallet '${name}' is encrypted; a password is required`);
+            }
+            const secretKey = WalletStorage.decrypt(enc.encryptedSecret, password);
+            return {
+                publicKey: enc.publicKey,
+                secretKey,
+                network: enc.network,
+                createdAt: enc.createdAt,
+                ...(enc.importedAt ? { importedAt: enc.importedAt } : {})
+            };
+        }
+        return raw as WalletData;
     }
 
     /**
@@ -115,7 +182,8 @@ export class WalletStorage {
                 wallets.push({
                     name: path.basename(file, '.json'),
                     publicKey: content.publicKey,
-                    network: content.network || 'unknown'
+                    network: content.network || 'unknown',
+                    encrypted: content.encrypted === true
                 });
             } catch (e) {
                 // Ignore invalid files

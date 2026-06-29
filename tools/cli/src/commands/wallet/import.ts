@@ -11,6 +11,8 @@ export const importWalletCommand = new Command('import')
     .option('-n, --name <name>', 'Wallet name')
     .option('--testnet', 'Use testnet (default)')
     .option('--mainnet', 'Use mainnet')
+    .option('--encrypt', 'Encrypt the secret key at rest with a password')
+    .option('--password <password>', 'Password for encryption (required in --json mode when --encrypt is set)')
     .option('--json', 'Output as JSON')
     .action(async (secretKey: string | undefined, options: any) => {
         const spinner = ora('Importing wallet...').start();
@@ -86,13 +88,48 @@ export const importWalletCommand = new Command('import')
             // 5. Save wallet
             const walletData = {
                 publicKey,
-                secretKey: actualSecretKey,
+                secretKey: actualSecretKey as string,
                 network: (options.mainnet ? 'mainnet' : 'testnet') as 'mainnet' | 'testnet',
                 createdAt: new Date().toISOString(),
                 importedAt: new Date().toISOString()
             };
 
-            await walletStorage.saveWallet(walletName, walletData);
+            // 6. Optional encryption
+            let encryptionPassword: string | undefined;
+            if (options.encrypt) {
+                encryptionPassword = options.password;
+                if (!encryptionPassword) {
+                    if (options.json) {
+                        console.error(JSON.stringify({ error: '--password is required when using --encrypt in --json mode' }));
+                        process.exit(1);
+                    }
+                    spinner.stop();
+                    const answers = await inquirer.prompt([
+                        {
+                            type: 'password',
+                            name: 'password',
+                            message: 'Enter a password to encrypt the wallet:',
+                            mask: '*',
+                            validate: (input: string) => input.length >= 8 ? true : 'Password must be at least 8 characters'
+                        },
+                        {
+                            type: 'password',
+                            name: 'confirm',
+                            message: 'Confirm password:',
+                            mask: '*'
+                        }
+                    ]);
+                    if (answers.password !== answers.confirm) {
+                        spinner.fail(chalk.red('Passwords do not match'));
+                        process.exit(1);
+                    }
+                    encryptionPassword = answers.password;
+                    spinner.start('Importing wallet...');
+                }
+                await walletStorage.saveWalletEncrypted(walletName, walletData, encryptionPassword!);
+            } else {
+                await walletStorage.saveWallet(walletName, walletData);
+            }
 
             if (options.json) {
                 console.log(JSON.stringify({
@@ -101,6 +138,7 @@ export const importWalletCommand = new Command('import')
                     publicKey,
                     network: walletData.network,
                     importedAt: walletData.importedAt,
+                    encrypted: !!options.encrypt,
                     path: walletStorage.getWalletPath(walletName)
                 }, null, 2));
             } else {
@@ -109,6 +147,7 @@ export const importWalletCommand = new Command('import')
                 console.log(chalk.gray(`  Name: ${walletName}`));
                 console.log(chalk.gray(`  Public Key: ${publicKey}`));
                 console.log(chalk.gray(`  Network: ${walletData.network}`));
+                console.log(chalk.gray(`  Encrypted: ${options.encrypt ? 'yes' : 'no'}`));
                 console.log(chalk.gray(`  Saved to: ${walletStorage.getWalletPath(walletName)}`));
             }
 
