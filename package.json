@@ -79,6 +79,7 @@
     "shell-quote": "^1.9.0",
     "tar": "^7.5.7",
     "xml2js": "^0.6.0",
-    "blessed-contrib": "^4.11.0"
+    "blessed-contrib": "^4.11.0",
+    "shell-quote": "^1.9.0"
   }
 }
