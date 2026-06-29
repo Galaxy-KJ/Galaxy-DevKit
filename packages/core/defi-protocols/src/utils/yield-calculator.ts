@@ -88,14 +88,7 @@ export function periodsForFrequency(frequency: CompoundingFrequency): number {
  * @returns Effective APY as a percentage.
  */
 export function aprToApy(apr: number, periods: number): number {
-  assertFinite(apr, 'apr');
-  assertPositive(periods, 'periods');
-  if (apr === 0) return 0;
-
-  const rate = new BN(apr).dividedBy(100);
-  const n = new BN(periods);
-  const apy = rate.dividedBy(n).plus(1).pow(periods).minus(1);
-  return round(apy.multipliedBy(100));
+  return round(aprToApyCore(apr, periods));
 }
 
 /**
@@ -109,17 +102,7 @@ export function aprToApy(apr: number, periods: number): number {
  * @returns Nominal APR as a percentage.
  */
 export function apyToApr(apy: number, periods: number): number {
-  assertFinite(apy, 'apy');
-  assertPositive(periods, 'periods');
-  if (apy === 0) return 0;
-
-  // (1 + apy)^(1/periods) via nthRoot to keep precision for large `periods`.
-  const growth = new BN(apy).dividedBy(100).plus(1);
-  if (growth.isNegative()) {
-    throw new Error('apy must be greater than -100%');
-  }
-  const perPeriod = nthRoot(growth, periods).minus(1);
-  return round(perPeriod.multipliedBy(periods).multipliedBy(100));
+  return round(apyToAprCore(apy, periods));
 }
 
 /**
@@ -133,10 +116,7 @@ export function apyToApr(apy: number, periods: number): number {
  * @returns Effective APY as a percentage.
  */
 export function continuousApy(apr: number): number {
-  assertFinite(apr, 'apr');
-  if (apr === 0) return 0;
-  const rate = apr / 100;
-  return round(new BN(Math.expm1(rate)).multipliedBy(100));
+  return round(continuousApyCore(apr));
 }
 
 /**
@@ -148,8 +128,7 @@ export function continuousApy(apr: number): number {
  * @returns Effective APY as a percentage.
  */
 export function aprToApyByFrequency(apr: number, frequency: CompoundingFrequency): number {
-  if (frequency === CompoundingFrequency.Continuous) return continuousApy(apr);
-  return aprToApy(apr, periodsForFrequency(frequency));
+  return round(aprToApyByFrequencyCore(apr, frequency));
 }
 
 /**
@@ -167,13 +146,7 @@ export function aprToApyByFrequency(apr: number, frequency: CompoundingFrequency
  * @returns Fee APR as a percentage.
  */
 export function calculateLpYield(volume24h: number, tvl: number, fee: number): number {
-  assertNonNegative(volume24h, 'volume24h');
-  assertPositive(tvl, 'tvl');
-  assertNonNegative(fee, 'fee');
-
-  const dailyFees = new BN(volume24h).multipliedBy(fee);
-  const apr = dailyFees.dividedBy(tvl).multipliedBy(365).multipliedBy(100);
-  return round(apr);
+  return round(calculateLpYieldCore(volume24h, tvl, fee));
 }
 
 /**
@@ -188,7 +161,7 @@ export function calculateLpApy(
   fee: number,
   frequency: CompoundingFrequency = CompoundingFrequency.Daily,
 ): number {
-  return aprToApyByFrequency(calculateLpYield(volume24h, tvl, fee), frequency);
+  return round(calculateLpApyCore(volume24h, tvl, fee, frequency));
 }
 
 /**
@@ -210,30 +183,10 @@ export function projectCompoundedValue(
   frequency: CompoundingFrequency,
   years: number,
 ): { futureValue: number; interestEarned: number } {
-  const start = new BN(principal);
-  assertFinite(apr, 'apr');
-  assertNonNegative(years, 'years');
-  if (start.isNegative() || !start.isFinite()) {
-    throw new Error('principal must be a non-negative finite number');
-  }
-
-  const rate = new BN(apr).dividedBy(100);
-  let future: BigNumber;
-
-  if (frequency === CompoundingFrequency.Continuous) {
-    // FV = principal · e^(rate · years)
-    const exponent = rate.multipliedBy(years).toNumber();
-    future = start.multipliedBy(Math.exp(exponent));
-  } else {
-    const periods = periodsForFrequency(frequency);
-    const totalPeriods = Math.round(periods * years);
-    const perPeriod = rate.dividedBy(periods).plus(1);
-    future = start.multipliedBy(perPeriod.pow(totalPeriods));
-  }
-
+  const { future, interest } = projectCompoundedValueCore(principal, apr, frequency, years);
   return {
     futureValue: round(future),
-    interestEarned: round(future.minus(start)),
+    interestEarned: round(interest),
   };
 }
 
@@ -253,23 +206,23 @@ export class YieldCalculator {
   }
 
   aprToApy(apr: number, periods: number): number {
-    return reround(aprToApy(apr, periods), this.decimals);
+    return round(aprToApyCore(apr, periods), this.decimals);
   }
 
   apyToApr(apy: number, periods: number): number {
-    return reround(apyToApr(apy, periods), this.decimals);
+    return round(apyToAprCore(apy, periods), this.decimals);
   }
 
   aprToApyByFrequency(apr: number, frequency: CompoundingFrequency): number {
-    return reround(aprToApyByFrequency(apr, frequency), this.decimals);
+    return round(aprToApyByFrequencyCore(apr, frequency), this.decimals);
   }
 
   continuousApy(apr: number): number {
-    return reround(continuousApy(apr), this.decimals);
+    return round(continuousApyCore(apr), this.decimals);
   }
 
   calculateLpYield(volume24h: number, tvl: number, fee: number): number {
-    return reround(calculateLpYield(volume24h, tvl, fee), this.decimals);
+    return round(calculateLpYieldCore(volume24h, tvl, fee), this.decimals);
   }
 
   calculateLpApy(
@@ -278,7 +231,7 @@ export class YieldCalculator {
     fee: number,
     frequency: CompoundingFrequency = CompoundingFrequency.Daily,
   ): number {
-    return reround(calculateLpApy(volume24h, tvl, fee, frequency), this.decimals);
+    return round(calculateLpApyCore(volume24h, tvl, fee, frequency), this.decimals);
   }
 
   projectCompoundedValue(
@@ -287,15 +240,113 @@ export class YieldCalculator {
     frequency: CompoundingFrequency,
     years: number,
   ): { futureValue: number; interestEarned: number } {
-    const r = projectCompoundedValue(principal, apr, frequency, years);
+    const { future, interest } = projectCompoundedValueCore(principal, apr, frequency, years);
     return {
-      futureValue: reround(r.futureValue, this.decimals),
-      interestEarned: reround(r.interestEarned, this.decimals),
+      futureValue: round(future, this.decimals),
+      interestEarned: round(interest, this.decimals),
     };
   }
 }
 
 // ─── internals ──────────────────────────────────────────────────────────────
+
+// The public exports and the YieldCalculator wrapper both delegate to these
+// `*Core` helpers, which return *unrounded* BigNumbers. Rounding happens once,
+// at the outermost boundary — exports round to DEFAULT_DECIMALS, the wrapper to
+// its configured precision — so caller-controlled precision isn't capped by an
+// intermediate round to 8 decimals.
+
+function aprToApyCore(apr: number, periods: number): BigNumber {
+  assertFinite(apr, 'apr');
+  assertPositive(periods, 'periods');
+  if (apr === 0) return new BN(0);
+
+  const rate = new BN(apr).dividedBy(100);
+  return rate.dividedBy(periods).plus(1).pow(periods).minus(1).multipliedBy(100);
+}
+
+function apyToAprCore(apy: number, periods: number): BigNumber {
+  assertFinite(apy, 'apy');
+  assertPositive(periods, 'periods');
+  if (apy === 0) return new BN(0);
+
+  // (1 + apy)^(1/periods) via nthRoot to keep precision for large `periods`.
+  const growth = new BN(apy).dividedBy(100).plus(1);
+  if (growth.isNegative()) {
+    throw new Error('apy must be greater than -100%');
+  }
+  return nthRoot(growth, periods).minus(1).multipliedBy(periods).multipliedBy(100);
+}
+
+function continuousApyCore(apr: number): BigNumber {
+  assertFinite(apr, 'apr');
+  if (apr === 0) return new BN(0);
+  // expm1 for accuracy at small rates.
+  return new BN(Math.expm1(apr / 100)).multipliedBy(100);
+}
+
+function aprToApyByFrequencyCore(apr: number, frequency: CompoundingFrequency): BigNumber {
+  if (frequency === CompoundingFrequency.Continuous) return continuousApyCore(apr);
+  return aprToApyCore(apr, periodsForFrequency(frequency));
+}
+
+function calculateLpYieldCore(volume24h: number, tvl: number, fee: number): BigNumber {
+  assertNonNegative(volume24h, 'volume24h');
+  assertPositive(tvl, 'tvl');
+  assertNonNegative(fee, 'fee');
+
+  const dailyFees = new BN(volume24h).multipliedBy(fee);
+  return dailyFees.dividedBy(tvl).multipliedBy(365).multipliedBy(100);
+}
+
+function calculateLpApyCore(
+  volume24h: number,
+  tvl: number,
+  fee: number,
+  frequency: CompoundingFrequency,
+): BigNumber {
+  // Feed the *unrounded* fee APR into the APY conversion so the chain isn't
+  // truncated to 8 decimals before compounding.
+  const apr = calculateLpYieldCore(volume24h, tvl, fee).toNumber();
+  return aprToApyByFrequencyCore(apr, frequency);
+}
+
+function projectCompoundedValueCore(
+  principal: BigNumber.Value,
+  apr: number,
+  frequency: CompoundingFrequency,
+  years: number,
+): { future: BigNumber; interest: BigNumber } {
+  const start = new BN(principal);
+  assertFinite(apr, 'apr');
+  assertNonNegative(years, 'years');
+  if (start.isNegative() || !start.isFinite()) {
+    throw new Error('principal must be a non-negative finite number');
+  }
+
+  const rate = new BN(apr).dividedBy(100);
+  let future: BigNumber;
+
+  if (frequency === CompoundingFrequency.Continuous) {
+    // FV = principal · e^(rate · years)
+    const exponent = rate.multipliedBy(years).toNumber();
+    future = start.multipliedBy(Math.exp(exponent));
+  } else {
+    // FV = principal · (1 + rate/periods)^(periods · years). `years` may be
+    // fractional, so the exponent is a real number — don't round it to an
+    // integer. Integer exponents keep BigNumber's exact pow (important for
+    // per-ledger compounding's millions of periods); fractional exponents fall
+    // back to x^y = exp(y·ln x) at double precision via Math.pow.
+    const periods = periodsForFrequency(frequency);
+    const totalPeriods = periods * years;
+    const perPeriod = rate.dividedBy(periods).plus(1);
+    future = Number.isInteger(totalPeriods)
+      ? start.multipliedBy(perPeriod.pow(totalPeriods))
+      : start.multipliedBy(new BN(Math.pow(perPeriod.toNumber(), totalPeriods)));
+  }
+
+  return { future, interest: future.minus(start) };
+}
 
 /** nth root via BigNumber, falling back to fractional-power for large n. */
 function nthRoot(value: BigNumber, n: number): BigNumber {
@@ -309,10 +360,6 @@ function nthRoot(value: BigNumber, n: number): BigNumber {
 
 function round(value: BigNumber, decimals = DEFAULT_DECIMALS): number {
   return value.decimalPlaces(decimals, BigNumber.ROUND_HALF_UP).toNumber();
-}
-
-function reround(value: number, decimals: number): number {
-  return new BN(value).decimalPlaces(decimals, BigNumber.ROUND_HALF_UP).toNumber();
 }
 
 function assertFinite(value: number, label: string): void {

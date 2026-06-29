@@ -183,6 +183,17 @@ describe('projectCompoundedValue (#300)', () => {
     expect(r.futureValue).toBeCloseTo(1105.1709, 3);
   });
 
+  it('uses fractional compounding periods for a non-integer horizon (#318)', () => {
+    // Daily compounding over half a year → exponent 182.5, NOT rounded to 183.
+    const periods = 365;
+    const r = projectCompoundedValue(1000, 10, CompoundingFrequency.Daily, 0.5);
+    const expected = 1000 * Math.pow(1 + 0.1 / periods, periods * 0.5); // 182.5 periods
+    expect(r.futureValue).toBeCloseTo(expected, 4);
+    // Strictly below the value you'd get by rounding the exponent up to 183.
+    const roundedUp = 1000 * Math.pow(1 + 0.1 / periods, 183);
+    expect(r.futureValue).toBeLessThan(roundedUp);
+  });
+
   it('returns the principal unchanged over a 0-year horizon', () => {
     const r = projectCompoundedValue(1000, 10, CompoundingFrequency.Daily, 0);
     expect(r.futureValue).toBeCloseTo(1000, 6);
@@ -230,6 +241,20 @@ describe('YieldCalculator (#300)', () => {
     expect(calc.aprToApyByFrequency(10, CompoundingFrequency.Daily)).toBeCloseTo(10.5155, 3);
     expect(calc.calculateLpYield(1_000_000, 10_000_000, 0.003)).toBeCloseTo(10.95, 4);
     expect(calc.calculateLpApy(1_000_000, 10_000_000, 0.003)).toBeGreaterThan(10.95);
+  });
+
+  it('exposes precision beyond the standalone helpers 8-decimal default (#318)', () => {
+    const calc = new YieldCalculator({ decimals: 12 });
+    const precise = calc.aprToApy(10, 365);
+    const capped = aprToApy(10, 365); // standalone export caps at 8 decimals
+
+    // The 12-decimal wrapper must retain digits the 8-decimal helper drops.
+    expect(precise).not.toBe(capped);
+    // …and stay consistent: truncating it back to 8 decimals reproduces the helper.
+    expect(Number(precise.toFixed(8))).toBeCloseTo(capped, 8);
+    // …and track the real (1 + r/n)^n − 1 formula well past 8 decimals.
+    const exact = (Math.pow(1 + 0.1 / 365, 365) - 1) * 100;
+    expect(precise).toBeCloseTo(exact, 10);
   });
 
   it('rounds projection results too', () => {
