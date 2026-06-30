@@ -18,6 +18,7 @@
       "@galaxy-kj/core-wallet": ["packages/core/wallet/src/index.ts"],
       "@galaxy-kj/core-wallet/*": ["packages/core/wallet/src/*"],
       "@galaxy-kj/core-stellar-sdk": ["packages/core/stellar-sdk/src/index.ts"],
+      "@galaxy-kj/core-stellar-sdk/soroban": ["packages/core/stellar-sdk/src/soroban/index.ts"],
       "@galaxy-kj/core-stellar-sdk/*": ["packages/core/stellar-sdk/src/*"],
       "@galaxy-kj/core-defi-protocols": ["packages/core/defi-protocols/src/index.ts"],
       "@galaxy-kj/core-defi-protocols/*": ["packages/core/defi-protocols/src/*"],
