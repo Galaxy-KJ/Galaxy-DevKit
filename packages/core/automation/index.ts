@@ -12,5 +12,8 @@ export {
 } from './src/templates/index.js';
 export type { DCAConfig, GridConfig, StopLossConfig, DcaTemplateResult, GridTemplateResult, StopLossTemplateResult } from './src/templates/index.js';
 
+export { PriceTrigger } from './src/triggers/price-trigger.js';
+export type { PriceTriggerConfig } from './src/triggers/price-trigger.js';
+
 import { AutomationService } from './src/services/automation.service.js';
 export default AutomationService;
