@@ -20,6 +20,7 @@
     "bump": "lerna version",
     "publish": "lerna publish",
     "test": "jest",
+    "test:integration": "jest --config packages/integration-tests/jest.config.cjs",
     "test:e2e": "playwright test",
     "contracts:deploy": "bash scripts/deploy-contracts.sh",
     "contracts:init": "bash scripts/init-contracts.sh",
