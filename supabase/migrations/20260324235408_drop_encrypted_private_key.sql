@@ -8,16 +8,21 @@
 -- read by any application code, so they can be safely dropped.
 -- =============================================================================
 
--- Drop the column that was already being renamed as a deprecation signal
-ALTER TABLE invisible_wallets
-  DROP COLUMN IF EXISTS _deprecated_encrypted_private_key;
+-- Guarded against environments where invisible_wallets was never created
+-- (the table lives in a separate migration stream). Makes the migration
+-- idempotent and safe for fresh local resets.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'invisible_wallets') THEN
+    ALTER TABLE public.invisible_wallets
+      DROP COLUMN IF EXISTS _deprecated_encrypted_private_key;
+    ALTER TABLE public.invisible_wallets
+      DROP COLUMN IF EXISTS encrypted_private_key;
 
--- Drop the original name as well in case an older migration left it
-ALTER TABLE invisible_wallets
-  DROP COLUMN IF EXISTS encrypted_private_key;
-
--- Document the architectural intent permanently on the table
-COMMENT ON TABLE invisible_wallets IS
-  'Non-custodial wallet registry (Phase 1). '
-  'Stores only public metadata: id, user_id, public_key, network. '
-  'Private keys MUST NOT be persisted server-side — they live exclusively on the user device.';
+    EXECUTE 'COMMENT ON TABLE public.invisible_wallets IS '
+      || quote_literal('Non-custodial wallet registry (Phase 1). '
+        || 'Stores only public metadata: id, user_id, public_key, network. '
+        || 'Private keys MUST NOT be persisted server-side — they live exclusively on the user device.');
+  END IF;
+END $$;
