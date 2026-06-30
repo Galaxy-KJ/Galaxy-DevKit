@@ -53,6 +53,7 @@ export * from './constants/protocols.js';
 // Utils
 export * from './utils/validation.js';
 export * from './utils/type-guards.js';
+export * from './utils/yield-calculator.js';
 
 // Strategies
 export {
