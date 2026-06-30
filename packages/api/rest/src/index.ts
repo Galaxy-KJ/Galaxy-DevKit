@@ -31,7 +31,12 @@ import { AuthService } from './services/auth-service';
 import { UserService } from './services/user-service';
 import { AuditLogger } from './services/audit-logger';
 import { setupDefiRoutes } from './routes/defi.routes';
+
 import { setupMonitoringRoutes } from './routes/monitoring/alerts';
+
+import { setupApprovalsRoutes } from './routes/approvals';
+import { setupTeamRoutes } from './routes/teams';
+
 
 /**
  * REST API Server Class
@@ -141,8 +146,16 @@ class RestApiServer {
     // DeFi routes
     router.use('/defi', setupDefiRoutes());
 
+
     // Monitoring & liquidation alerts (Issue #306)
     router.use('/monitoring', setupMonitoringRoutes());
+
+    // Enterprise approval workflows
+    router.use('/approvals', setupApprovalsRoutes());
+
+    // Organization team management
+    router.use('/teams', setupTeamRoutes());
+
 
     // Add more routes here as needed
 

@@ -18,6 +18,8 @@
     "worker:dev": "ts-node src/worker/index.ts"
   },
   "dependencies": {
+    "@galaxy-kj/core-wallet": "*",
+    "@stellar/stellar-sdk": "^14.4.3",
     "@supabase/supabase-js": "^2.38.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
