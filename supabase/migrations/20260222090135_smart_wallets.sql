@@ -23,9 +23,16 @@ create policy "service role can insert smart wallets"
 -- 3. Index for fast user lookups
 create index if not exists smart_wallets_user_id_idx on smart_wallets (user_id);
 
--- 4. Remove custodial key material from invisible_wallets
-alter table invisible_wallets
-    drop column if exists _deprecated_encrypted_private_key;
-
-alter table invisible_wallets
-    drop column if exists encrypted_private_key;
+-- 4. Remove custodial key material from invisible_wallets (guarded:
+--    the table is created by a separate migration stream that may not
+--    be present on a fresh local reset).
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+             where table_schema = 'public' and table_name = 'invisible_wallets') then
+    alter table public.invisible_wallets
+      drop column if exists _deprecated_encrypted_private_key;
+    alter table public.invisible_wallets
+      drop column if exists encrypted_private_key;
+  end if;
+end $$;
