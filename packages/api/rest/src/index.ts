@@ -31,6 +31,7 @@ import { AuthService } from './services/auth-service';
 import { UserService } from './services/user-service';
 import { AuditLogger } from './services/audit-logger';
 import { setupDefiRoutes } from './routes/defi.routes';
+import { setupMonitoringRoutes } from './routes/monitoring/alerts';
 
 /**
  * REST API Server Class
@@ -139,6 +140,9 @@ class RestApiServer {
 
     // DeFi routes
     router.use('/defi', setupDefiRoutes());
+
+    // Monitoring & liquidation alerts (Issue #306)
+    router.use('/monitoring', setupMonitoringRoutes());
 
     // Add more routes here as needed
 
