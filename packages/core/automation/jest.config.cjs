@@ -34,6 +34,7 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@galaxy-kj/core-oracles$': '<rootDir>/../oracles/src/index.ts',
+    '^@galaxy-kj/core-stellar-sdk/soroban$': '<rootDir>/../stellar-sdk/src/soroban/index.ts',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
