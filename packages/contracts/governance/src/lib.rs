@@ -7,7 +7,7 @@ use soroban_sdk::{
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
 const PROPOSALS: Symbol = symbol_short!("PROPOSALS");
-const VOTES: Symbol = symbol_short!("VOTES");
+const VOTES: Symbol = symbol_short!("VOTES"); // Map<(Address, u32), VoteRecord>
 const LOCKS: Symbol = symbol_short!("LOCKS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
 
@@ -172,8 +172,8 @@ impl GovernanceContract {
         }
 
         // Prevent double-voting on the same proposal.
-        let vote_key = Self::vote_key(&env, voter.clone(), proposal_id);
-        let all_votes: Map<Symbol, VoteRecord> =
+        let vote_key = (voter.clone(), proposal_id);
+        let all_votes: Map<(Address, u32), VoteRecord> =
             env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
 
         if all_votes.contains_key(vote_key.clone()) {
@@ -341,8 +341,8 @@ impl GovernanceContract {
 
     /// Return the current vote record for a (voter, proposal_id) pair.
     pub fn get_vote(env: Env, voter: Address, proposal_id: u32) -> Option<VoteRecord> {
-        let key = Self::vote_key(&env, voter, proposal_id);
-        let all_votes: Map<Symbol, VoteRecord> =
+        let key = (voter, proposal_id);
+        let all_votes: Map<(Address, u32), VoteRecord> =
             env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
         all_votes.get(key)
     }
@@ -359,38 +359,6 @@ impl GovernanceContract {
         env.storage().instance().get(&NEXT_ID).unwrap_or(0u32)
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
-
-    /// Derive a stable per-voter-per-proposal storage key.
-    ///
-    /// Uses a short symbol built from the proposal ID.  For a production
-    /// contract with unbounded proposal counts a `Map<(Address, u32), VoteRecord>`
-    /// keyed by a tuple would be cleaner, but symbol_short works for the test
-    /// surface required here.
-    fn vote_key(env: &Env, voter: Address, proposal_id: u32) -> Symbol {
-        // Encode as "v{proposal_id}" — cheap and unique per proposal.
-        // We store the full VoteRecord (which contains the voter address),
-        // so collisions across voters are prevented by the map value check.
-        let _ = voter; // used in VoteRecord, not in key for brevity
-        let key_str = match proposal_id {
-            0 => symbol_short!("v0"),
-            1 => symbol_short!("v1"),
-            2 => symbol_short!("v2"),
-            3 => symbol_short!("v3"),
-            4 => symbol_short!("v4"),
-            5 => symbol_short!("v5"),
-            6 => symbol_short!("v6"),
-            7 => symbol_short!("v7"),
-            8 => symbol_short!("v8"),
-            9 => symbol_short!("v9"),
-            _ => symbol_short!("vN"),
-        };
-        // The double-vote guard uses the full (voter, proposal_id) compound
-        // stored in the VoteRecord value — the key collision for >9 proposals
-        // is handled by checking the record's voter field below.
-        let _ = env;
-        key_str
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -398,7 +366,7 @@ impl GovernanceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+    use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
     fn setup() -> (Env, GovernanceContractClient<'static>) {
         let env = Env::default();
