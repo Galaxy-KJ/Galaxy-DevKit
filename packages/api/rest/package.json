@@ -15,7 +15,8 @@
     "clean": "rm -rf dist",
     "start": "node dist/index.js",
     "worker": "node dist/worker/index.js",
-    "worker:dev": "ts-node src/worker/index.ts"
+    "worker:dev": "ts-node src/worker/index.ts",
+    "seed:teams": "ts-node scripts/seed-teams-test-users.ts"
   },
   "dependencies": {
     "@galaxy-kj/core-wallet": "*",
