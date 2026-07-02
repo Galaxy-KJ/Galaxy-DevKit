@@ -22,7 +22,7 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@galaxy/core/*": [
         "packages/core/*/src"

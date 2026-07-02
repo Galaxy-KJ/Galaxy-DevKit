@@ -235,7 +235,7 @@ impl GovernanceContract {
             .expect("total votes overflow");
 
         let passed = total >= QUORUM_THRESHOLD
-            && proposal.votes_for * 100 / total >= APPROVAL_THRESHOLD_PCT;
+            && proposal.votes_for * 100 > total * APPROVAL_THRESHOLD_PCT;
 
         proposal.status = if passed {
             ProposalStatus::Passed

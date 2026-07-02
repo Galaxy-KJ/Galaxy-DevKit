@@ -17,7 +17,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@blend-capital/blend-sdk": "^3.2.2",
+    "@blend-capital/blend-sdk": "^3.3.0",
     "@stellar/stellar-sdk": "^14.4.3",
     "bignumber.js": "^9.1.2"
   },

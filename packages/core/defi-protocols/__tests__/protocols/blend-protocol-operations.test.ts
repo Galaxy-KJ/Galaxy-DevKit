@@ -246,7 +246,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock assembleTransaction
       const mockPreparedTx = {
@@ -325,7 +325,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       await expect(
         blendProtocol.supply(testAddress, testPrivateKey, testAsset, '1000000')
@@ -377,7 +377,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock prepareTransaction
       const mockPreparedTx = {
@@ -430,7 +430,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock assembleTransaction
       const mockPreparedTx = {
@@ -497,7 +497,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
         result: { mock: 'result' }
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       const mockPreparedTx = {
         sign: jest.fn(),
@@ -555,7 +555,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       await expect(
         blendProtocol.withdraw(testAddress, testPrivateKey, testAsset, '500000')
@@ -607,7 +607,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock prepareTransaction
       const mockPreparedTx = {
@@ -654,7 +654,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
         result: { mock: 'result' }
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       const mockPreparedTx = {
         sign: jest.fn(),
@@ -722,7 +722,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       await expect(
         blendProtocol.borrow(testAddress, testPrivateKey, testAsset, '250000')
@@ -774,7 +774,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock prepareTransaction
       const mockPreparedTx = {
@@ -821,7 +821,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
         result: { mock: 'result' }
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       const mockPreparedTx = {
         sign: jest.fn(),
@@ -889,7 +889,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       await expect(
         blendProtocol.repay(testAddress, testPrivateKey, testAsset, '250000')
@@ -941,7 +941,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       // Mock prepareTransaction
       const mockPreparedTx = {
@@ -985,7 +985,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       const position = await blendProtocol.getPosition(testAddress);
 
@@ -1020,7 +1020,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest
         .fn()
         .mockResolvedValue(mockSimulation);
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       const position = await blendProtocol.getPosition(testAddress);
 
@@ -1153,7 +1153,7 @@ describe('BlendProtocol - Operations Tests', () => {
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
         result: { mock: 'result' }
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
       const mockPreparedTx = {
         sign: jest.fn(),

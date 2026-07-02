@@ -88,7 +88,7 @@ function mockAccount() {
 }
 
 function mockSimSuccess(retval: unknown) {
-  (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(false);
+  (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
   mockSimulateTransaction.mockResolvedValue({ result: { retval } });
 }
 
@@ -117,7 +117,7 @@ describe('YieldVaultClient.deposit', () => {
   it('throws when simulation fails', async () => {
     const client = makeClient();
     mockAccount();
-    (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+    (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
     mockSimulateTransaction.mockResolvedValue({ error: 'bad input' });
 
     await expect(client.deposit(Keypair.random(), '0')).rejects.toThrow('Simulation failed');
@@ -153,7 +153,7 @@ describe('YieldVaultClient.withdraw', () => {
   it('throws when simulation fails', async () => {
     const client = makeClient();
     mockAccount();
-    (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+    (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
     mockSimulateTransaction.mockResolvedValue({ error: 'sim error' });
 
     await expect(client.withdraw(Keypair.random(), '100')).rejects.toThrow('Simulation failed');

@@ -70,6 +70,14 @@ export interface Position {
   healthFactor: string;
   collateralValue: string;
   debtValue: string;
+  /** @deprecated use supplied */
+  supply?: PositionBalance[];
+  /** @deprecated use borrowed */
+  borrow?: PositionBalance[];
+  /** Total supplied value in USD */
+  totalSupply?: string;
+  /** Total borrowed value in USD */
+  totalBorrow?: string;
 }
 
 /**

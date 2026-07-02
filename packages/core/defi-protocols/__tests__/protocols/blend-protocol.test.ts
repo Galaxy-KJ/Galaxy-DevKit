@@ -307,7 +307,7 @@ describe('BlendProtocol', () => {
         error: 'Simulation error',
         events: []
       });
-      (rpc.Api.isSimulationError as jest.Mock).mockReturnValue(true);
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(true);
 
       await expect(
         blendProtocol.supply(testAddress, testPrivateKey, testAsset, '100')
@@ -348,7 +348,7 @@ describe('BlendProtocol', () => {
 
     it('should calculate health factor correctly (healthy)', async () => {
       // Mock getPosition
-      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({
+      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({ address: 'mock-address', supplied: [], borrowed: [], healthFactor: '1.0',
         totalSupply: '0',
         totalBorrow: '0',
         collateralValue: '200', // $200 Collateral
@@ -364,7 +364,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should calculate health factor correctly (unhealthy)', async () => {
-      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({
+      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({ address: 'mock-address', supplied: [], borrowed: [], healthFactor: '1.0',
         totalSupply: '0',
         totalBorrow: '0',
         collateralValue: '80',  // $80 Collateral
@@ -380,7 +380,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should handle infinite health factor (no debt)', async () => {
-      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({
+      jest.spyOn(blendProtocol, 'getPosition').mockResolvedValue({ address: 'mock-address', supplied: [], borrowed: [], healthFactor: '1.0',
         totalSupply: '0',
         totalBorrow: '0',
         collateralValue: '100',
