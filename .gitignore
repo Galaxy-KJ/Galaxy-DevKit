@@ -208,3 +208,4 @@ temp/
 *.sw?
 
 README_NEXT_STEPS.md
+packages/contracts/governance/test_snapshots/
