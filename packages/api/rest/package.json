@@ -19,6 +19,7 @@
     "seed:teams": "ts-node scripts/seed-teams-test-users.ts"
   },
   "dependencies": {
+    "@galaxy-kj/core-stellar-sdk": "*",
     "@galaxy-kj/core-wallet": "*",
     "@stellar/stellar-sdk": "^14.4.3",
     "@supabase/supabase-js": "^2.38.0",

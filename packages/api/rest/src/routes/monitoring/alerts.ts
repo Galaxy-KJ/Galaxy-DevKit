@@ -18,6 +18,7 @@ import {
   listAlertsQuerySchema,
   updateAlertSchema,
 } from '../../validators/monitoring-validators';
+import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
 function requireUser(req: Request, res: Response): string | null {
   if (!req.user) {
@@ -41,6 +42,26 @@ function handleMonitoringError(err: unknown, res: Response, next: NextFunction):
 
 export function setupMonitoringRoutes(service: MonitoringAlertService = new MonitoringAlertService()): express.Router {
   const router = express.Router();
+
+  // GET /monitoring/cache/stats - Retrieve hit/miss metrics of all caching channels
+  router.get('/cache/stats', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const stats = await globalCache.getStats();
+      res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /monitoring/cache/clear - Force clear all caches (authenticated and audited)
+  router.post('/cache/clear', authenticate(), auditRequest(), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await globalCache.clear();
+      res.json({ success: true, message: 'Cache cleared successfully' });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   router.use('/alerts', authenticate(), auditRequest());
 

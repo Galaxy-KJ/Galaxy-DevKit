@@ -36,7 +36,7 @@ import { setupMonitoringRoutes } from './routes/monitoring/alerts';
 
 import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
-
+import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
 /**
  * REST API Server Class
@@ -446,6 +446,16 @@ class RestApiServer {
         console.log(`📡 Server running on ${this.host}:${this.port}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`❤️  Health check: http://${this.host}:${this.port}/health`);
+      });
+
+      // Warm cache with critical data (non-blocking)
+      globalCache.warmCache({
+        horizonUrl: process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org',
+        passphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
+      }).then(() => {
+        console.log('🔥 Cache warming completed');
+      }).catch((err: Error) => {
+        console.warn('⚠️  Cache warming failed (non-critical):', err.message);
       });
     } catch (error) {
       console.error('Failed to start server:', error);
