@@ -44,7 +44,7 @@ export function setupMonitoringRoutes(service: MonitoringAlertService = new Moni
   const router = express.Router();
 
   // GET /monitoring/cache/stats - Retrieve hit/miss metrics of all caching channels
-  router.get('/cache/stats', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/cache/stats', authenticate(), auditRequest(), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await globalCache.getStats();
       res.json(stats);

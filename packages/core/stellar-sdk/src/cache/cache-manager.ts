@@ -183,38 +183,31 @@ export class CacheManager {
     const horizonUrl = networkConfig?.horizonUrl || process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
     const passphrase = networkConfig?.passphrase || process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
 
-    try {
-      const { StellarService } = await import('../services/stellar-service.js');
-      const tempService = new StellarService({ horizonUrl, passphrase });
+    const { StellarService } = await import('../services/stellar-service.js');
+    const tempService = new StellarService({ horizonUrl, passphrase });
 
-      // 1. Warm static data
-      const contractKeys = ['blend-pool', 'blend-oracle', 'blend-backstop', 'blend-emitter', 'soroswap-router', 'soroswap-factory'];
-      for (const key of contractKeys) {
-        await this.getOrFetch('static-data', `contract:${key}`, async () => {
-          return process.env[key.toUpperCase().replace('-', '_') + '_ADDRESS'] || 'MOCK_CONTRACT_ADDRESS';
-        });
+    // 1. Warm static data (Skip mock fallbacks to prevent polluting cache)
+    const contractKeys = ['blend-pool', 'blend-oracle', 'blend-backstop', 'blend-emitter', 'soroswap-router', 'soroswap-factory'];
+    for (const key of contractKeys) {
+      const address = process.env[key.toUpperCase().replace('-', '_') + '_ADDRESS'];
+      if (address) {
+        await this.getOrFetch('static-data', `contract:${key}`, async () => address);
       }
+    }
 
-      // 2. Warm oracle prices for major assets
-      const majorAssets = ['XLM', 'USDC', 'EURC'];
-      for (const symbol of majorAssets) {
-        await this.getOrFetch('oracle-price', symbol, async () => {
-          return { symbol, price: symbol === 'XLM' ? 0.12 : 1.0, timestamp: new Date() };
-        });
-      }
+    // 2. Warm oracle prices for major assets (Skip hardcoded prices, fetch from service if possible)
+    // In this repo, oracle-prices are normally populated by price feeds dynamically.
+    // We only warm from Stellar Service or Oracle Aggregator if configured.
 
-      // 3. Warm accounts if configured
-      const testPublicKey = process.env.TEST_PUBLIC_KEY;
-      if (testPublicKey) {
-        await this.getOrFetch('horizon-response', `account-info:${testPublicKey}`, async () => {
-          return tempService.getAccountInfo(testPublicKey);
-        });
-        await this.getOrFetch('account-balance', `balance:${testPublicKey}:XLM`, async () => {
-          return tempService.getBalance(testPublicKey, 'XLM');
-        });
-      }
-    } catch (err) {
-      console.warn('[CacheManager] Cache warming completed with caveats (e.g. mock address fallback):', err);
+    // 3. Warm accounts if configured
+    const testPublicKey = process.env.TEST_PUBLIC_KEY;
+    if (testPublicKey) {
+      await this.getOrFetch('horizon-response', `account-info:${testPublicKey}`, async () => {
+        return tempService.getAccountInfo(testPublicKey);
+      });
+      await this.getOrFetch('account-balance', `balance:${testPublicKey}:XLM`, async () => {
+        return tempService.getBalance(testPublicKey, 'XLM');
+      });
     }
   }
 }

@@ -12,6 +12,8 @@ import { ICache, CacheOptions, CacheStats, CacheEntry } from './cache-interface.
 export class InMemoryCache implements ICache {
   private cache: Map<string, CacheEntry<any>>;
   private pendingPromises: Map<string, Promise<any>>;
+  private keyGenerations: Map<string, number>;
+  private globalGeneration: number;
   private hits: number;
   private misses: number;
   private maxSize: number;
@@ -19,6 +21,8 @@ export class InMemoryCache implements ICache {
   constructor(maxSize = 1000) {
     this.cache = new Map();
     this.pendingPromises = new Map();
+    this.keyGenerations = new Map();
+    this.globalGeneration = 0;
     this.hits = 0;
     this.misses = 0;
     this.maxSize = maxSize;
@@ -71,11 +75,15 @@ export class InMemoryCache implements ICache {
   async delete(key: string): Promise<void> {
     this.cache.delete(key);
     this.pendingPromises.delete(key);
+    const gen = this.keyGenerations.get(key) ?? 0;
+    this.keyGenerations.set(key, gen + 1);
   }
 
   async clear(): Promise<void> {
     this.cache.clear();
     this.pendingPromises.clear();
+    this.keyGenerations.clear();
+    this.globalGeneration++;
     this.hits = 0;
     this.misses = 0;
   }
@@ -136,6 +144,8 @@ export class InMemoryCache implements ICache {
   deleteSync(key: string): void {
     this.cache.delete(key);
     this.pendingPromises.delete(key);
+    const gen = this.keyGenerations.get(key) ?? 0;
+    this.keyGenerations.set(key, gen + 1);
   }
 
   /**
@@ -152,6 +162,15 @@ export class InMemoryCache implements ICache {
     const ttl = options?.ttlMs ?? 60000;
     const swrTtl = options?.swrTtlMs ?? (ttl * 2); // Default revalidation window is double the TTL
     const staleWhileRevalidate = options?.staleWhileRevalidate ?? false;
+
+    // Capture current generations before fetching
+    const startKeyGen = this.keyGenerations.get(key) ?? 0;
+    const startGlobalGen = this.globalGeneration;
+
+    const isGenerationValid = () => {
+      const currentKeyGen = this.keyGenerations.get(key) ?? 0;
+      return currentKeyGen === startKeyGen && this.globalGeneration === startGlobalGen;
+    };
 
     if (entry) {
       const isExpired = now > entry.expiresAt;
@@ -172,7 +191,9 @@ export class InMemoryCache implements ICache {
         if (!this.pendingPromises.has(key)) {
           const fetchPromise = fetchFn()
             .then(async (freshValue) => {
-              await this.set(key, freshValue, options);
+              if (isGenerationValid()) {
+                await this.set(key, freshValue, options);
+              }
               this.pendingPromises.delete(key);
               return freshValue;
             })
@@ -180,7 +201,7 @@ export class InMemoryCache implements ICache {
               console.error(`[InMemoryCache] Background revalidation failed for key ${key}:`, err);
               this.pendingPromises.delete(key);
             });
-          // Do not await, run in background
+          this.pendingPromises.set(key, fetchPromise);
         }
         
         return entry.value as T;
@@ -197,7 +218,9 @@ export class InMemoryCache implements ICache {
     if (!promise) {
       promise = fetchFn()
         .then(async (freshValue) => {
-          await this.set(key, freshValue, options);
+          if (isGenerationValid()) {
+            await this.set(key, freshValue, options);
+          }
           this.pendingPromises.delete(key);
           return freshValue;
         })

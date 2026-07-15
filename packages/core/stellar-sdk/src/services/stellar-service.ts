@@ -87,6 +87,15 @@ export class StellarService {
   }
 
   /**
+   * Helper to return a unique prefix for caching keys based on network details
+   */
+  private getCachePrefix(): string {
+    const horizon = this.networkConfig.horizonUrl || '';
+    const pass = this.networkConfig.passphrase || '';
+    return `net:${horizon}:${pass}:`;
+  }
+
+  /**
    * Creates a new Stellar wallet
    * @param config - Wallet configuration
    * @returns Promise<Wallet>
@@ -196,7 +205,8 @@ export class StellarService {
         throw new Error('Invalid public key format');
       }
 
-      return await globalCache.getOrFetch('horizon-response', `account-info:${publicKey}`, async () => {
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}account-info:${publicKey}`, async () => {
         const account = await this.server.loadAccount(publicKey);
 
         const balances: Balance[] = account.balances.map(
@@ -277,7 +287,8 @@ export class StellarService {
    */
   async getBalance(publicKey: string, asset: string = 'XLM'): Promise<Balance> {
     try {
-      return await globalCache.getOrFetch('account-balance', `balance:${publicKey}:${asset}`, async () => {
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('account-balance', `${prefix}balance:${publicKey}:${asset}`, async () => {
         const accountInfo = await this.getAccountInfo(publicKey);
         const balance = accountInfo.balances.find(b => b.asset === asset);
 
@@ -463,7 +474,8 @@ export class StellarService {
     limit: number = 10
   ): Promise<TransactionInfo[]> {
     try {
-      return await globalCache.getOrFetch('horizon-response', `tx-history:${publicKey}:${limit}`, async () => {
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}tx-history:${publicKey}:${limit}`, async () => {
         const transactions = await this.server
           .transactions()
           .forAccount(publicKey)
@@ -557,7 +569,8 @@ export class StellarService {
    */
   async getTransaction(transactionHash: string): Promise<TransactionInfo> {
     try {
-      return await globalCache.getOrFetch('horizon-response', `tx:${transactionHash}`, async () => {
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}tx:${transactionHash}`, async () => {
         const tx = await this.server
           .transactions()
           .transaction(transactionHash)
@@ -690,9 +703,10 @@ export class StellarService {
   }
 
   private async invalidateAccountCache(publicKey: string): Promise<void> {
-    await globalCache.invalidate('account-balance', `balance:${publicKey}:*`);
-    await globalCache.invalidate('horizon-response', `account-info:${publicKey}`);
-    await globalCache.invalidate('horizon-response', `tx-history:${publicKey}:*`);
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('account-balance', `${prefix}balance:${publicKey}:*`);
+    await globalCache.invalidate('horizon-response', `${prefix}account-info:${publicKey}`);
+    await globalCache.invalidate('horizon-response', `${prefix}tx-history:${publicKey}:*`);
   }
 
   private async submitTrxWithRetry(
@@ -726,7 +740,8 @@ export class StellarService {
 
   async estimateFee(): Promise<string> {
     try {
-      return await globalCache.getOrFetch('horizon-response', 'fee-stats', async () => {
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}fee-stats`, async () => {
         const feeStats = await this.server.feeStats();
         return feeStats.max_fee.mode;
       });
@@ -779,7 +794,8 @@ export class StellarService {
    * @returns Promise<ClaimableBalance>
    */
   async getClaimableBalance(balanceId: string): Promise<ClaimableBalance> {
-    return globalCache.getOrFetch('horizon-response', `claimable-balance:${balanceId}`, async () => {
+    const prefix = this.getCachePrefix();
+    return globalCache.getOrFetch('horizon-response', `${prefix}claimable-balance:${balanceId}`, async () => {
       return this.claimableBalanceManager.getBalanceDetails(balanceId);
     });
   }
@@ -861,7 +877,8 @@ export class StellarService {
   ): Promise<LiquidityPoolResult> {
     const result = await this.liquidityPoolManager.depositLiquidity(wallet, params, password);
     await this.invalidateAccountCache(wallet.publicKey);
-    await globalCache.invalidate('defi-pool', `pool:${params.poolId}`);
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('defi-pool', `${prefix}pool:${params.poolId}`);
     return result;
   }
 
@@ -879,7 +896,8 @@ export class StellarService {
   ): Promise<LiquidityPoolResult> {
     const result = await this.liquidityPoolManager.withdrawLiquidity(wallet, params, password);
     await this.invalidateAccountCache(wallet.publicKey);
-    await globalCache.invalidate('defi-pool', `pool:${params.poolId}`);
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('defi-pool', `${prefix}pool:${params.poolId}`);
     return result;
   }
 
@@ -889,7 +907,8 @@ export class StellarService {
    * @returns Promise<LiquidityPool>
    */
   async getLiquidityPool(poolId: string): Promise<LiquidityPool> {
-    return globalCache.getOrFetch('defi-pool', `pool:${poolId}`, async () => {
+    const prefix = this.getCachePrefix();
+    return globalCache.getOrFetch('defi-pool', `${prefix}pool:${poolId}`, async () => {
       return this.liquidityPoolManager.getPoolDetails(poolId);
     });
   }

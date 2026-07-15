@@ -454,8 +454,9 @@ class RestApiServer {
         passphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
       }).then(() => {
         console.log('🔥 Cache warming completed');
-      }).catch((err: Error) => {
-        console.warn('⚠️  Cache warming failed (non-critical):', err.message);
+      }).catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn('⚠️  Cache warming failed (non-critical):', errMsg);
       });
     } catch (error) {
       console.error('Failed to start server:', error);
