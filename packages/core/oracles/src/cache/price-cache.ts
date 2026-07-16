@@ -1,245 +1,134 @@
 /**
- * @fileoverview Price cache implementation
- * @description In-memory cache with TTL for price data
+ * @fileoverview Price cache implementation delegating to unified globalCache
+ * @description Price cache using the DevKit unified caching singleton under the hood
  * @author Galaxy DevKit Team
- * @version 1.0.0
- * @since 2024-01-15
+ * @version 2.0.0
+ * @since 2026-07-15
  */
 
 import { PriceData, CacheConfig, AggregatedPrice } from '../types/oracle-types.js';
+import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
-/**
- * Cache entry
- * @interface CacheEntry
- */
-interface CacheEntry<T> {
-  data: T;
-  timestamp: Date;
-  expiresAt: Date;
-}
-
-/**
- * Default cache configuration
- */
 const DEFAULT_CACHE_CONFIG: CacheConfig = {
   ttlMs: 60000, // 60 seconds
   maxSize: 1000,
   enableFallback: true,
 };
 
-/**
- * Price cache class
- * @class PriceCache
- */
 export class PriceCache {
-  private priceCache: Map<string, CacheEntry<PriceData>>;
-  private aggregatedCache: Map<string, CacheEntry<AggregatedPrice>>;
   private config: CacheConfig;
-  private accessOrder: string[]; // For LRU eviction
 
-  /**
-   * Create a new price cache
-   * @param {Partial<CacheConfig>} config - Cache configuration
-   */
   constructor(config: Partial<CacheConfig> = {}) {
     this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
-    this.priceCache = new Map();
-    this.aggregatedCache = new Map();
-    this.accessOrder = [];
-  }
-
-  /**
-   * Get cache key for symbol
-   * @param {string} symbol - Asset symbol
-   * @param {string} source - Source name (optional)
-   * @returns {string} Cache key
-   */
-  private getKey(symbol: string, source?: string): string {
-    return source ? `${symbol}:${source}` : symbol;
-  }
-
-  /**
-   * Check if entry is expired
-   * @param {CacheEntry<T>} entry - Cache entry
-   * @returns {boolean} True if expired
-   */
-  private isExpired<T>(entry: CacheEntry<T>): boolean {
-    return Date.now() > entry.expiresAt.getTime();
-  }
-
-  /**
-   * Evict oldest entries if cache is full
-   * @param {Map<string, CacheEntry<any>>} cache - Cache map
-   */
-  private evictIfNeeded<T>(cache: Map<string, CacheEntry<T>>): void {
-    if (cache.size < this.config.maxSize) {
-      return;
-    }
-
-    // Remove oldest entries (LRU)
-    const entriesToRemove = cache.size - this.config.maxSize + 1;
-    const sortedKeys = this.accessOrder
-      .filter((key) => cache.has(key))
-      .slice(0, entriesToRemove);
-
-    for (const key of sortedKeys) {
-      cache.delete(key);
-      const index = this.accessOrder.indexOf(key);
-      if (index > -1) {
-        this.accessOrder.splice(index, 1);
+    // If a custom maxSize is provided, configure the oracle-price channel on globalCache
+    if (config.maxSize !== undefined || config.ttlMs !== undefined) {
+      const existing = (globalCache as any).configs['oracle-price'] || {};
+      const newConfig = {
+        ...existing,
+        ...(config.maxSize !== undefined ? { maxSize: config.maxSize } : {}),
+        ...(config.ttlMs !== undefined ? { ttlMs: config.ttlMs } : {}),
+      };
+      (globalCache as any).configs['oracle-price'] = newConfig;
+      // Re-instantiate cache with the updated maxSize
+      if (config.maxSize !== undefined) {
+        (globalCache as any).caches.set('oracle-price', new (globalCache.getCache('oracle-price').constructor as any)(config.maxSize));
       }
     }
   }
 
-  /**
-   * Update access order for LRU
-   * @param {string} key - Cache key
-   */
-  private updateAccessOrder(key: string): void {
-    const index = this.accessOrder.indexOf(key);
-    if (index > -1) {
-      this.accessOrder.splice(index, 1);
-    }
-    this.accessOrder.push(key);
+  private getKey(symbol: string, source?: string): string {
+    const rawKey = source ? `${symbol}:${source}` : symbol;
+    return `oracle:${rawKey}`;
   }
 
-  /**
-   * Get cached price data
-   * @param {string} symbol - Asset symbol
-   * @param {string} source - Source name (optional)
-   * @returns {PriceData | null} Cached price or null
-   */
   getPrice(symbol: string, source?: string): PriceData | null {
     const key = this.getKey(symbol, source);
-    const entry = this.priceCache.get(key);
-
-    if (!entry) {
-      return null;
-    }
-
-    if (this.isExpired(entry)) {
-      this.priceCache.delete(key);
-      return null;
-    }
-
-    this.updateAccessOrder(key);
-    return entry.data;
+    const cache = globalCache.getCache('oracle-price');
+    return cache.getSync<PriceData>(key);
   }
 
-  /**
-   * Set cached price data
-   * @param {PriceData} price - Price data to cache
-   */
   setPrice(price: PriceData): void {
     const key = this.getKey(price.symbol, price.source);
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.config.ttlMs);
-
-    this.evictIfNeeded(this.priceCache);
-
-    this.priceCache.set(key, {
-      data: price,
-      timestamp: now,
-      expiresAt,
-    });
-
-    this.updateAccessOrder(key);
+    const cache = globalCache.getCache('oracle-price');
+    cache.setSync(key, price, { ttlMs: this.config.ttlMs });
   }
 
-  /**
-   * Get cached aggregated price
-   * @param {string} symbol - Asset symbol
-   * @returns {AggregatedPrice | null} Cached aggregated price or null
-   */
   getAggregatedPrice(symbol: string): AggregatedPrice | null {
-    const entry = this.aggregatedCache.get(symbol);
-
-    if (!entry) {
-      return null;
-    }
-
-    if (this.isExpired(entry)) {
-      this.aggregatedCache.delete(symbol);
-      return null;
-    }
-
-    this.updateAccessOrder(symbol);
-    return entry.data;
+    const cache = globalCache.getCache('oracle-price');
+    return cache.getSync<AggregatedPrice>(`oracle:aggregated:${symbol}`);
   }
 
-  /**
-   * Set cached aggregated price
-   * @param {AggregatedPrice} aggregatedPrice - Aggregated price to cache
-   */
   setAggregatedPrice(aggregatedPrice: AggregatedPrice): void {
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.config.ttlMs);
-
-    this.evictIfNeeded(this.aggregatedCache);
-
-    this.aggregatedCache.set(aggregatedPrice.symbol, {
-      data: aggregatedPrice,
-      timestamp: now,
-      expiresAt,
-    });
-
-    this.updateAccessOrder(aggregatedPrice.symbol);
+    const cache = globalCache.getCache('oracle-price');
+    cache.setSync(`oracle:aggregated:${aggregatedPrice.symbol}`, aggregatedPrice, { ttlMs: this.config.ttlMs });
   }
 
-  /**
-   * Invalidate cache for a symbol
-   * @param {string} symbol - Asset symbol
-   * @param {string} source - Source name (optional, invalidates all sources if not provided)
-   */
   invalidate(symbol: string, source?: string): void {
+    const cache = globalCache.getCache('oracle-price');
     if (source) {
       const key = this.getKey(symbol, source);
-      this.priceCache.delete(key);
-      const index = this.accessOrder.indexOf(key);
-      if (index > -1) {
-        this.accessOrder.splice(index, 1);
-      }
+      cache.deleteSync(key);
     } else {
-      // Invalidate all entries for this symbol
+      // Invalidate all entries starting with oracle:symbol: or equal to oracle:symbol
+      const internalCacheMap = (cache as any).cache;
+      if (internalCacheMap instanceof Map) {
+        const keysToDelete: string[] = [];
+        for (const key of internalCacheMap.keys()) {
+          if (key.startsWith(`oracle:${symbol}:`) || key === `oracle:${symbol}`) {
+            keysToDelete.push(key);
+          }
+        }
+        for (const key of keysToDelete) {
+          cache.deleteSync(key);
+        }
+      }
+      cache.deleteSync(`oracle:aggregated:${symbol}`);
+    }
+  }
+
+  clear(): void {
+    const cache = globalCache.getCache('oracle-price');
+    // Wipe only entries belonging to this namespace (oracle:)
+    const internalCacheMap = (cache as any).cache;
+    if (internalCacheMap instanceof Map) {
       const keysToDelete: string[] = [];
-      for (const key of this.priceCache.keys()) {
-        if (key.startsWith(`${symbol}:`) || key === symbol) {
+      for (const key of internalCacheMap.keys()) {
+        if (key.startsWith('oracle:')) {
           keysToDelete.push(key);
         }
       }
       for (const key of keysToDelete) {
-        this.priceCache.delete(key);
-        const index = this.accessOrder.indexOf(key);
-        if (index > -1) {
-          this.accessOrder.splice(index, 1);
-        }
+        cache.deleteSync(key);
       }
-      this.aggregatedCache.delete(symbol);
     }
   }
 
-  /**
-   * Clear all cache
-   */
-  clear(): void {
-    this.priceCache.clear();
-    this.aggregatedCache.clear();
-    this.accessOrder = [];
-  }
-
-  /**
-   * Get cache statistics
-   * @returns {{ priceCount: number; aggregatedCount: number; totalSize: number }} Cache stats
-   */
   getStats(): {
     priceCount: number;
     aggregatedCount: number;
     totalSize: number;
   } {
+    const cache = globalCache.getCache('oracle-price');
+    const internalCacheMap = (cache as any).cache;
+    let priceCount = 0;
+    let aggregatedCount = 0;
+
+    if (internalCacheMap instanceof Map) {
+      for (const key of internalCacheMap.keys()) {
+        if (key.startsWith('oracle:')) {
+          if (key.startsWith('oracle:aggregated:')) {
+            aggregatedCount++;
+          } else {
+            priceCount++;
+          }
+        }
+      }
+    }
+
     return {
-      priceCount: this.priceCache.size,
-      aggregatedCount: this.aggregatedCache.size,
-      totalSize: this.priceCache.size + this.aggregatedCache.size,
+      priceCount,
+      aggregatedCount,
+      totalSize: priceCount + aggregatedCount,
     };
   }
 }

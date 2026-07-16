@@ -165,3 +165,9 @@ export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments
 
 // Export sponsored reserves module
 export * from './sponsored-reserves/index.js';
+
+// Export caching layer
+export type { ICache, CacheOptions, CacheStats, CacheEntry } from './cache/cache-interface.js';
+export { InMemoryCache } from './cache/in-memory-cache.js';
+export { CacheManager, globalCache, DEFAULT_CHANNEL_CONFIGS } from './cache/cache-manager.js';
+

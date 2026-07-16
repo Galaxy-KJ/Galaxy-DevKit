@@ -40,10 +40,11 @@ module.exports = {
     "^@galaxy/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
-    "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/browser.ts",
+    // Use full index.ts (not browser.ts) to include cache module exports
+    "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/index.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
     // Resolve relative .js imports to .ts (ESM-style imports in tools/cli)
-    "^(\\.\\.?/.*)\\.js$": "$1",
+    "^(\\.\\.\\.?/.*)\\.js$": "$1",
   },
 };

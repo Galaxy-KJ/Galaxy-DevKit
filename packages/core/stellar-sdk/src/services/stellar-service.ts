@@ -38,6 +38,7 @@ import { supabaseClient } from '../utils/supabase-client.js';
 import { NetworkUtils } from '../utils/network-utils.js';
 import { validateMemo } from '../utils/stellar-utils.js';
 import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager.js';
+import { globalCache } from '../cache/cache-manager.js';
 import type {
   CreateClaimableBalanceParams,
   ClaimBalanceParams,
@@ -83,6 +84,15 @@ export class StellarService {
       this.server,
       this.networkConfig.passphrase
     );
+  }
+
+  /**
+   * Helper to return a unique prefix for caching keys based on network details
+   */
+  private getCachePrefix(): string {
+    const horizon = this.networkConfig.horizonUrl || '';
+    const pass = this.networkConfig.passphrase || '';
+    return `net:${horizon}:${pass}:`;
   }
 
   /**
@@ -195,51 +205,54 @@ export class StellarService {
         throw new Error('Invalid public key format');
       }
 
-      const account = await this.server.loadAccount(publicKey);
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}account-info:${publicKey}`, async () => {
+        const account = await this.server.loadAccount(publicKey);
 
-      const balances: Balance[] = account.balances.map(
-        (balance: Horizon.HorizonApi.BalanceLine) => {
-          if (balance.asset_type === 'native') {
+        const balances: Balance[] = account.balances.map(
+          (balance: Horizon.HorizonApi.BalanceLine) => {
+            if (balance.asset_type === 'native') {
+              return {
+                asset: 'XLM',
+                balance: balance.balance,
+                limit: undefined,
+                buyingLiabilities: balance.buying_liabilities,
+                sellingLiabilities: balance.selling_liabilities,
+              };
+            } else if (
+              balance.asset_type === 'credit_alphanum4' ||
+              balance.asset_type === 'credit_alphanum12'
+            ) {
+              return {
+                asset: balance.asset_code || 'UNKNOWN',
+                balance: balance.balance,
+                limit: balance.limit,
+                buyingLiabilities: balance.buying_liabilities,
+                sellingLiabilities: balance.selling_liabilities,
+              };
+            }
             return {
-              asset: 'XLM',
-              balance: balance.balance,
+              asset: 'UNKNOWN',
+              balance: '0',
               limit: undefined,
-              buyingLiabilities: balance.buying_liabilities,
-              sellingLiabilities: balance.selling_liabilities,
-            };
-          } else if (
-            balance.asset_type === 'credit_alphanum4' ||
-            balance.asset_type === 'credit_alphanum12'
-          ) {
-            return {
-              asset: balance.asset_code || 'UNKNOWN',
-              balance: balance.balance,
-              limit: balance.limit,
-              buyingLiabilities: balance.buying_liabilities,
-              sellingLiabilities: balance.selling_liabilities,
+              buyingLiabilities: undefined,
+              sellingLiabilities: undefined,
             };
           }
-          return {
-            asset: 'UNKNOWN',
-            balance: '0',
-            limit: undefined,
-            buyingLiabilities: undefined,
-            sellingLiabilities: undefined,
-          };
-        }
-      );
+        );
 
-      const accountInfo: AccountInfo = {
-        accountId: account.accountId(),
-        sequence: account.sequenceNumber(),
-        balances,
-        subentryCount: account.subentry_count.toString(),
-        inflationDestination: account.inflation_destination,
-        homeDomain: account.home_domain,
-        data: account.data_attr,
-      };
+        const accountInfo: AccountInfo = {
+          accountId: account.accountId(),
+          sequence: account.sequenceNumber(),
+          balances,
+          subentryCount: account.subentry_count.toString(),
+          inflationDestination: account.inflation_destination,
+          homeDomain: account.home_domain,
+          data: account.data_attr,
+        };
 
-      return accountInfo;
+        return accountInfo;
+      });
     } catch (error) {
       if (error instanceof Error && error.message.includes('404')) {
         throw new Error(
@@ -259,7 +272,7 @@ export class StellarService {
    */
   async isAccountFunded(publicKey: string): Promise<boolean> {
     try {
-      await this.server.loadAccount(publicKey);
+      await this.getAccountInfo(publicKey);
       return true;
     } catch (error) {
       return false;
@@ -274,14 +287,17 @@ export class StellarService {
    */
   async getBalance(publicKey: string, asset: string = 'XLM'): Promise<Balance> {
     try {
-      const accountInfo = await this.getAccountInfo(publicKey);
-      const balance = accountInfo.balances.find(b => b.asset === asset);
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('account-balance', `${prefix}balance:${publicKey}:${asset}`, async () => {
+        const accountInfo = await this.getAccountInfo(publicKey);
+        const balance = accountInfo.balances.find(b => b.asset === asset);
 
-      if (!balance) {
-        throw new Error(`Asset ${asset} not found in account`);
-      }
+        if (!balance) {
+          throw new Error(`Asset ${asset} not found in account`);
+        }
 
-      return balance;
+        return balance;
+      });
     } catch (error) {
       throw new Error(
         `Failed to get balance: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -364,6 +380,9 @@ export class StellarService {
 
         const result = await this.submitTrxWithRetry(transaction);
 
+        await this.invalidateAccountCache(wallet.publicKey);
+        await this.invalidateAccountCache(params.destination);
+
         return {
           hash: result.hash,
           status: result.successful ? 'success' : 'failed',
@@ -428,6 +447,9 @@ export class StellarService {
 
       const result = await this.submitTrxWithRetry(transaction);
 
+      await this.invalidateAccountCache(sourceWallet.publicKey);
+      await this.invalidateAccountCache(destinationPublicKey);
+
       return {
         hash: result.hash,
         status: result.successful ? 'success' : 'failed',
@@ -452,84 +474,87 @@ export class StellarService {
     limit: number = 10
   ): Promise<TransactionInfo[]> {
     try {
-      const transactions = await this.server
-        .transactions()
-        .forAccount(publicKey)
-        .order('desc')
-        .limit(limit)
-        .call();
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}tx-history:${publicKey}:${limit}`, async () => {
+        const transactions = await this.server
+          .transactions()
+          .forAccount(publicKey)
+          .order('desc')
+          .limit(limit)
+          .call();
 
-      const transactionHistory: TransactionInfo[] = await Promise.all(
-        transactions.records.map(async (tx: any) => {
-          try {
-            const operations = await this.server
-              .operations()
-              .forTransaction(tx.hash)
-              .call();
+        const transactionHistory: TransactionInfo[] = await Promise.all(
+          transactions.records.map(async (tx: any) => {
+            try {
+              const operations = await this.server
+                .operations()
+                .forTransaction(tx.hash)
+                .call();
 
-            // Find payment or create_account operation
-            const paymentOp = operations.records.find(
-              (op: any) => op.type === 'payment' || op.type === 'create_account'
-            );
+              // Find payment or create_account operation
+              const paymentOp = operations.records.find(
+                (op: any) => op.type === 'payment' || op.type === 'create_account'
+              );
 
-            // Extract destination based on operation type
-            let destination = '';
-            if (paymentOp) {
-              if (paymentOp.type === 'payment') {
-                destination = paymentOp.to || paymentOp.destination || '';
-              } else if (paymentOp.type === 'create_account') {
-                destination = paymentOp.account || '';
+              // Extract destination based on operation type
+              let destination = '';
+              if (paymentOp) {
+                if (paymentOp.type === 'payment') {
+                  destination = paymentOp.to || paymentOp.destination || '';
+                } else if (paymentOp.type === 'create_account') {
+                  destination = paymentOp.account || '';
+                }
               }
-            }
 
-            // Extract asset information
-            let asset = 'XLM';
-            if (paymentOp) {
-              if (paymentOp.asset_type === 'native') {
-                asset = 'XLM';
-              } else if (
-                paymentOp.asset_type === 'credit_alphanum4' ||
-                paymentOp.asset_type === 'credit_alphanum12'
-              ) {
-                asset = paymentOp.asset_code || 'UNKNOWN';
+              // Extract asset information
+              let asset = 'XLM';
+              if (paymentOp) {
+                if (paymentOp.asset_type === 'native') {
+                  asset = 'XLM';
+                } else if (
+                  paymentOp.asset_type === 'credit_alphanum4' ||
+                  paymentOp.asset_type === 'credit_alphanum12'
+                ) {
+                  asset = paymentOp.asset_code || 'UNKNOWN';
+                }
               }
+
+              // Extract amount
+              const amount =
+                paymentOp?.amount || paymentOp?.starting_balance || '0';
+
+              return {
+                hash: tx.hash,
+                source: tx.source_account,
+                destination,
+                amount,
+                asset,
+                memo: tx.memo || '',
+                status: tx.successful ? 'success' : 'failed',
+                createdAt: new Date(tx.created_at),
+              };
+            } catch (error) {
+              // If we can't fetch operations, return basic transaction info
+              console.warn(
+                `Failed to fetch operations for transaction ${tx.hash}:`,
+                error
+              );
+              return {
+                hash: tx.hash,
+                source: tx.source_account,
+                destination: '',
+                amount: '0',
+                asset: 'XLM',
+                memo: tx.memo || '',
+                status: tx.successful ? 'success' : 'failed',
+                createdAt: new Date(tx.created_at),
+              };
             }
+          })
+        );
 
-            // Extract amount
-            const amount =
-              paymentOp?.amount || paymentOp?.starting_balance || '0';
-
-            return {
-              hash: tx.hash,
-              source: tx.source_account,
-              destination,
-              amount,
-              asset,
-              memo: tx.memo || '',
-              status: tx.successful ? 'success' : 'failed',
-              createdAt: new Date(tx.created_at),
-            };
-          } catch (error) {
-            // If we can't fetch operations, return basic transaction info
-            console.warn(
-              `Failed to fetch operations for transaction ${tx.hash}:`,
-              error
-            );
-            return {
-              hash: tx.hash,
-              source: tx.source_account,
-              destination: '',
-              amount: '0',
-              asset: 'XLM',
-              memo: tx.memo || '',
-              status: tx.successful ? 'success' : 'failed',
-              createdAt: new Date(tx.created_at),
-            };
-          }
-        })
-      );
-
-      return transactionHistory;
+        return transactionHistory;
+      });
     } catch (error) {
       throw new Error(
         `Failed to get transaction history: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -544,57 +569,60 @@ export class StellarService {
    */
   async getTransaction(transactionHash: string): Promise<TransactionInfo> {
     try {
-      const tx = await this.server
-        .transactions()
-        .transaction(transactionHash)
-        .call();
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}tx:${transactionHash}`, async () => {
+        const tx = await this.server
+          .transactions()
+          .transaction(transactionHash)
+          .call();
 
-      const operations = await this.server
-        .operations()
-        .forTransaction(transactionHash)
-        .call();
+        const operations = await this.server
+          .operations()
+          .forTransaction(transactionHash)
+          .call();
 
-      // Find payment or create_account operation
-      const paymentOp = operations.records.find(
-        (op: any) => op.type === 'payment' || op.type === 'create_account'
-      );
+        // Find payment or create_account operation
+        const paymentOp = operations.records.find(
+          (op: any) => op.type === 'payment' || op.type === 'create_account'
+        );
 
-      // Extract destination based on operation type
-      let destination = '';
-      if (paymentOp) {
-        if (paymentOp.type === 'payment') {
-          destination = paymentOp.to || paymentOp.destination || '';
-        } else if (paymentOp.type === 'create_account') {
-          destination = paymentOp.account || '';
+        // Extract destination based on operation type
+        let destination = '';
+        if (paymentOp) {
+          if (paymentOp.type === 'payment') {
+            destination = paymentOp.to || paymentOp.destination || '';
+          } else if (paymentOp.type === 'create_account') {
+            destination = paymentOp.account || '';
+          }
         }
-      }
 
-      // Extract asset information
-      let asset = 'XLM';
-      if (paymentOp) {
-        if (paymentOp.asset_type === 'native') {
-          asset = 'XLM';
-        } else if (
-          paymentOp.asset_type === 'credit_alphanum4' ||
-          paymentOp.asset_type === 'credit_alphanum12'
-        ) {
-          asset = paymentOp.asset_code || 'UNKNOWN';
+        // Extract asset information
+        let asset = 'XLM';
+        if (paymentOp) {
+          if (paymentOp.asset_type === 'native') {
+            asset = 'XLM';
+          } else if (
+            paymentOp.asset_type === 'credit_alphanum4' ||
+            paymentOp.asset_type === 'credit_alphanum12'
+          ) {
+            asset = paymentOp.asset_code || 'UNKNOWN';
+          }
         }
-      }
 
-      // Extract amount
-      const amount = paymentOp?.amount || paymentOp?.starting_balance || '0';
+        // Extract amount
+        const amount = paymentOp?.amount || paymentOp?.starting_balance || '0';
 
-      return {
-        hash: tx.hash,
-        source: tx.source_account,
-        destination,
-        amount,
-        asset,
-        memo: tx.memo || '',
-        status: tx.successful ? 'success' : 'failed',
-        createdAt: new Date(tx.created_at),
-      };
+        return {
+          hash: tx.hash,
+          source: tx.source_account,
+          destination,
+          amount,
+          asset,
+          memo: tx.memo || '',
+          status: tx.successful ? 'success' : 'failed',
+          createdAt: new Date(tx.created_at),
+        };
+      });
     } catch (error) {
       throw new Error(
         `Failed to get transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -628,6 +656,8 @@ export class StellarService {
 
     transaction.sign(keypair);
     const result = await this.server.submitTransaction(transaction);
+
+    await this.invalidateAccountCache(wallet.publicKey);
 
     return {
       hash: result.hash,
@@ -672,6 +702,13 @@ export class StellarService {
     );
   }
 
+  private async invalidateAccountCache(publicKey: string): Promise<void> {
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('account-balance', `${prefix}balance:${publicKey}:*`);
+    await globalCache.invalidate('horizon-response', `${prefix}account-info:${publicKey}`);
+    await globalCache.invalidate('horizon-response', `${prefix}tx-history:${publicKey}:*`);
+  }
+
   private async submitTrxWithRetry(
     transaction: any,
     maxRetries: number = 3
@@ -703,8 +740,11 @@ export class StellarService {
 
   async estimateFee(): Promise<string> {
     try {
-      const feeStats = await this.server.feeStats();
-      return feeStats.max_fee.mode;
+      const prefix = this.getCachePrefix();
+      return await globalCache.getOrFetch('horizon-response', `${prefix}fee-stats`, async () => {
+        const feeStats = await this.server.feeStats();
+        return feeStats.max_fee.mode;
+      });
     } catch (error) {
       return BASE_FEE;
     }
@@ -722,11 +762,13 @@ export class StellarService {
     params: CreateClaimableBalanceParams,
     password: string
   ): Promise<ClaimableBalanceResult> {
-    return this.claimableBalanceManager.createClaimableBalance(
+    const result = await this.claimableBalanceManager.createClaimableBalance(
       wallet,
       params,
       password
     );
+    await this.invalidateAccountCache(wallet.publicKey);
+    return result;
   }
 
   /**
@@ -741,7 +783,9 @@ export class StellarService {
     params: ClaimBalanceParams,
     password: string
   ): Promise<ClaimableBalanceResult> {
-    return this.claimableBalanceManager.claimBalance(wallet, params, password);
+    const result = await this.claimableBalanceManager.claimBalance(wallet, params, password);
+    await this.invalidateAccountCache(wallet.publicKey);
+    return result;
   }
 
   /**
@@ -750,7 +794,10 @@ export class StellarService {
    * @returns Promise<ClaimableBalance>
    */
   async getClaimableBalance(balanceId: string): Promise<ClaimableBalance> {
-    return this.claimableBalanceManager.getBalanceDetails(balanceId);
+    const prefix = this.getCachePrefix();
+    return globalCache.getOrFetch('horizon-response', `${prefix}claimable-balance:${balanceId}`, async () => {
+      return this.claimableBalanceManager.getBalanceDetails(balanceId);
+    });
   }
 
   /**
@@ -828,7 +875,11 @@ export class StellarService {
     params: LiquidityPoolDeposit,
     password: string
   ): Promise<LiquidityPoolResult> {
-    return this.liquidityPoolManager.depositLiquidity(wallet, params, password);
+    const result = await this.liquidityPoolManager.depositLiquidity(wallet, params, password);
+    await this.invalidateAccountCache(wallet.publicKey);
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('defi-pool', `${prefix}pool:${params.poolId}`);
+    return result;
   }
 
   /**
@@ -843,7 +894,11 @@ export class StellarService {
     params: LiquidityPoolWithdraw,
     password: string
   ): Promise<LiquidityPoolResult> {
-    return this.liquidityPoolManager.withdrawLiquidity(wallet, params, password);
+    const result = await this.liquidityPoolManager.withdrawLiquidity(wallet, params, password);
+    await this.invalidateAccountCache(wallet.publicKey);
+    const prefix = this.getCachePrefix();
+    await globalCache.invalidate('defi-pool', `${prefix}pool:${params.poolId}`);
+    return result;
   }
 
   /**
@@ -852,7 +907,10 @@ export class StellarService {
    * @returns Promise<LiquidityPool>
    */
   async getLiquidityPool(poolId: string): Promise<LiquidityPool> {
-    return this.liquidityPoolManager.getPoolDetails(poolId);
+    const prefix = this.getCachePrefix();
+    return globalCache.getOrFetch('defi-pool', `${prefix}pool:${poolId}`, async () => {
+      return this.liquidityPoolManager.getPoolDetails(poolId);
+    });
   }
 
   /**
