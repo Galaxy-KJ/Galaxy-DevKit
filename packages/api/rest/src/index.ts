@@ -37,6 +37,7 @@ import { setupTransactionMonitoringRoutes } from './routes/monitoring/transactio
 
 import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
+import { setupComplianceRoutes } from './routes/compliance';
 import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
 /**
@@ -158,6 +159,8 @@ class RestApiServer {
     // Organization team management
     router.use('/teams', setupTeamRoutes());
 
+    // Compliance reporting tools (Issue #335 / Roadmap #67)
+    router.use('/compliance', setupComplianceRoutes());
 
     // Add more routes here as needed
 
