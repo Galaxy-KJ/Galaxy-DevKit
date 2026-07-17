@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "@galaxy-kj/core-defi-protocols": "5.0.2",
+    "@galaxy-kj/core-oracles": "5.0.0",
     "@galaxy-kj/core-stellar-sdk": "5.0.2",
     "@galaxy-kj/core-wallet": "5.0.0",
-    "@galaxy-kj/core-oracles": "5.0.0",
     "@stellar/stellar-sdk": "^14.6.1",
     "bignumber.js": "^9.1.2",
     "blessed": "^0.1.81",
@@ -32,6 +32,6 @@
     "jest-environment-jsdom": "^30.3.0",
     "ts-jest": "^29.4.5",
     "typescript": "^5.9.3",
-    "vite": "^5.4.14"
+    "vite": "^6.4.3"
   }
 }
