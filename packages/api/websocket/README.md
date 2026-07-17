@@ -1,5 +1,13 @@
 # Galaxy WebSocket API
 
+## Transaction monitoring alerts
+
+Authenticated clients subscribe with `monitoring:subscribe` and an
+`organizationId`. The server verifies organization membership and emits durable
+transaction alerts as `monitoring:alert`; unsubscribe with
+`monitoring:unsubscribe`. The endpoint is the normal Socket.IO endpoint
+`/socket.io/`.
+
 A production-ready WebSocket API server for Galaxy DevKit that provides real-time communication for market data, transaction updates, and automation events.
 
 ## Features

@@ -22,6 +22,7 @@ try {
 
 import { PositionMonitorWorker } from './position-monitor.worker';
 import { StellarNetworkName } from '../types/monitoring-types';
+import { TransactionMonitorWorker } from './transaction-monitor.worker';
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -37,12 +38,19 @@ async function main(): Promise<void> {
     retryIntervalMs: envInt('MONITOR_RETRY_INTERVAL_MS', 60_000),
     batchSize: envInt('MONITOR_BATCH_SIZE', 50),
   });
+  const transactionWorker = new TransactionMonitorWorker({
+    network: (process.env.MONITOR_NETWORK as StellarNetworkName) || 'testnet',
+    accountRefreshIntervalMs: envInt('TRANSACTION_MONITOR_ACCOUNT_REFRESH_MS', 30_000),
+    maxConcurrency: envInt('TRANSACTION_MONITOR_CONCURRENCY', 16),
+  });
 
   worker.start();
+  await transactionWorker.start();
 
   const shutdown = (signal: string): void => {
     console.log(`\n[monitor] received ${signal}, shutting down...`);
     worker.stop();
+    transactionWorker.stop();
     process.exit(0);
   };
 
@@ -57,4 +65,4 @@ if (require.main === module) {
   });
 }
 
-export { PositionMonitorWorker };
+export { PositionMonitorWorker, TransactionMonitorWorker };

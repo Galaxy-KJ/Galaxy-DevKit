@@ -33,6 +33,7 @@ import { AuditLogger } from './services/audit-logger';
 import { setupDefiRoutes } from './routes/defi.routes';
 
 import { setupMonitoringRoutes } from './routes/monitoring/alerts';
+import { setupTransactionMonitoringRoutes } from './routes/monitoring/transactions';
 
 import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
@@ -149,6 +150,7 @@ class RestApiServer {
 
     // Monitoring & liquidation alerts (Issue #306)
     router.use('/monitoring', setupMonitoringRoutes());
+    router.use('/monitoring/transactions', setupTransactionMonitoringRoutes());
 
     // Enterprise approval workflows
     router.use('/approvals', setupApprovalsRoutes());
