@@ -441,6 +441,133 @@ socket.on('automation:executed', (result) => console.log(result));
 
 ---
 
+## Compliance reporting
+
+Regulatory-ready reports generated from audit log data (Issue #335 / Roadmap #67). All endpoints require authentication.
+
+Base path: `/api/v1/compliance`
+
+### Report types
+
+| Type | Description |
+|------|-------------|
+| `transaction` | On-chain transactions (counterparties, amounts, timestamps) |
+| `defi_activity` | Lending/borrowing, liquidity, swaps |
+| `user_activity` | Login history, permission changes, wallet operations |
+| `risk_exposure` | DeFi risk signals, collateral ratios, liquidation-related events |
+
+### Export formats
+
+`json`, `csv`, `pdf` (minimal text PDF, no headless browser)
+
+### GET /api/v1/compliance/templates
+
+List available report templates and column schemas.
+
+**Response 200**
+
+```json
+{
+  "templates": [
+    {
+      "type": "transaction",
+      "name": "Transaction Report",
+      "description": "...",
+      "columns": ["timestamp", "action", "resource", "counterparty", "amount", "asset", "success", "txHash"]
+    }
+  ]
+}
+```
+
+### POST /api/v1/compliance/reports
+
+Generate an on-demand report. Requests are **idempotent**: the same user, type, period, format, and redaction flag returns the existing completed report.
+
+**Request body**
+
+```json
+{
+  "reportType": "transaction",
+  "format": "csv",
+  "from": "2026-07-01T00:00:00.000Z",
+  "to": "2026-07-31T23:59:59.999Z",
+  "redactPii": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `reportType` | string | Yes | One of the four report types |
+| `format` | string | No | `json` (default), `csv`, or `pdf` |
+| `from` | ISO datetime | Yes | Period start |
+| `to` | ISO datetime | Yes | Period end (`>= from`) |
+| `redactPii` | boolean | No | Default `true` — redacts emails/IPs |
+
+**Response 200** — completed report (includes `content`)
+
+### GET /api/v1/compliance/reports
+
+List reports for the authenticated user.
+
+**Query:** `reportType?`, `limit` (default 50), `offset` (default 0)
+
+### GET /api/v1/compliance/reports/:id
+
+Fetch one report including stored export content.
+
+### GET /api/v1/compliance/reports/:id/download
+
+Download raw export body with appropriate `Content-Type` and `Content-Disposition`.
+
+### POST /api/v1/compliance/schedules
+
+Create a scheduled report job (`daily` | `weekly` | `monthly`). The compliance worker process evaluates due schedules and generates idempotent period reports.
+
+**Request body**
+
+```json
+{
+  "reportType": "user_activity",
+  "format": "json",
+  "cadence": "weekly",
+  "redactPii": true
+}
+```
+
+### GET /api/v1/compliance/schedules
+
+List schedules for the authenticated user.
+
+### DELETE /api/v1/compliance/schedules/:id
+
+Delete a schedule owned by the authenticated user.
+
+### Worker
+
+Scheduled generation runs inside the REST package worker entrypoint:
+
+```bash
+npm run worker --workspace=@galaxy-kj/api-rest
+```
+
+Environment:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMPLIANCE_SCHEDULER_INTERVAL_MS` | `60000` | Poll interval |
+| `COMPLIANCE_SCHEDULER_BATCH_SIZE` | `50` | Max due schedules per tick |
+
+### Data model
+
+Supabase migration `20260717120000_compliance_reports.sql` creates:
+
+- `compliance_reports` — generated report artifacts + idempotency key
+- `compliance_schedules` — recurring jobs with `next_run_at`
+
+Primary source data: `audit_logs` via `AuditLogger.query`.
+
+---
+
 ## Related docs
 
 - [Getting Started](../guides/getting-started.md)
