@@ -3,7 +3,7 @@
  * @description Computes time-weighted average prices from historical observations.
  */
 
-import { PriceHistoryStore, PriceObservation } from './price-history-store.js';
+import { PriceHistoryStore } from './price-history-store.js';
 
 export interface TWAPConfig {
   windowMs: number;

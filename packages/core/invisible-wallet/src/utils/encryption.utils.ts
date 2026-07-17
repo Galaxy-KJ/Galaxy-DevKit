@@ -26,7 +26,7 @@ const ARGON2_TIME_COST = 3;
 const ARGON2_PARALLELISM = 4;
 
 // Rollback flag — set ENCRYPTION_V2_ENABLED=false to revert new encryptions to PBKDF2
-const ENCRYPTION_V2_ENABLED = process.env.ENCRYPTION_V2_ENABLED !== 'false';
+const isV2Enabled = () => process.env.ENCRYPTION_V2_ENABLED !== 'false';
 
 // Argon2 graceful degradation
 let argon2Module: any = null;
@@ -68,7 +68,7 @@ export async function encryptPrivateKey(
 
   let key: Buffer;
 
-  if (ENCRYPTION_V2_ENABLED) {
+  if (isV2Enabled()) {
     if (!argon2Available || !argon2Module) {
       throw new Error(
         'Argon2id unavailable — cannot create secure encryption. Install argon2 native module.'
@@ -95,7 +95,7 @@ export async function encryptPrivateKey(
   ]);
   const authTag = cipher.getAuthTag();
 
-  if (ENCRYPTION_V2_ENABLED) {
+  if (isV2Enabled()) {
     const argon2Params = Buffer.from(
       JSON.stringify({ m: ARGON2_MEMORY_COST, t: ARGON2_TIME_COST, p: ARGON2_PARALLELISM })
     ).toString('base64');

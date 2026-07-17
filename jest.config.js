@@ -2,6 +2,8 @@ const { createDefaultPreset } = require("ts-jest");
 
 const tsJestTransformCfg = createDefaultPreset().transform;
 
+const runTestnetIntegration = process.env.GALAXY_TESTNET_INTEGRATION === '1';
+
 /** @type {import("jest").Config} **/
 module.exports = {
   testEnvironment: "node",
@@ -9,6 +11,8 @@ module.exports = {
   setupFiles: ["<rootDir>/packages/frontend/src/tests/jest.setup.ts"],
   testPathIgnorePatterns: [
     "/node_modules/",
+    "/e2e/",
+    ...(runTestnetIntegration ? [] : ["/integration/"]),
     "\\.e2e\\.test\\.[jt]sx?$",
     "MockLedgerTransport\\.ts$",
     // Jest matches **/__tests__/**/*.ts — exclude helpers and mocks
@@ -32,7 +36,7 @@ module.exports = {
     ],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@stellar|@galaxy-kj)/)',
+    'node_modules/(?!(@stellar|@galaxy-kj|@blend-capital|@noble|uint8array-extras|execa)/)',
   ],
   moduleNameMapper: {
     "^@galaxy/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
@@ -42,6 +46,8 @@ module.exports = {
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
     // Use full index.ts (not browser.ts) to include cache module exports
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/index.ts",
+    "^@galaxy-kj/core-invisible-wallet$": "<rootDir>/packages/core/invisible-wallet/index.ts",
+    "^@galaxy-kj/core-invisible-wallet/(.*)\\.js$": "<rootDir>/packages/core/invisible-wallet/src/$1.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
     // Resolve relative .js imports to .ts (ESM-style imports in tools/cli).

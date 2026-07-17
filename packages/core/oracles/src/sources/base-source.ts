@@ -45,15 +45,14 @@ export abstract class BaseSource implements IOracleSource {
     while (this._rateLimitPromise) {
       await this._rateLimitPromise;
     }
-    const self = this;
     this._rateLimitPromise = (async () => {
-      const minInterval = 1000 / self.config.rateLimitPerSec;
+      const minInterval = 1000 / this.config.rateLimitPerSec;
       const now = Date.now();
-      const elapsed = now - self.lastRequestTime;
+      const elapsed = now - this.lastRequestTime;
       if (elapsed < minInterval) {
         await sleep(minInterval - elapsed);
       }
-      self.lastRequestTime = Date.now();
+      this.lastRequestTime = Date.now();
     })();
     try {
       await this._rateLimitPromise;

@@ -15,17 +15,24 @@ describe('TWAPCalculator', () => {
   });
 
   it('calculates correct TWAP for a simple series', async () => {
-    const baseTime = Date.now() - 180_000;
-    await calculator.recordPrice('XLM', 100, baseTime);
-    await calculator.recordPrice('XLM', 110, baseTime + 60_000);
-    await calculator.recordPrice('XLM', 130, baseTime + 120_000);
+    const baseTime = 1600000000000;
+    const nowMock = baseTime + 180_000;
+    const spy = jest.spyOn(Date, 'now').mockImplementation(() => nowMock);
 
-    const result = await calculator.getTWAP('XLM', {
-      windowMs: 180_000,
-      minDataPoints: 2,
-    });
+    try {
+      await calculator.recordPrice('XLM', 100, baseTime);
+      await calculator.recordPrice('XLM', 110, baseTime + 60_000);
+      await calculator.recordPrice('XLM', 130, baseTime + 120_000);
 
-    expect(result).toBeCloseTo(113.3333, 4);
+      const result = await calculator.getTWAP('XLM', {
+        windowMs: 180_000,
+        minDataPoints: 2,
+      });
+
+      expect(result).toBeCloseTo(113.3333, 4);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('returns simple average when all timestamps are identical', async () => {

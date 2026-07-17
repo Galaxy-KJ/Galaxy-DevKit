@@ -137,6 +137,10 @@ function getFetch(): (
 // CLI result cache with 30 second TTL
 const priceResultCache = new NodeCache({ stdTTL: 30, checkperiod: 10 });
 
+export function clearPriceCache(): void {
+  priceResultCache.flushAll();
+}
+
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 500;
 

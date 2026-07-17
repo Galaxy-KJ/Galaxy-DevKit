@@ -25,6 +25,20 @@ jest.mock('@stellar/stellar-sdk', () => ({
     predicateAnd: jest.fn((preds) => ({ type: 'and', predicates: preds })),
     predicateOr: jest.fn((preds) => ({ type: 'or', predicates: preds })),
   },
+  Claimant: {
+    predicateUnconditional: jest.fn(() => ({ type: 'unconditional' })),
+    predicateBeforeAbsoluteTime: jest.fn((timestamp) => ({
+      type: 'abs_before',
+      timestamp,
+    })),
+    predicateBeforeRelativeTime: jest.fn((seconds) => ({
+      type: 'rel_before',
+      seconds,
+    })),
+    predicateNot: jest.fn((pred) => ({ type: 'not', predicate: pred })),
+    predicateAnd: jest.fn((preds) => ({ type: 'and', predicates: preds })),
+    predicateOr: jest.fn((preds) => ({ type: 'or', predicates: preds })),
+  },
   Account: jest.fn(),
 }));
 

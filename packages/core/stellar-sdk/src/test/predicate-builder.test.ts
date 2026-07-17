@@ -21,6 +21,7 @@ const mockClaimPredicate = {
 
 jest.mock('@stellar/stellar-sdk', () => ({
   ClaimPredicate: mockClaimPredicate,
+  Claimant: mockClaimPredicate,
 }));
 
 import {

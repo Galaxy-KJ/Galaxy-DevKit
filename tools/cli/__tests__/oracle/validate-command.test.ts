@@ -2,14 +2,20 @@
  * @fileoverview Comprehensive tests for oracle validate command
  */
 
-import { validateCommand } from '../../src/commands/oracle/validate';
+import { createValidateCommand } from '../../src/commands/oracle/validate';
+import { clearPriceCache } from '../../src/utils/oracle-registry';
 
 const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
 const originalFetch = (globalThis as unknown as { fetch?: unknown }).fetch;
 
+let validateCommand: any;
+
 beforeEach(() => {
+    validateCommand = createValidateCommand();
+    clearPriceCache();
+
     console.log = jest.fn();
     console.error = jest.fn();
     process.exit = jest.fn() as never;
@@ -154,7 +160,7 @@ describe('validate command', () => {
                 json: async () => ({}),
             });
 
-            await validateCommand.parseAsync(['node', 'validate', 'XLM/USD', '--json']);
+            await validateCommand.parseAsync(['node', 'validate', 'XLM/USD', '--network', 'mainnet', '--json']);
             const output = (console.log as jest.Mock).mock.calls[0][0];
             const parsed = JSON.parse(output);
             const hasRateLimited = parsed.results.some((r: any) =>
@@ -168,7 +174,7 @@ describe('validate command', () => {
                 new Error('Network error')
             );
 
-            await validateCommand.parseAsync(['node', 'validate', 'XLM/USD', '--json']);
+            await validateCommand.parseAsync(['node', 'validate', 'XLM/USD', '--network', 'mainnet', '--json']);
             const output = (console.log as jest.Mock).mock.calls[0][0];
             const parsed = JSON.parse(output);
             const hasFetchFailed = parsed.results.some((r: any) =>

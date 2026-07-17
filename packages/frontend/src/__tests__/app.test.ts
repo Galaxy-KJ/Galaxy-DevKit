@@ -13,6 +13,8 @@ jest.mock('@galaxy-kj/core-stellar-sdk', () => ({
   Networks: {
     TESTNET: 'Test SDF Network ; September 2015',
   },
+  LiquidityPoolManager: jest.fn().mockImplementation(() => ({})),
+  calculateImpermanentLoss: jest.fn(),
 }));
 
 jest.mock('../services/smart-wallet.client', () => ({
@@ -38,7 +40,7 @@ jest.mock('../panels/security-limits', () => ({
 describe('playground app', () => {
   it('reports that the Stellar SDK workspace import is usable', () => {
     expect(getPlaygroundStatus()).toEqual({
-      network: 'TESTNET',
+      network: 'testnet',
       sdkReady: true,
       generatedAccount: 'GPLAYGROUNDTESTACCOUNT',
     });

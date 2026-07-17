@@ -19,9 +19,7 @@ jest.mock('ora', () => {
     }));
 });
 
-jest.mock('fetch', () => {
-    return jest.fn();
-});
+global.fetch = jest.fn() as any;
 
 describe('wallet fund command', () => {
     const testWalletsDir = path.join(os.tmpdir(), '.galaxy-test', 'wallets');
@@ -31,7 +29,7 @@ describe('wallet fund command', () => {
     });
 
     afterEach(async () => {
-        await fs.remove(path.dirname(testWalletsDir));
+        await fs.rm(path.dirname(testWalletsDir), { recursive: true, force: true });
     });
 
     it('should reject mainnet wallets', async () => {

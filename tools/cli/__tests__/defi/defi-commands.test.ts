@@ -188,7 +188,7 @@ describe('defi blend commands', () => {
 
   it('supply should accept asset and amount arguments', () => {
     const sub = blendCommand.commands.find((c) => c.name() === 'supply')!;
-    const args = sub.args;
+    const args = (sub as any)._args;
     expect(args.length).toBeGreaterThanOrEqual(2);
     expect(args[0].name()).toBe('asset');
     expect(args[1].name()).toBe('amount');
@@ -196,7 +196,7 @@ describe('defi blend commands', () => {
 
   it('borrow should accept asset and amount arguments', () => {
     const sub = blendCommand.commands.find((c) => c.name() === 'borrow')!;
-    const args = sub.args;
+    const args = (sub as any)._args;
     expect(args.length).toBeGreaterThanOrEqual(2);
     expect(args[0].name()).toBe('asset');
     expect(args[1].name()).toBe('amount');
@@ -223,7 +223,7 @@ describe('defi swap command', () => {
   });
 
   it('should have from-asset, to-asset, amount arguments', () => {
-    expect(swapCommand.args.length).toBeGreaterThanOrEqual(3);
+    expect((swapCommand as any)._args.length).toBeGreaterThanOrEqual(3);
   });
 
   it('should have --quote-only flag', () => {

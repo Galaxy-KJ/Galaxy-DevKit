@@ -54,6 +54,15 @@ describe('BaseSource', () => {
 
   beforeEach(() => {
     source = new TestSource();
+    global.fetch = jest.fn().mockImplementation((url) => {
+      if (url.includes('nonexistent')) {
+        return Promise.reject(new Error('Network error'));
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+      });
+    }) as any;
   });
 
   it('should return price data', async () => {
