@@ -16,6 +16,7 @@ import { ConnectionHandler } from './handlers/connection-handler';
 import { MarketHandler } from './handlers/market-handler';
 import { TransactionHandler } from './handlers/transaction-handler';
 import { AutomationHandler } from './handlers/automation-handler';
+import { TransactionMonitoringHandler } from './handlers/transaction-monitoring-handler';
 import { authMiddleware } from './middleware/auth';
 
 /**
@@ -31,6 +32,7 @@ class WebSocketServer {
   private marketHandler!: MarketHandler;
   private transactionHandler!: TransactionHandler;
   private automationHandler!: AutomationHandler;
+  private transactionMonitoringHandler!: TransactionMonitoringHandler;
   private isShuttingDown = false;
 
   constructor() {
@@ -148,6 +150,7 @@ class WebSocketServer {
     this.marketHandler = new MarketHandler(this.io, this.roomManager, this.eventBroadcaster);
     this.transactionHandler = new TransactionHandler(this.io, this.roomManager, this.eventBroadcaster);
     this.automationHandler = new AutomationHandler(this.io, this.roomManager, this.eventBroadcaster);
+    this.transactionMonitoringHandler = new TransactionMonitoringHandler(this.io);
 
     console.log('All handlers initialized');
   }
