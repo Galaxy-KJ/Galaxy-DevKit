@@ -9,6 +9,7 @@
  */
 
 import { MonitoringAlertRepository } from '../../repositories/monitoring-alert.repository';
+import { CursorPageResult } from '../../utils/pagination';
 import {
   AlertEvent,
   CreateMonitoringAlertInput,
@@ -81,17 +82,17 @@ export class MonitoringAlertService {
   async listEventsForUser(
     alertId: string,
     userId: string,
-    opts: { limit?: number; offset?: number } = {}
-  ): Promise<AlertEvent[]> {
-    const events = await this.repo.listEventsForUser(alertId, userId, opts);
-    if (events === null) {
+    opts: { limit?: number; cursor?: string } = {}
+  ): Promise<CursorPageResult<AlertEvent>> {
+    const page = await this.repo.listEventsForUser(alertId, userId, opts);
+    if (page === null) {
       throw new MonitoringError(
         MonitoringErrorCode.ALERT_NOT_FOUND,
         'Monitoring alert not found',
         404
       );
     }
-    return events;
+    return page;
   }
 
   private assertProtocolSupported(protocol: string): void {

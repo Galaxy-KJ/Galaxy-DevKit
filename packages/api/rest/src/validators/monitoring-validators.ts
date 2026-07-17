@@ -64,3 +64,8 @@ export const listAlertsQuerySchema = Joi.object({
 export const alertIdParamSchema = Joi.object({
   id: Joi.string().uuid().required(),
 }).unknown(false);
+
+export const listAlertEventsQuerySchema = Joi.object({
+  limit: Joi.number().integer().min(1).max(100).default(50),
+  cursor: Joi.string().max(500).optional(),
+}).unknown(false);
