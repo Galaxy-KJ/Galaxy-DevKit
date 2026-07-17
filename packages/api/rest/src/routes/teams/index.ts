@@ -176,15 +176,15 @@ export function setupTeamRoutes(
       const userId = requireUser(req, res);
       if (!userId) return;
       try {
-        const activity = await service.listActivityForUser(
+        const page = await service.listActivityForUser(
           req.params.orgId,
           userId,
           {
             limit: Number(req.query.limit),
-            offset: Number(req.query.offset),
+            cursor: req.query.cursor as string | undefined,
           }
         );
-        res.json({ activity });
+        res.json({ activity: page.items, nextCursor: page.nextCursor });
       } catch (err) {
         handleTeamsError(err, res, next);
       }
