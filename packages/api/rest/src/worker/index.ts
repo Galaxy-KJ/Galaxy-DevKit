@@ -23,6 +23,7 @@ try {
 import { PositionMonitorWorker } from './position-monitor.worker';
 import { StellarNetworkName } from '../types/monitoring-types';
 import { TransactionMonitorWorker } from './transaction-monitor.worker';
+import { ComplianceReportWorker } from './compliance-report.worker';
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -43,14 +44,20 @@ async function main(): Promise<void> {
     accountRefreshIntervalMs: envInt('TRANSACTION_MONITOR_ACCOUNT_REFRESH_MS', 30_000),
     maxConcurrency: envInt('TRANSACTION_MONITOR_CONCURRENCY', 16),
   });
+  const complianceWorker = new ComplianceReportWorker(undefined, undefined, {
+    pollIntervalMs: envInt('COMPLIANCE_SCHEDULER_INTERVAL_MS', 60_000),
+    batchSize: envInt('COMPLIANCE_SCHEDULER_BATCH_SIZE', 50),
+  });
 
   worker.start();
   await transactionWorker.start();
+  complianceWorker.start();
 
   const shutdown = (signal: string): void => {
     console.log(`\n[monitor] received ${signal}, shutting down...`);
     worker.stop();
     transactionWorker.stop();
+    complianceWorker.stop();
     process.exit(0);
   };
 
@@ -65,4 +72,4 @@ if (require.main === module) {
   });
 }
 
-export { PositionMonitorWorker, TransactionMonitorWorker };
+export { PositionMonitorWorker, TransactionMonitorWorker, ComplianceReportWorker };
