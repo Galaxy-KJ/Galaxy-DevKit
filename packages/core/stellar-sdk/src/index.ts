@@ -170,4 +170,6 @@ export * from './sponsored-reserves/index.js';
 export type { ICache, CacheOptions, CacheStats, CacheEntry } from './cache/cache-interface.js';
 export { InMemoryCache } from './cache/in-memory-cache.js';
 export { CacheManager, globalCache, DEFAULT_CHANNEL_CONFIGS } from './cache/cache-manager.js';
+export { NetworkUtils } from './utils/network-utils.js';
+export { supabaseClient } from './utils/supabase-client.js';
 

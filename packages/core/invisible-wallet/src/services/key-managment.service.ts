@@ -29,7 +29,7 @@ import {
   WalletSession,
   DeviceInfo,
 } from '../types/wallet.types.js';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
+import { supabaseClient } from '@galaxy-kj/core-stellar-sdk';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes

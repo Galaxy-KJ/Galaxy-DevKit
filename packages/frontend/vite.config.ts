@@ -5,6 +5,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api/v1/defi': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
     fs: {
       allow: [resolve(__dirname), resolve(__dirname, '..')],
     },

@@ -148,6 +148,7 @@ describe('Stop-Loss Template', () => {
     asset: 'XLM',
     quoteAsset: 'USDC',
     triggerPrice: 0.08,
+    entryPrice: 0.10,
     sellPercent: 100,
     userId: 'user-1',
     userPublicKey: 'GD123',

@@ -8,7 +8,7 @@
  * @since 2024-12-01
  */
 
-import { NetworkConfig } from '../../../stellar-sdk/src/types/stellar-types.js';
+import { NetworkConfig } from '@galaxy-kj/core-stellar-sdk';
 
 
 /**

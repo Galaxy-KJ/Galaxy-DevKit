@@ -44,7 +44,7 @@ export const repayCommand = new Command('repay')
                 spinner.start('Initializing Blend Protocol...');
             }
 
-            const wallet = await walletStorage.loadWallet(walletName);
+            const wallet = await walletStorage.loadWalletDecrypted(walletName);
             if (!wallet) {
                 throw new Error(`Wallet '${walletName}' not found`);
             }

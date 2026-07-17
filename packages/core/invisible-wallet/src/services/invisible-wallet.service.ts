@@ -17,9 +17,19 @@
 
 import crypto from 'crypto';
 import { KeyManagementService } from './key-managment.service.js';
-import { StellarService } from '../../../stellar-sdk/src/services/stellar-service.js';
-import { NetworkUtils } from '../../../stellar-sdk/src/utils/network-utils.js';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
+import {
+  StellarService,
+  NetworkUtils,
+  supabaseClient,
+  PathPaymentManager,
+  PaymentParams,
+  PaymentResult,
+  AccountInfo,
+  Balance,
+  TransactionInfo,
+  NetworkConfig,
+  Wallet,
+} from '@galaxy-kj/core-stellar-sdk';
 import {
   InvisibleWallet,
   InvisibleWalletConfig,
@@ -33,16 +43,6 @@ import {
   SignTransactionResult,
   USDC_CONFIG,
 } from '../types/wallet.types.js';
-import {
-  PaymentParams,
-  PaymentResult,
-  AccountInfo,
-  Balance,
-  TransactionInfo,
-  NetworkConfig,
-  Wallet,
-} from '../../../stellar-sdk/src/types/stellar-types.js';
-import { PathPaymentManager } from '../../../stellar-sdk/src/path-payments/path-payment-manager.js';
 import { Asset as StellarAsset, Keypair, TransactionBuilder, Horizon } from '@stellar/stellar-sdk';
 
 export class InvisibleWalletService {

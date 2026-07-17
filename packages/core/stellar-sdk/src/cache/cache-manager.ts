@@ -183,8 +183,9 @@ export class CacheManager {
     const horizonUrl = networkConfig?.horizonUrl || process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
     const passphrase = networkConfig?.passphrase || process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
 
+    const network = horizonUrl.includes('mainnet') ? 'mainnet' : 'testnet';
     const { StellarService } = await import('../services/stellar-service.js');
-    const tempService = new StellarService({ horizonUrl, passphrase });
+    const tempService = new StellarService({ network, horizonUrl, passphrase });
 
     // 1. Warm static data (Skip mock fallbacks to prevent polluting cache)
     const contractKeys = ['blend-pool', 'blend-oracle', 'blend-backstop', 'blend-emitter', 'soroswap-router', 'soroswap-factory'];

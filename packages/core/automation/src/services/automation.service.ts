@@ -18,7 +18,7 @@ import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
 import { OracleAggregator } from '@galaxy-kj/core-oracles';
-import { supabaseClient } from '../../../stellar-sdk/src/utils/supabase-client.js';
+import { supabaseClient } from '@galaxy-kj/core-stellar-sdk';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;

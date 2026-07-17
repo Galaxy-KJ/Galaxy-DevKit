@@ -242,7 +242,7 @@ export async function selectWallet(options: {
 }): Promise<WalletSelection> {
   // If wallet name provided, load directly
   if (options.wallet) {
-    const wallet = await walletStorage.loadWallet(options.wallet);
+    const wallet = await walletStorage.loadWalletDecrypted(options.wallet);
     if (!wallet) {
       throw new Error(`Wallet '${options.wallet}' not found`);
     }
@@ -291,7 +291,7 @@ export async function selectWallet(options: {
     },
   ]);
 
-  const wallet = await walletStorage.loadWallet(selectedWallet);
+  const wallet = await walletStorage.loadWalletDecrypted(selectedWallet);
   if (!wallet) {
     throw new Error(`Failed to load wallet '${selectedWallet}'`);
   }

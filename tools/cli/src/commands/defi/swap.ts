@@ -23,7 +23,7 @@ interface SwapOptions {
   json?: boolean;
   yes?: boolean;
   slippage: string;
-  quote?: boolean;
+  quoteOnly?: boolean;
 }
 
 function resolveAsset(assetCode: string): Asset {

@@ -2,9 +2,9 @@
  * @fileoverview Oracle source registry for the price aggregator service
  */
 
-import type { IOracleSource } from '../types/IOracleSource.js';
-import { CoinGeckoSource } from '../sources/real/CoinGeckoSource.js';
-import { CoinMarketCapSource } from '../sources/real/CoinMarketCapSource.js';
+import type { IOracleSource } from '../../types/IOracleSource.js';
+import { CoinGeckoSource } from '../../sources/real/CoinGeckoSource.js';
+import { CoinMarketCapSource } from '../../sources/real/CoinMarketCapSource.js';
 
 export type OracleSourceKind = 'coingecko' | 'coinmarketcap' | 'binance';
 

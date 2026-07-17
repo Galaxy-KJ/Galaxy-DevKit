@@ -31,7 +31,7 @@ export const liquidateCommand = new Command('liquidate')
                 throw new Error('Debt amount is required. Use --debt-amount flag.');
             }
 
-            const wallet = await walletStorage.loadWallet(options.wallet);
+            const wallet = await walletStorage.loadWalletDecrypted(options.wallet);
             if (!wallet) {
                 throw new Error(`Wallet '${options.wallet}' not found`);
             }
