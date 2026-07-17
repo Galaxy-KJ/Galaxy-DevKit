@@ -44,7 +44,9 @@ module.exports = {
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/index.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
-    // Resolve relative .js imports to .ts (ESM-style imports in tools/cli)
-    "^(\\.\\.\\.?/.*)\\.js$": "$1",
+    // Resolve relative .js imports to .ts (ESM-style imports in tools/cli).
+    // Matches both "./foo.js" and "../foo.js" — the third literal dot in the
+    // old pattern made it silently skip single-dot ("./") relative imports.
+    "^(\\.\\.?/.*)\\.js$": "$1",
   },
 };

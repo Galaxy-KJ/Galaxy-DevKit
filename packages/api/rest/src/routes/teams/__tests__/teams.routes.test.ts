@@ -333,8 +333,10 @@ describe('Team Accounts routes', () => {
   });
 
   describe('GET /teams/organizations/:orgId/activity', () => {
-    it('returns the activity array', async () => {
-      const listActivityForUser = jest.fn().mockResolvedValue([]);
+    it('returns the activity array and next cursor', async () => {
+      const listActivityForUser = jest
+        .fn()
+        .mockResolvedValue({ items: [], nextCursor: null });
       const app = buildApp({ listActivityForUser } as any);
 
       const response = await request(app).get(
@@ -343,6 +345,7 @@ describe('Team Accounts routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.activity).toEqual([]);
+      expect(response.body.nextCursor).toBeNull();
     });
   });
 });

@@ -12,6 +12,7 @@
  */
 
 import { TeamsRepository } from '../repositories/teams.repository';
+import { CursorPageResult } from '../utils/pagination';
 import {
   CreateOrganizationInput,
   InviteMemberInput,
@@ -283,8 +284,8 @@ export class TeamsService {
   async listActivityForUser(
     orgId: string,
     userId: string,
-    opts: { limit?: number; offset?: number } = {}
-  ): Promise<OrganizationActivity[]> {
+    opts: { limit?: number; cursor?: string } = {}
+  ): Promise<CursorPageResult<OrganizationActivity>> {
     await this.assertMembership(orgId, userId);
     return this.repo.listActivity(orgId, opts);
   }

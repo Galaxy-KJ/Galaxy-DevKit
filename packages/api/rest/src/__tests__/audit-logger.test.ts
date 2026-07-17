@@ -2,10 +2,12 @@ import { AuditLogger, sanitizeMetadata } from '../services/audit-logger';
 
 const insertMock = jest.fn();
 const orderMock = jest.fn();
+const limitMock = jest.fn();
 const selectMock = jest.fn();
 const eqMock = jest.fn();
 const gteMock = jest.fn();
 const lteMock = jest.fn();
+const ltMock = jest.fn();
 const fromMock = jest.fn();
 
 jest.mock('@supabase/supabase-js', () => ({
@@ -17,10 +19,12 @@ jest.mock('@supabase/supabase-js', () => ({
 beforeEach(() => {
   insertMock.mockReset();
   orderMock.mockReset();
+  limitMock.mockReset();
   selectMock.mockReset();
   eqMock.mockReset();
   gteMock.mockReset();
   lteMock.mockReset();
+  ltMock.mockReset();
   fromMock.mockReset();
 
   const queryBuilder = {
@@ -29,7 +33,9 @@ beforeEach(() => {
     eq: eqMock.mockReturnThis(),
     gte: gteMock.mockReturnThis(),
     lte: lteMock.mockReturnThis(),
-    order: orderMock.mockResolvedValue({ data: [], error: null }),
+    lt: ltMock.mockReturnThis(),
+    order: orderMock.mockReturnThis(),
+    limit: limitMock.mockResolvedValue({ data: [], error: null }),
   };
 
   fromMock.mockReturnValue(queryBuilder);
@@ -81,7 +87,7 @@ describe('AuditLogger', () => {
     const from = new Date('2024-01-01T00:00:00Z');
     const to = new Date('2024-01-02T00:00:00Z');
 
-    await logger.query({ userId: 'user-1', action: 'auth.login', from, to });
+    const page = await logger.query({ userId: 'user-1', action: 'auth.login', from, to });
 
     expect(fromMock).toHaveBeenCalledWith('audit_logs');
     expect(selectMock).toHaveBeenCalledWith('*');
@@ -90,5 +96,38 @@ describe('AuditLogger', () => {
     expect(gteMock).toHaveBeenCalledWith('timestamp', from.toISOString());
     expect(lteMock).toHaveBeenCalledWith('timestamp', to.toISOString());
     expect(orderMock).toHaveBeenCalledWith('timestamp', { ascending: false });
+    expect(limitMock).toHaveBeenCalledWith(51); // default limit (50) + 1 lookahead row
+    expect(page).toEqual({ items: [], nextCursor: null });
+  });
+
+  it('bounds the page size and defaults to 50 rows', async () => {
+    const logger = new AuditLogger();
+    await logger.query({ limit: 500 });
+    expect(limitMock).toHaveBeenCalledWith(201); // capped at 200 + 1 lookahead row
+  });
+
+  it('decodes an incoming cursor into a timestamp lower bound', async () => {
+    const logger = new AuditLogger();
+    const cursor = Buffer.from('2024-01-01T00:00:00.000Z', 'utf8').toString('base64url');
+
+    await logger.query({ cursor });
+
+    expect(ltMock).toHaveBeenCalledWith('timestamp', '2024-01-01T00:00:00.000Z');
+  });
+
+  it('returns a next cursor when more rows exist than the page size', async () => {
+    limitMock.mockResolvedValueOnce({
+      data: [
+        { timestamp: '2024-01-03T00:00:00.000Z' },
+        { timestamp: '2024-01-02T00:00:00.000Z' },
+      ],
+      error: null,
+    });
+
+    const logger = new AuditLogger();
+    const page = await logger.query({ limit: 1 });
+
+    expect(page.items).toHaveLength(1);
+    expect(page.nextCursor).not.toBeNull();
   });
 });

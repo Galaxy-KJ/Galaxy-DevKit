@@ -7,6 +7,8 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { withQueryLogging } from '../utils/query-metrics';
+import { buildCursorPage, decodeCursor, CursorPageResult } from '../utils/pagination';
 
 export interface AuditEvent {
   id: string;
@@ -25,7 +27,14 @@ export interface AuditQueryFilters {
   action?: string;
   from?: Date;
   to?: Date;
+  /** Opaque cursor returned as `nextCursor` from a previous page. */
+  cursor?: string;
+  /** Page size, capped at 200. Defaults to 50. */
+  limit?: number;
 }
+
+const DEFAULT_QUERY_LIMIT = 50;
+const MAX_QUERY_LIMIT = 200;
 
 const SENSITIVE_KEYS = new Set([
   'password',
@@ -108,8 +117,15 @@ export class AuditLogger {
     }
   }
 
-  async query(filters: AuditQueryFilters): Promise<AuditEvent[]> {
+  /**
+   * Cursor-paginated audit log search. Bounded to `limit` (max 200, default
+   * 50) rows per call — the previous unbounded implementation could return
+   * the entire table on a broad filter.
+   */
+  async query(filters: AuditQueryFilters): Promise<CursorPageResult<AuditEvent>> {
     try {
+      const limit = Math.min(filters.limit ?? DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT);
+
       let query = this.supabase.from('audit_logs').select('*');
 
       if (filters.userId) {
@@ -128,16 +144,25 @@ export class AuditLogger {
         query = query.lte('timestamp', filters.to.toISOString());
       }
 
-      const { data, error } = await query.order('timestamp', { ascending: false });
+      if (filters.cursor) {
+        const decoded = decodeCursor(filters.cursor);
+        if (decoded) {
+          query = query.lt('timestamp', decoded);
+        }
+      }
+
+      const { data, error } = await withQueryLogging('audit-logger.query', () =>
+        query.order('timestamp', { ascending: false }).limit(limit + 1)
+      );
 
       if (error) {
         throw error;
       }
 
-      return (data || []) as AuditEvent[];
+      return buildCursorPage((data || []) as AuditEvent[], limit, (row) => row.timestamp);
     } catch (error) {
       console.warn('Failed to query audit logs:', error);
-      return [];
+      return { items: [], nextCursor: null };
     }
   }
 }

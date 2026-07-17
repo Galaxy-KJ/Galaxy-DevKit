@@ -9,6 +9,8 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from '../utils/supabase';
+import { withQueryLogging } from '../utils/query-metrics';
+import { buildCursorPage, decodeCursor, CursorPageResult } from '../utils/pagination';
 import {
   AlertChannel,
   AlertDeliveryStatus,
@@ -162,9 +164,11 @@ export class MonitoringAlertRepository {
     const limit = filter.limit ?? 50;
     const offset = filter.offset ?? 0;
 
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // Offset pagination is acceptable here: capped at 100 rows/page and a
+    // user's own alert count is small, so deep pages never occur in practice.
+    const { data, error } = await withQueryLogging('monitoring.listAlerts', () =>
+      query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
+    );
 
     if (error) throw error;
     return (data ?? []).map((row) => rowToAlert(row as MonitoringAlertRow));
@@ -296,25 +300,35 @@ export class MonitoringAlertRepository {
     if (error) throw error;
   }
 
+  /**
+   * Cursor-paginated delivery history for an alert. Unlike `list()`, this
+   * table can grow unboundedly for a long-lived, frequently-triggered alert,
+   * so it uses keyset pagination against idx_alert_events_alert_id
+   * (alert_id, triggered_at DESC) instead of OFFSET.
+   */
   async listEventsForUser(
     alertId: string,
     userId: string,
-    opts: { limit?: number; offset?: number } = {}
-  ): Promise<AlertEvent[] | null> {
+    opts: { limit?: number; cursor?: string } = {}
+  ): Promise<CursorPageResult<AlertEvent> | null> {
     const owner = await this.findByIdForUser(alertId, userId);
     if (!owner) return null;
 
     const limit = opts.limit ?? 50;
-    const offset = opts.offset ?? 0;
 
-    const { data, error } = await this.client
-      .from(EVENTS_TABLE)
-      .select('*')
-      .eq('alert_id', alertId)
-      .order('triggered_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    let query = this.client.from(EVENTS_TABLE).select('*').eq('alert_id', alertId);
+
+    if (opts.cursor) {
+      const decoded = decodeCursor(opts.cursor);
+      if (decoded) query = query.lt('triggered_at', decoded);
+    }
+
+    const { data, error } = await withQueryLogging('monitoring.listEventsForUser', () =>
+      query.order('triggered_at', { ascending: false }).limit(limit + 1)
+    );
 
     if (error) throw error;
-    return (data ?? []).map((row) => rowToEvent(row as AlertEventRow));
+    const rows = (data ?? []).map((row) => rowToEvent(row as AlertEventRow));
+    return buildCursorPage(rows, limit, (row) => row.triggeredAt.toISOString());
   }
 }

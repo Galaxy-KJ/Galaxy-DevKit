@@ -10,6 +10,8 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from '../utils/supabase';
+import { withQueryLogging } from '../utils/query-metrics';
+import { buildCursorPage, decodeCursor, CursorPageResult } from '../utils/pagination';
 import {
   Organization,
   OrganizationActivity,
@@ -223,12 +225,16 @@ export class TeamsRepository {
     organizationId: string,
     userId: string
   ): Promise<OrganizationMember | null> {
-    const { data, error } = await this.client
-      .from(MEMBERS_TABLE)
-      .select('*, member_user:users!user_id(email)')
-      .eq('organization_id', organizationId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    // Hottest query in this repository: every authenticated teams route calls
+    // this via TeamsService.assertMembership.
+    const { data, error } = await withQueryLogging('teams.findMembership', () =>
+      this.client
+        .from(MEMBERS_TABLE)
+        .select('*, member_user:users!user_id(email)')
+        .eq('organization_id', organizationId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    );
 
     if (error) throw error;
     return data ? rowToMember(data as OrganizationMemberRow) : null;
@@ -250,11 +256,13 @@ export class TeamsRepository {
   }
 
   async listMembers(organizationId: string): Promise<OrganizationMember[]> {
-    const { data, error } = await this.client
-      .from(MEMBERS_TABLE)
-      .select('*, member_user:users!user_id(email)')
-      .eq('organization_id', organizationId)
-      .order('joined_at', { ascending: true });
+    const { data, error } = await withQueryLogging('teams.listMembers', () =>
+      this.client
+        .from(MEMBERS_TABLE)
+        .select('*, member_user:users!user_id(email)')
+        .eq('organization_id', organizationId)
+        .order('joined_at', { ascending: true })
+    );
 
     if (error) throw error;
     return (data ?? []).map((row) => rowToMember(row as OrganizationMemberRow));
@@ -329,21 +337,33 @@ export class TeamsRepository {
     return rowToActivity(data as OrganizationActivityRow);
   }
 
+  /**
+   * Cursor-paginated audit trail, newest first. Keyset pagination (vs.
+   * OFFSET) keeps deep pages cheap on this append-only, potentially
+   * high-volume table — see idx_organization_activity_org_id.
+   */
   async listActivity(
     organizationId: string,
-    opts: { limit?: number; offset?: number } = {}
-  ): Promise<OrganizationActivity[]> {
+    opts: { limit?: number; cursor?: string } = {}
+  ): Promise<CursorPageResult<OrganizationActivity>> {
     const limit = opts.limit ?? 50;
-    const offset = opts.offset ?? 0;
 
-    const { data, error } = await this.client
+    let query = this.client
       .from(ACTIVITY_TABLE)
       .select('*')
-      .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .eq('organization_id', organizationId);
+
+    if (opts.cursor) {
+      const decoded = decodeCursor(opts.cursor);
+      if (decoded) query = query.lt('created_at', decoded);
+    }
+
+    const { data, error } = await withQueryLogging('teams.listActivity', () =>
+      query.order('created_at', { ascending: false }).limit(limit + 1)
+    );
 
     if (error) throw error;
-    return (data ?? []).map((row) => rowToActivity(row as OrganizationActivityRow));
+    const rows = (data ?? []).map((row) => rowToActivity(row as OrganizationActivityRow));
+    return buildCursorPage(rows, limit, (row) => row.createdAt.toISOString());
   }
 }

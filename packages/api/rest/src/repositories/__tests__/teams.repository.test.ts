@@ -19,6 +19,7 @@ function makeClient(
     update: jest.fn().mockReturnThis(),
     delete: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    lt: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockImplementation(() => Promise.resolve(next())),
     limit: jest.fn().mockImplementation(() => Promise.resolve(next())),
@@ -294,7 +295,7 @@ describe('TeamsRepository', () => {
   });
 
   describe('listActivity', () => {
-    it('orders by created_at DESC with pagination range', async () => {
+    it('orders by created_at DESC and fetches one extra row to detect a next page', async () => {
       const { client, chain } = makeClient([
         {
           data: [
@@ -313,10 +314,63 @@ describe('TeamsRepository', () => {
       ]);
       const repo = new TeamsRepository(client);
 
-      await repo.listActivity(ORG_ID, { limit: 10, offset: 5 });
+      const page = await repo.listActivity(ORG_ID, { limit: 10 });
 
       expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
-      expect(chain.range).toHaveBeenCalledWith(5, 14);
+      expect(chain.limit).toHaveBeenCalledWith(11);
+      expect(page.items).toHaveLength(1);
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it('decodes an incoming cursor into a created_at lower bound', async () => {
+      const { client, chain } = makeClient([{ data: [], error: null }]);
+      const repo = new TeamsRepository(client);
+      const cursor = Buffer.from('2026-07-01T00:00:00.000Z', 'utf8').toString('base64url');
+
+      await repo.listActivity(ORG_ID, { limit: 10, cursor });
+
+      expect(chain.eq).toHaveBeenCalledWith(
+        'organization_id',
+        ORG_ID
+      );
+      expect((chain as unknown as { lt: jest.Mock }).lt).toHaveBeenCalledWith(
+        'created_at',
+        '2026-07-01T00:00:00.000Z'
+      );
+    });
+
+    it('returns a next cursor when more rows exist than the page size', async () => {
+      const { client } = makeClient([
+        {
+          data: [
+            {
+              id: 'act-2',
+              organization_id: ORG_ID,
+              actor_user_id: USER_ID,
+              action: 'member.invited',
+              target_user_id: null,
+              metadata: {},
+              created_at: '2026-07-02T00:00:00Z',
+            },
+            {
+              id: 'act-1',
+              organization_id: ORG_ID,
+              actor_user_id: USER_ID,
+              action: 'organization.created',
+              target_user_id: null,
+              metadata: {},
+              created_at: '2026-07-01T00:00:00Z',
+            },
+          ],
+          error: null,
+        },
+      ]);
+      const repo = new TeamsRepository(client);
+
+      const page = await repo.listActivity(ORG_ID, { limit: 1 });
+
+      expect(page.items).toHaveLength(1);
+      expect(page.nextCursor).not.toBeNull();
     });
   });
 });

@@ -200,14 +200,17 @@ describe('Monitoring alerts routes', () => {
   });
 
   describe('GET /monitoring/alerts/:id/events', () => {
-    it('returns the events array', async () => {
-      const listEventsForUser = jest.fn().mockResolvedValue([]);
+    it('returns the events array and next cursor', async () => {
+      const listEventsForUser = jest
+        .fn()
+        .mockResolvedValue({ items: [], nextCursor: null });
       const app = buildApp({ listEventsForUser } as any);
 
       const response = await request(app).get(`/monitoring/alerts/${sampleAlert.id}/events`);
 
       expect(response.status).toBe(200);
       expect(response.body.events).toEqual([]);
+      expect(response.body.nextCursor).toBeNull();
     });
   });
 });

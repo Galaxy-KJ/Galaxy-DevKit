@@ -21,6 +21,7 @@ function makeClient(responses: Array<{ data?: unknown; error?: unknown; count?: 
     update: jest.fn().mockReturnThis(),
     delete: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    lt: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockImplementation(() => Promise.resolve(next())),
     limit: jest.fn().mockImplementation(() => Promise.resolve(next())),
@@ -295,11 +296,11 @@ describe('MonitoringAlertRepository', () => {
     const { client } = makeClient([{ data: null, error: null }]);
     const repo = new MonitoringAlertRepository(client);
 
-    const events = await repo.listEventsForUser('a1', 'user-1');
-    expect(events).toBeNull();
+    const page = await repo.listEventsForUser('a1', 'user-1');
+    expect(page).toBeNull();
   });
 
-  it('returns the events list when alert is owned by user', async () => {
+  it('returns the events page when alert is owned by user', async () => {
     const eventRow = {
       id: 'evt-1',
       alert_id: baseRow.id,
@@ -314,14 +315,29 @@ describe('MonitoringAlertRepository', () => {
       created_at: '2026-06-29T12:00:00Z',
       updated_at: '2026-06-29T12:00:01Z',
     };
-    const { client } = makeClient([
+    const { client, chain } = makeClient([
       { data: baseRow, error: null }, // findByIdForUser
       { data: [eventRow], error: null }, // events
     ]);
     const repo = new MonitoringAlertRepository(client);
 
-    const events = await repo.listEventsForUser(baseRow.id, 'user-1');
-    expect(events).toHaveLength(1);
-    expect(events?.[0].deliveryStatus).toBe('delivered');
+    const page = await repo.listEventsForUser(baseRow.id, 'user-1');
+    expect(chain.limit).toHaveBeenCalledWith(51);
+    expect(page?.items).toHaveLength(1);
+    expect(page?.items[0].deliveryStatus).toBe('delivered');
+    expect(page?.nextCursor).toBeNull();
+  });
+
+  it('decodes an incoming cursor into a triggered_at lower bound', async () => {
+    const { client, chain } = makeClient([
+      { data: baseRow, error: null }, // findByIdForUser
+      { data: [], error: null }, // events
+    ]);
+    const repo = new MonitoringAlertRepository(client);
+    const cursor = Buffer.from('2026-06-29T12:00:00.000Z', 'utf8').toString('base64url');
+
+    await repo.listEventsForUser(baseRow.id, 'user-1', { cursor });
+
+    expect(chain.lt).toHaveBeenCalledWith('triggered_at', '2026-06-29T12:00:00.000Z');
   });
 });

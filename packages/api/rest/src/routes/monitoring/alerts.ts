@@ -15,6 +15,7 @@ import { MonitoringError } from '../../types/monitoring-types';
 import {
   alertIdParamSchema,
   createAlertSchema,
+  listAlertEventsQuerySchema,
   listAlertsQuerySchema,
   updateAlertSchema,
 } from '../../validators/monitoring-validators';
@@ -156,14 +157,16 @@ export function setupMonitoringRoutes(service: MonitoringAlertService = new Moni
   router.get(
     '/alerts/:id/events',
     validate(alertIdParamSchema, 'params'),
+    validate(listAlertEventsQuerySchema, 'query'),
     async (req, res, next) => {
       const userId = requireUser(req, res);
       if (!userId) return;
       try {
-        const limit = req.query.limit ? Number(req.query.limit) : undefined;
-        const offset = req.query.offset ? Number(req.query.offset) : undefined;
-        const events = await service.listEventsForUser(req.params.id, userId, { limit, offset });
-        res.json({ events });
+        const page = await service.listEventsForUser(req.params.id, userId, {
+          limit: Number(req.query.limit),
+          cursor: req.query.cursor as string | undefined,
+        });
+        res.json({ events: page.items, nextCursor: page.nextCursor });
       } catch (err) {
         handleMonitoringError(err, res, next);
       }
