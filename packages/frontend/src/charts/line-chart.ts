@@ -76,12 +76,21 @@ export function buildLineChart(points: LinePoint[], options: LineChartOptions): 
   return svg;
 }
 
+function headerCell(text: string): HTMLTableCellElement {
+  const th = document.createElement('th');
+  th.scope = 'col';
+  th.textContent = text;
+  return th;
+}
+
 export function buildLineChartTable(points: LinePoint[], options: LineTableOptions = {}): HTMLTableElement {
   const table = document.createElement('table');
   table.className = 'chart-table';
 
   const thead = document.createElement('thead');
-  thead.innerHTML = `<tr><th scope="col">Time</th><th scope="col">${options.valueLabel ?? 'Value'}</th></tr>`;
+  const headRow = document.createElement('tr');
+  headRow.append(headerCell('Time'), headerCell(options.valueLabel ?? 'Value'));
+  thead.appendChild(headRow);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');

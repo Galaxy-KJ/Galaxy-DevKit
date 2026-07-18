@@ -7,11 +7,14 @@ export interface SoroswapBrowserDeps {
   loadLpPositions: (publicKey: string) => Promise<LpPosition[]>;
 }
 
-const HORIZON_URL = 'https://horizon-testnet.stellar.org';
+export const DEFAULT_HORIZON_URL = 'https://horizon-testnet.stellar.org';
 
-async function fetchLpPositionsViaHorizon(publicKey: string): Promise<LpPosition[]> {
+export async function fetchLpPositionsViaHorizon(
+  publicKey: string,
+  horizonUrl: string = DEFAULT_HORIZON_URL
+): Promise<LpPosition[]> {
   const { Horizon } = await import('@galaxy-kj/core-stellar-sdk');
-  const server = new Horizon.Server(HORIZON_URL);
+  const server = new Horizon.Server(horizonUrl);
   const account = await server.loadAccount(publicKey);
   return account.balances
     .filter((balance): balance is typeof balance & { liquidity_pool_id: string } =>

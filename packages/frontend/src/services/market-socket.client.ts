@@ -23,15 +23,24 @@ export const DEFAULT_MARKET_PAIRS = ['BTC/USDC', 'ETH/USDC', 'XLM/USDC'];
 
 type Listener = (update: PriceUpdate) => void;
 
+function finiteOrUndefined(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function toUpdate(payload: unknown): PriceUpdate | null {
   const data = (payload as { data?: unknown })?.data ?? payload;
   const record = data as Partial<PriceUpdate> | null | undefined;
   if (!record || typeof record.pair !== 'string') return null;
+
+  const price = finiteOrUndefined(record.price);
+  if (price === undefined) return null;
+
   return {
     pair: record.pair,
-    price: Number(record.price),
-    volume: record.volume,
-    change24h: record.change24h,
+    price,
+    volume: finiteOrUndefined(record.volume),
+    change24h: finiteOrUndefined(record.change24h),
   };
 }
 

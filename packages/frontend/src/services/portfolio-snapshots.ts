@@ -1,4 +1,6 @@
-export type SnapshotSeries = 'portfolio' | 'price';
+// A series key namespaces snapshots (e.g. `portfolio:<network>:<wallet>`), so
+// distinct wallets/networks never share a history.
+export type SnapshotSeries = string;
 
 export interface Snapshot {
   ts: number;

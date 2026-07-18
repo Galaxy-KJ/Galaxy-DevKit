@@ -27,7 +27,7 @@ import { SecurityLimitsClient } from './services/security-limits.client';
 import { TeamManagementPanel } from './panels/team-management';
 import { TeamManagementClient } from './services/team-management.client';
 import { AnalyticsDashboardPanel } from './panels/analytics-dashboard';
-import { SoroswapBrowserPanel } from './panels/soroswap-browser';
+import { SoroswapBrowserPanel, fetchLpPositionsViaHorizon } from './panels/soroswap-browser';
 import { LiveMarketFeedPanel } from './panels/live-market-feed';
 import { getCurrentNetworkConfig, setSelectedNetwork, NetworkType, isMainnetReadOnly } from './utils/network';
 import { assertWriteOperation } from './actions';
@@ -280,8 +280,16 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
     }
   };
 
-  safeMount('analytics', () => new AnalyticsDashboardPanel('analytics-dashboard-panel', { tracker: txTracker }));
-  safeMount('soroswap', () => new SoroswapBrowserPanel('soroswap-browser-panel'));
+  safeMount('analytics', () => new AnalyticsDashboardPanel('analytics-dashboard-panel', {
+    tracker: txTracker,
+    network: networkStore.getNetwork(),
+  }));
+  const horizonUrl = networkStore.isMainnet()
+    ? 'https://horizon.stellar.org'
+    : 'https://horizon-testnet.stellar.org';
+  safeMount('soroswap', () => new SoroswapBrowserPanel('soroswap-browser-panel', {
+    loadLpPositions: (pk) => fetchLpPositionsViaHorizon(pk, horizonUrl),
+  }));
   safeMount('live-feed', () => new LiveMarketFeedPanel('live-market-feed-panel'));
 
   safeMount('wallet-create', () => new WalletCreatePanel('wallet-create-panel', client));

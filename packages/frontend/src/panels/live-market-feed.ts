@@ -4,10 +4,18 @@ export const DEFAULT_WS_URL = 'http://localhost:3001';
 
 export interface LiveMarketFeedDeps {
   client: MarketSocketClient;
+  url: string;
 }
 
 function rowId(pair: string): string {
-  return `lmf-${pair.replace('/', '-')}`;
+  return `lmf-${pair.replace(/\//g, '-')}`;
+}
+
+function cell(text: string, className?: string): HTMLTableCellElement {
+  const td = document.createElement('td');
+  if (className) td.className = className;
+  td.textContent = text;
+  return td;
 }
 
 export class LiveMarketFeedPanel {
@@ -24,7 +32,7 @@ export class LiveMarketFeedPanel {
       throw new Error('LiveMarketFeedPanel container is required');
     }
 
-    this.client = deps.client ?? new MarketSocketClient({ url: DEFAULT_WS_URL });
+    this.client = deps.client ?? new MarketSocketClient({ url: deps.url ?? DEFAULT_WS_URL });
     this.render();
     this.unsubscribe = this.client.subscribe((update) => this.renderRow(update));
     this.client.connect();
@@ -67,10 +75,11 @@ export class LiveMarketFeedPanel {
       row.id = rowId(update.pair);
       body.appendChild(row);
     }
-    row.innerHTML = `
-      <td>${update.pair}</td>
-      <td class="analytics-num">${price}</td>
-      <td class="analytics-num analytics-tone--${tone}">${changeText}</td>`;
+    row.replaceChildren(
+      cell(update.pair),
+      cell(price, 'analytics-num'),
+      cell(changeText, `analytics-num analytics-tone--${tone}`),
+    );
   }
 
   destroy(): void {

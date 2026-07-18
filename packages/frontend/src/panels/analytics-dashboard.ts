@@ -26,9 +26,11 @@ export interface DashboardDeps {
   store: PortfolioSnapshotStore;
   tracker: TxTrackerService;
   now: () => number;
+  network: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const REFRESH_INTERVAL_MS = 30_000;
 
 function defaultDeps(): DashboardDeps {
   const client = new BlendClient();
@@ -38,6 +40,7 @@ function defaultDeps(): DashboardDeps {
     store: new PortfolioSnapshotStore(),
     tracker: new TxTrackerService(),
     now: () => Date.now(),
+    network: 'testnet',
   };
 }
 
@@ -59,6 +62,9 @@ function toneOf(value: number): RiskTone {
 export class AnalyticsDashboardPanel {
   private readonly container: HTMLElement;
   private readonly deps: DashboardDeps;
+  private requestId = 0;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private seriesKey = 'portfolio';
 
   constructor(container: string | HTMLElement, deps: Partial<DashboardDeps> = {}) {
     this.container = typeof container === 'string'
@@ -115,6 +121,10 @@ export class AnalyticsDashboardPanel {
       return;
     }
 
+    // Snapshot history is keyed by wallet and network so switching either never
+    // mixes one wallet's observed values into another's.
+    this.seriesKey = `portfolio:${this.deps.network}:${publicKey}`;
+    const requestId = ++this.requestId;
     this.setStatus('Loading portfolio…', 'info');
     try {
       const [position, soroswapRows] = await Promise.all([
@@ -122,9 +132,12 @@ export class AnalyticsDashboardPanel {
         this.deps.loadSoroswapRows(publicKey).catch(() => [] as PositionRow[]),
       ]);
 
+      // Ignore a result that a newer refresh (or wallet change) has superseded.
+      if (requestId !== this.requestId) return;
+
       const rows = [buildBlendRow(position), ...soroswapRows];
       const total = totalValue(rows);
-      this.deps.store.append('portfolio', total, this.deps.now());
+      this.deps.store.append(this.seriesKey, total, this.deps.now());
 
       this.renderKpis(total, position);
       this.renderCharts(rows);
@@ -134,18 +147,32 @@ export class AnalyticsDashboardPanel {
 
       this.byId('ad-body').hidden = false;
       this.setStatus('Portfolio loaded.', 'success');
+      this.startAutoRefresh();
     } catch (error) {
+      if (requestId !== this.requestId) return;
       this.setStatus(error instanceof Error ? error.message : 'Failed to load portfolio.', 'error');
     }
   }
 
+  private startAutoRefresh(): void {
+    if (this.refreshTimer !== null) return;
+    this.refreshTimer = setInterval(() => void this.refresh(), REFRESH_INTERVAL_MS);
+  }
+
+  destroy(): void {
+    if (this.refreshTimer !== null) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
   private renderKpis(total: number, position: BlendPosition): void {
-    const observed = this.deps.store.delta('portfolio');
+    const observed = this.deps.store.delta(this.seriesKey);
     // Only a genuine 24h window counts; until the observed series spans a full
     // day the tile stays blank rather than claiming a 24h move it cannot back.
-    const series = this.deps.store.series('portfolio');
+    const series = this.deps.store.series(this.seriesKey);
     const spans24h = series.length >= 2 && series[series.length - 1].ts - series[0].ts >= DAY_MS;
-    const change24h = spans24h ? this.deps.store.deltaSince('portfolio', DAY_MS, this.deps.now()) : null;
+    const change24h = spans24h ? this.deps.store.deltaSince(this.seriesKey, DAY_MS, this.deps.now()) : null;
     const simulated = simulatedCostBasisPnl(total);
     const apy = position.supplyAPY ?? null;
 
@@ -172,7 +199,7 @@ export class AnalyticsDashboardPanel {
     const historyFigure = this.byId('ad-history');
     // A single observation cannot draw a trend line, so hold the empty state
     // until at least two snapshots exist.
-    const series = this.deps.store.series('portfolio');
+    const series = this.deps.store.series(this.seriesKey);
     const points = series.length >= 2 ? series.map((s) => ({ ts: s.ts, value: s.value })) : [];
     historyFigure.innerHTML = '<figcaption>Portfolio value <span class="sim-badge sim-badge--observed">observed since first load</span></figcaption>';
     historyFigure.append(
@@ -183,19 +210,7 @@ export class AnalyticsDashboardPanel {
 
   private renderPositions(rows: PositionRow[]): void {
     const host = this.byId('ad-positions');
-    const body = rows
-      .map(
-        (row) => `
-          <tr>
-            <td>${row.protocol}</td>
-            <td>${row.type}</td>
-            <td class="analytics-num">${formatUsd(row.value)}</td>
-            <td>${row.healthFactor !== null ? row.healthFactor.toFixed(2) : '—'}</td>
-            <td>${row.apy ?? '<span class="analytics-muted">unavailable</span>'}</td>
-          </tr>`
-      )
-      .join('');
-
+    // Static scaffolding only; dynamic values are assigned via textContent below.
     host.innerHTML = `
       <h3>Positions</h3>
       <div class="analytics-table-scroll">
@@ -203,9 +218,31 @@ export class AnalyticsDashboardPanel {
           <thead>
             <tr><th scope="col">Protocol</th><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Health (reported)</th><th scope="col">APY</th></tr>
           </thead>
-          <tbody>${body || '<tr><td colspan="5">No positions found.</td></tr>'}</tbody>
+          <tbody></tbody>
         </table>
       </div>`;
+
+    const tbody = host.querySelector('tbody') as HTMLTableSectionElement;
+    if (rows.length === 0) {
+      const row = document.createElement('tr');
+      const empty = td('No positions found.');
+      empty.colSpan = 5;
+      row.appendChild(empty);
+      tbody.appendChild(row);
+      return;
+    }
+
+    rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      tr.append(
+        td(row.protocol),
+        td(row.type),
+        td(formatUsd(row.value), 'analytics-num'),
+        td(row.healthFactor !== null ? row.healthFactor.toFixed(2) : '—'),
+        row.apy !== null ? td(row.apy) : td('unavailable', 'analytics-muted'),
+      );
+      tbody.appendChild(tr);
+    });
   }
 
   private renderRisk(position: BlendPosition): void {
@@ -237,17 +274,20 @@ export class AnalyticsDashboardPanel {
   private renderActivity(): void {
     const host = this.byId('ad-activity');
     const real = this.deps.tracker.list().slice(0, 5);
-    const realItems = real.map((tx) => activityItem(describeTx(tx), tx.createdAt, false)).join('');
-    const simItems = simulatedEvents(this.deps.now())
-      .map((event) => activityItem(event.label, event.ts, true))
-      .join('');
+    host.innerHTML = '<h3>Activity feed</h3><ul class="analytics-activity"></ul>';
+    const list = host.querySelector('.analytics-activity') as HTMLElement;
 
-    host.innerHTML = `
-      <h3>Activity feed</h3>
-      <ul class="analytics-activity">
-        ${realItems}${simItems || ''}
-        ${!realItems && !simItems ? '<li class="analytics-activity-empty">No recent activity.</li>' : ''}
-      </ul>`;
+    real.forEach((tx) => list.appendChild(activityItem(describeTx(tx), tx.createdAt, false)));
+    simulatedEvents(this.deps.now()).forEach((event) =>
+      list.appendChild(activityItem(event.label, event.ts, true))
+    );
+
+    if (list.children.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'analytics-activity-empty';
+      empty.textContent = 'No recent activity.';
+      list.appendChild(empty);
+    }
   }
 
   private setStatus(message: string, tone: 'info' | 'success' | 'error'): void {
@@ -264,11 +304,32 @@ export class AnalyticsDashboardPanel {
 function kpi(label: string, value: string, tone?: RiskTone, badge?: string): HTMLElement {
   const article = document.createElement('article');
   article.className = 'analytics-kpi';
-  const badgeClass = badge === 'observed' ? 'sim-badge sim-badge--observed' : 'sim-badge';
-  article.innerHTML = `
-    <span class="analytics-kpi-label">${label}${badge ? ` <span class="${badgeClass}">${badge}</span>` : ''}</span>
-    <strong class="analytics-num${tone ? ` analytics-tone--${tone}` : ''}">${value}</strong>`;
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'analytics-kpi-label';
+  labelEl.textContent = label;
+  if (badge) labelEl.append(' ', simBadge(badge));
+
+  const valueEl = document.createElement('strong');
+  valueEl.className = `analytics-num${tone ? ` analytics-tone--${tone}` : ''}`;
+  valueEl.textContent = value;
+
+  article.append(labelEl, valueEl);
   return article;
+}
+
+function simBadge(text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = text === 'observed' ? 'sim-badge sim-badge--observed' : 'sim-badge';
+  span.textContent = text;
+  return span;
+}
+
+function td(text: string, className?: string): HTMLTableCellElement {
+  const cell = document.createElement('td');
+  if (className) cell.className = className;
+  cell.textContent = text;
+  return cell;
 }
 
 function hiddenTable(table: HTMLTableElement): HTMLElement {
@@ -278,12 +339,20 @@ function hiddenTable(table: HTMLTableElement): HTMLElement {
   return wrap;
 }
 
-function activityItem(label: string, ts: number, simulated: boolean): string {
-  return `
-    <li class="analytics-activity-item">
-      <span>${label}${simulated ? ' <span class="sim-badge">simulated</span>' : ''}</span>
-      <time datetime="${new Date(ts).toISOString()}">${new Date(ts).toLocaleString()}</time>
-    </li>`;
+function activityItem(label: string, ts: number, simulated: boolean): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'analytics-activity-item';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.textContent = label;
+  if (simulated) labelSpan.append(' ', simBadge('simulated'));
+
+  const time = document.createElement('time');
+  time.dateTime = new Date(ts).toISOString();
+  time.textContent = new Date(ts).toLocaleString();
+
+  li.append(labelSpan, time);
+  return li;
 }
 
 function describeTx(tx: TrackedTransaction): string {

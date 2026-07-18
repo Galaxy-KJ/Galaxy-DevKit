@@ -6,6 +6,8 @@ import { AnalyticsDashboardPanel, type DashboardDeps } from '../panels/analytics
 import { PortfolioSnapshotStore } from '../services/portfolio-snapshots';
 import { TxTrackerService } from '../services/tx-tracker';
 
+const mountedPanels: AnalyticsDashboardPanel[] = [];
+
 function mountPanel(overrides: Partial<DashboardDeps> = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -20,16 +22,25 @@ function mountPanel(overrides: Partial<DashboardDeps> = {}) {
     store: new PortfolioSnapshotStore(),
     tracker: new TxTrackerService(),
     now: () => 1_000_000,
+    network: 'testnet',
     ...overrides,
   };
   const panel = new AnalyticsDashboardPanel(container, deps);
+  mountedPanels.push(panel);
   return { container, panel };
 }
+
+const SERIES_KEY = 'portfolio:testnet:GABC';
 
 describe('AnalyticsDashboardPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    // Stop the auto-refresh timers so no interval outlives the test.
+    while (mountedPanels.length) mountedPanels.pop()!.destroy();
   });
 
   it('renders the controls and stays hidden until a portfolio loads', () => {
@@ -80,7 +91,7 @@ describe('AnalyticsDashboardPanel', () => {
     await panel.refresh();
     await panel.refresh();
 
-    expect(store.series('portfolio')).toHaveLength(2);
+    expect(store.series(SERIES_KEY)).toHaveLength(2);
   });
 
   it('leaves 24h change blank until the observed series spans a day', async () => {
@@ -96,7 +107,7 @@ describe('AnalyticsDashboardPanel', () => {
 
   it('shows a real 24h change once the series spans a day', async () => {
     const store = new PortfolioSnapshotStore();
-    store.append('portfolio', 900, 1_000_000 - 25 * 60 * 60 * 1000);
+    store.append(SERIES_KEY, 900, 1_000_000 - 25 * 60 * 60 * 1000);
     const { container, panel } = mountPanel({ store });
     container.querySelector<HTMLInputElement>('#ad-wallet')!.value = 'GABC';
     await panel.refresh();
