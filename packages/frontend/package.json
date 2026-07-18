@@ -22,7 +22,8 @@
     "bignumber.js": "^9.1.2",
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.11.0",
-    "buffer": "^6.0.3"
+    "buffer": "^6.0.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@types/blessed": "^0.1.25",
