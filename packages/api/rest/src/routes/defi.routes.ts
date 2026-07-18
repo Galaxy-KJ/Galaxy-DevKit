@@ -225,7 +225,21 @@ export function setupDefiRoutes(): express.Router {
 
             const position = await protocol.getPosition(publicKey);
 
-            res.json(position);
+            // APY is best-effort: it needs an extra RPC round-trip that can fail,
+            // and a failure must never break the position payload.
+            const blend = protocol as unknown as {
+                getSupplyAPY?: (asset: Asset) => Promise<{ supplyAPY: string; borrowAPY: string }>;
+            };
+            let apy: { supplyAPY: string; borrowAPY: string } | undefined;
+            try {
+                if (blend.getSupplyAPY) {
+                    apy = await blend.getSupplyAPY({ code: 'XLM', type: 'native' });
+                }
+            } catch {
+                apy = undefined;
+            }
+
+            res.json(apy ? { ...position, supplyAPY: apy.supplyAPY, borrowAPY: apy.borrowAPY } : position);
         } catch (error) {
             next(error);
         }
