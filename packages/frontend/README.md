@@ -32,6 +32,15 @@ Builds, simulates, signs, and submits payment transactions while tracking each s
 ### TxHistoryPanel
 Renders persistent transaction history from local storage with status badges, Stellar Expert links, and failed-transaction re-simulation.
 
+### AnalyticsDashboardPanel
+Aggregates a wallet's Blend position into a portfolio summary (KPIs, allocation pie, historical value line chart), a cross-protocol positions table, risk indicators, and an activity feed. Simulated metrics carry a visible `simulated` badge; client-observed series are labelled `since first load`.
+
+### SoroswapBrowserPanel
+Reads a wallet's Soroswap liquidity-pool shares directly from Horizon (the terminal `SoroswapPanel` is CLI-only).
+
+### LiveMarketFeedPanel
+Streams simulated market prices over WebSocket (`market:price_update`); the header carries a `simulated` badge since the backend generates the ticks.
+
 ## Services
 
 ### SmartWalletClient
@@ -39,6 +48,12 @@ A browser-ready wrapper around `SmartWalletService` that manages WebAuthn creden
 
 ### TxTrackerService
 Persistent local transaction store used by the transaction panel and history panel.
+
+### PortfolioSnapshotStore
+`localStorage`-backed two-series store (portfolio value + observed price) mirroring `TxTrackerService`; exposes delta-vs-first-snapshot and windowed (24h) change helpers for the analytics dashboard.
+
+### MarketSocketClient
+`socket.io-client` wrapper that subscribes to the public `market:*` rooms and forwards `market:price_update` ticks to the live feed panel. Its socket factory is injectable for tests.
 
 ## Testing
 Run tests with:
@@ -54,3 +69,4 @@ Coverage is maintained at 90%+.
 - Prepare add-signer and remove-signer XDR from the signer management panel.
 - Confirm the playground can import `@galaxy-kj/core-stellar-sdk` by checking the generated testnet public key on load.
 - Submit transactions and verify they appear in the persistent history panel with status updates.
+- Open the Analytics panel, load a wallet, and review its portfolio value, cross-protocol positions and risk, with simulated metrics clearly badged and observed series labelled `since first load`.
