@@ -38,6 +38,7 @@ import { setupTransactionMonitoringRoutes } from './routes/monitoring/transactio
 import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
 import { setupComplianceRoutes } from './routes/compliance';
+import { kycRoutes } from './routes/kyc-routes';
 import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
 /**
@@ -161,6 +162,9 @@ class RestApiServer {
 
     // Compliance reporting tools (Issue #335 / Roadmap #67)
     router.use('/compliance', setupComplianceRoutes());
+
+    // KYC/AML Integration (Issue #337)
+    router.use('/kyc', authenticate(), auditRequest(), kycRoutes);
 
     // Add more routes here as needed
 
