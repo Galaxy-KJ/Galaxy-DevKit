@@ -22,7 +22,7 @@ jest.mock('ora', () => {
 global.fetch = jest.fn() as any;
 
 describe('wallet fund command', () => {
-    const testWalletsDir = path.join(os.tmpdir(), '.galaxy-test', 'wallets');
+    const testWalletsDir = path.join(os.tmpdir(), '.galaxy-test-fund', 'wallets');
 
     beforeEach(async () => {
         await fs.ensureDir(testWalletsDir);

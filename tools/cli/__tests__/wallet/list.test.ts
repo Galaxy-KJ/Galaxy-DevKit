@@ -21,14 +21,14 @@ jest.mock('ora', () => {
 });
 
 describe('wallet list command', () => {
-    const testWalletsDir = path.join(os.tmpdir(), '.galaxy-test', 'wallets');
+    const testWalletsDir = path.join(os.tmpdir(), '.galaxy-test-list', 'wallets');
 
     beforeEach(async () => {
         await fs.ensureDir(testWalletsDir);
     });
 
     afterEach(async () => {
-        await fs.remove(path.dirname(testWalletsDir));
+        await fs.rm(path.dirname(testWalletsDir), { recursive: true, force: true });
     });
 
     it('should list all wallets', async () => {
