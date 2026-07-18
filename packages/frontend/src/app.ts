@@ -26,6 +26,9 @@ import { SecurityLimitsPanel } from './panels/security-limits';
 import { SecurityLimitsClient } from './services/security-limits.client';
 import { TeamManagementPanel } from './panels/team-management';
 import { TeamManagementClient } from './services/team-management.client';
+import { AnalyticsDashboardPanel } from './panels/analytics-dashboard';
+import { SoroswapBrowserPanel, fetchLpPositionsViaHorizon } from './panels/soroswap-browser';
+import { LiveMarketFeedPanel } from './panels/live-market-feed';
 import { getCurrentNetworkConfig, setSelectedNetwork, NetworkType, isMainnetReadOnly } from './utils/network';
 import { assertWriteOperation } from './actions';
 
@@ -177,6 +180,15 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
         >
           <ul class="sidebar__nav" role="list">
             <li class="sidebar__nav-item">
+              <a href="#analytics" class="sidebar__nav-link" data-panel="analytics-dashboard-panel">Analytics</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#soroswap-lp" class="sidebar__nav-link" data-panel="soroswap-browser-panel">Soroswap LP</a>
+            </li>
+            <li class="sidebar__nav-item">
+              <a href="#live-feed" class="sidebar__nav-link" data-panel="live-market-feed-panel">Live Feed</a>
+            </li>
+            <li class="sidebar__nav-item">
               <a href="#wallet-create" class="sidebar__nav-link" data-panel="wallet-create-panel" aria-current="page">Create Wallet</a>
             </li>
             <li class="sidebar__nav-item">
@@ -217,6 +229,9 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
         </nav>
 
         <main id="main-content" class="main-content workspace" role="main" tabindex="-1" aria-label="Playground panels">
+          <div id="analytics-dashboard-panel" class="panel" hidden></div>
+          <div id="soroswap-browser-panel" class="panel" hidden></div>
+          <div id="live-market-feed-panel" class="panel" hidden></div>
           <div id="wallet-create-panel" class="panel"></div>
           <div id="wallet-signers-panel" class="panel"></div>
           <div id="wallet-session-panel" class="panel" hidden></div>
@@ -254,23 +269,42 @@ export function renderPlayground(root: HTMLElement): PlaygroundStatus {
   // ── Mount panels ─────────────────────────────────────────────────────────
 //   const client = new SmartWalletClient();
   const txTracker = new TxTrackerService();
-  new WalletCreatePanel('wallet-create-panel', client);
-  new WalletSignersPanel('wallet-signers-panel', client);
 
-  mountSessionPanel(document.getElementById('wallet-session-panel')!);
-  mountLiquidityPanel(document.getElementById('liquidity-panel')!);
-  mountTxPanel(document.getElementById('wallet-tx-panel')!, client, txTracker);
-  mountTxHistoryPanel(
-    document.getElementById('wallet-tx-history-panel')!,
-    txTracker,
-  );
-  new BlendPanel('blend-panel', new BlendClient());
-  new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient());
-  new TeamManagementPanel('team-management-panel', new TeamManagementClient());
-  new SmartSwapPanel('smart-swap-panel', new SmartSwapClient({
+  // Isolate each mount so one panel throwing cannot abort renderPlayground and
+  // leave the navigation handlers below unbound.
+  const safeMount = (label: string, mount: () => void): void => {
+    try {
+      mount();
+    } catch (error) {
+      logger.error(`Panel "${label}" failed to mount`, { scope: 'app', data: { error: String(error) } });
+    }
+  };
+
+  safeMount('analytics', () => new AnalyticsDashboardPanel('analytics-dashboard-panel', {
+    tracker: txTracker,
+    network: networkStore.getNetwork(),
+  }));
+  const horizonUrl = networkStore.isMainnet()
+    ? 'https://horizon.stellar.org'
+    : 'https://horizon-testnet.stellar.org';
+  safeMount('soroswap', () => new SoroswapBrowserPanel('soroswap-browser-panel', {
+    loadLpPositions: (pk) => fetchLpPositionsViaHorizon(pk, horizonUrl),
+  }));
+  safeMount('live-feed', () => new LiveMarketFeedPanel('live-market-feed-panel'));
+
+  safeMount('wallet-create', () => new WalletCreatePanel('wallet-create-panel', client));
+  safeMount('wallet-signers', () => new WalletSignersPanel('wallet-signers-panel', client));
+  safeMount('session', () => mountSessionPanel(document.getElementById('wallet-session-panel')!));
+  safeMount('liquidity', () => mountLiquidityPanel(document.getElementById('liquidity-panel')!));
+  safeMount('tx', () => mountTxPanel(document.getElementById('wallet-tx-panel')!, client, txTracker));
+  safeMount('tx-history', () => mountTxHistoryPanel(document.getElementById('wallet-tx-history-panel')!, txTracker));
+  safeMount('blend', () => new BlendPanel('blend-panel', new BlendClient()));
+  safeMount('security-limits', () => new SecurityLimitsPanel('security-limits-panel', new SecurityLimitsClient()));
+  safeMount('team-management', () => new TeamManagementPanel('team-management-panel', new TeamManagementClient()));
+  safeMount('smart-swap', () => new SmartSwapPanel('smart-swap-panel', new SmartSwapClient({
     rpcUrl: getRpcUrl(),
     networkPassphrase: networkConfig.networkPassphrase,
-  }));
+  })));
 
   const logHost = document.getElementById('activity-log-panel');
   if (logHost) logger.attach(logHost as HTMLElement);

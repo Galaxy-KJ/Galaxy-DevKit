@@ -993,6 +993,14 @@ export class BlendProtocol extends BaseProtocol {
 }
 ```
 
+### Adding a new frontend playground panel
+
+1. Put testable logic in a pure module under `packages/frontend/src/services/` or `src/charts/` (data in → value or `SVGElement` out, no DOM state) and write its TDD test first in `src/tests/`. The global jest coverage gate (90% functions/lines) is only satisfiable when logic lives outside the panel.
+2. Create the panel in `src/panels/[name].ts` as a thin render layer that delegates to the pure modules. Use `innerHTML` only for static scaffolding; assign any API-, socket-, or user-derived value through `textContent` (or explicit `createElement`/`append`) so dynamic data is never interpolated into an HTML string. Accept injectable dependencies (clients, stores, socket factories) with production defaults so the panel is testable in jsdom.
+3. Mount it in `src/app.ts` inside a `safeMount(label, fn)` call and add a matching sidebar link plus a `.panel` div — `safeMount` keeps one failing panel from aborting `renderPlayground` and unbinding navigation.
+4. Style it in `src/styles.css` with the `:root` tokens; keep it responsive (tables scroll in their own container, KPIs/charts reflow) and accessible (SVG `role="img"` + `aria-label`, data-table alternative, never colour-alone).
+5. Label data honestly: any simulated/mock value must render with a visible `simulated` badge; client-observed series are labelled `since first load`; real on-chain/API values carry no badge.
+
 ### Adding a new CLI command
 
 1. Create command file: `tools/cli/src/commands/[command-name].ts`

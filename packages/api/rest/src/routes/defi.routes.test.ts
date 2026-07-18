@@ -3,6 +3,8 @@ import express from 'express';
 import { setupDefiRoutes } from './defi.routes';
 import { DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
 
+const mockGetSupplyAPY = jest.fn();
+
 // Mock ProtocolFactory and the protocols
 jest.mock('@galaxy-kj/core-defi-protocols', () => {
     const originalModule = jest.requireActual('@galaxy-kj/core-defi-protocols');
@@ -70,6 +72,7 @@ jest.mock('@galaxy-kj/core-defi-protocols', () => {
                                 supplied: [],
                                 borrowed: []
                             }),
+                            getSupplyAPY: mockGetSupplyAPY,
                             supply: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-supply' }),
                             withdraw: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-withdraw' }),
                             borrow: jest.fn().mockResolvedValue({ hash: 'mock-unsigned-xdr-borrow' }),
@@ -187,6 +190,29 @@ describe('DeFi Routes', () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('address', 'mock-address');
+        });
+
+        it('GET /api/v1/defi/blend/position/:publicKey should include APY when available', async () => {
+            mockGetSupplyAPY.mockResolvedValueOnce({ supplyAPY: '4.20', borrowAPY: '6.10' });
+
+            const response = await request(app)
+                .get('/api/v1/defi/blend/position/GB...USER');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('address', 'mock-address');
+            expect(response.body).toHaveProperty('supplyAPY', '4.20');
+            expect(response.body).toHaveProperty('borrowAPY', '6.10');
+        });
+
+        it('GET /api/v1/defi/blend/position/:publicKey should keep the position when APY lookup fails', async () => {
+            mockGetSupplyAPY.mockRejectedValueOnce(new Error('rpc unreachable'));
+
+            const response = await request(app)
+                .get('/api/v1/defi/blend/position/GB...USER');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('address', 'mock-address');
+            expect(response.body.supplyAPY).toBeUndefined();
         });
 
         it('POST /api/v1/defi/blend/supply should return unsigned XDR', async () => {
