@@ -39,6 +39,17 @@ import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
 import { setupComplianceRoutes } from './routes/compliance';
 import { kycRoutes } from './routes/kyc-routes';
+import { setupHealthRoutes } from './routes/health';
+import { setupMetricsRoutes } from './routes/metrics';
+import { httpMetricsMiddleware } from './middleware/metrics';
+import {
+  HealthOrchestrator,
+  DatabaseHealthChecker,
+  HorizonHealthChecker,
+  OracleHealthChecker,
+  DefiProtocolHealthChecker,
+  SystemHealthChecker,
+} from './services/monitoring/health';
 import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 
 /**
@@ -89,6 +100,21 @@ class RestApiServer {
       this.app.use(morgan('combined'));
     }
 
+    // Health & metrics endpoints. Mounted BEFORE rate-limiter so probes and
+    // Prometheus scrapers are never throttled.
+    const orchestrator = new HealthOrchestrator([
+      new DatabaseHealthChecker(),
+      new HorizonHealthChecker(),
+      new OracleHealthChecker(),
+      new DefiProtocolHealthChecker(),
+      new SystemHealthChecker(),
+    ]);
+    this.app.use(setupHealthRoutes({ orchestrator }));
+    this.app.use(setupMetricsRoutes());
+
+    // HTTP request metrics tracker (excludes health/metrics paths internally).
+    this.app.use(httpMetricsMiddleware());
+
     // Rate limiting middleware (applied to all routes)
     this.app.use(rateLimiterMiddleware());
 
@@ -104,16 +130,6 @@ class RestApiServer {
    * Setup routes
    */
   private setupRoutes(): void {
-    // Health check endpoint
-    this.app.get('/health', (req, res) => {
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        version: process.env.npm_package_version || '1.0.0',
-      });
-    });
-
     // API info endpoint
     this.app.get('/', (req, res) => {
       res.json({
@@ -122,6 +138,9 @@ class RestApiServer {
         description: 'REST API for Galaxy DevKit',
         endpoints: {
           health: '/health',
+          liveness: '/health/live',
+          readiness: '/health/ready',
+          metrics: '/metrics',
           api: '/api/v1',
         },
       });
