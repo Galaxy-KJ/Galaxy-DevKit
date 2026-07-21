@@ -10,28 +10,50 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { withQueryLogging } from '../utils/query-metrics';
 import { buildCursorPage, decodeCursor, CursorPageResult } from '../utils/pagination';
 
+export type AuditSeverity = 'info' | 'warning' | 'critical';
+
 export interface AuditEvent {
   id: string;
   timestamp: string; // ISO 8601
   user_id: string | null;
+  /** Organization/team the actor was operating under (Issue #61 team accounts). */
+  organization_id?: string | null;
   action: string;
   resource: string | null;
+  /** Concrete identifier of the affected resource (wallet id, pool address, tx hash, ...). */
+  resource_id?: string | null;
   ip_address: string | null;
   success: boolean;
   error_code?: string;
+  /** Defaults to 'info' when not provided. */
+  severity?: AuditSeverity;
+  /** Groups related events across a single request/operation (e.g. x-request-id). */
+  correlation_id?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 export interface AuditQueryFilters {
   userId?: string;
+  organizationId?: string;
   action?: string;
   resource?: string;
+  severity?: AuditSeverity;
+  correlationId?: string;
   from?: Date;
   to?: Date;
   /** Opaque cursor returned as `nextCursor` from a previous page. */
   cursor?: string;
   /** Page size, capped at 200. Defaults to 50. */
   limit?: number;
+}
+
+export interface AuditLogOptions {
+  /**
+   * When true, the write is awaited and a failure is rethrown to the caller
+   * instead of being swallowed. Use for operations where a lost audit entry
+   * must not go unnoticed. Defaults to false (fire-and-forget).
+   */
+  sync?: boolean;
 }
 
 const DEFAULT_QUERY_LIMIT = 50;
@@ -98,23 +120,34 @@ export class AuditLogger {
     this.supabase = initializeSupabaseClient();
   }
 
-  async log(event: Omit<AuditEvent, 'id' | 'timestamp'>): Promise<void> {
+  async log(event: Omit<AuditEvent, 'id' | 'timestamp'>, options?: AuditLogOptions): Promise<void> {
     try {
       const sanitizedMetadata = sanitizeMetadata(event.metadata);
 
-      await this.supabase.from('audit_logs').insert([
+      const { error } = await this.supabase.from('audit_logs').insert([
         {
           user_id: event.user_id,
+          organization_id: event.organization_id ?? null,
           action: event.action,
           resource: event.resource,
+          resource_id: event.resource_id ?? null,
           ip_address: event.ip_address,
           success: event.success,
           error_code: event.error_code,
+          severity: event.severity ?? 'info',
+          correlation_id: event.correlation_id ?? null,
           metadata: sanitizedMetadata,
         },
       ]);
+
+      if (error) {
+        throw error;
+      }
     } catch (error) {
       console.warn('Failed to write audit log:', error);
+      if (options?.sync) {
+        throw error;
+      }
     }
   }
 
@@ -133,12 +166,24 @@ export class AuditLogger {
         query = query.eq('user_id', filters.userId);
       }
 
+      if (filters.organizationId) {
+        query = query.eq('organization_id', filters.organizationId);
+      }
+
       if (filters.action) {
         query = query.eq('action', filters.action);
       }
 
       if (filters.resource) {
         query = query.eq('resource', filters.resource);
+      }
+
+      if (filters.severity) {
+        query = query.eq('severity', filters.severity);
+      }
+
+      if (filters.correlationId) {
+        query = query.eq('correlation_id', filters.correlationId);
       }
 
       if (filters.from) {

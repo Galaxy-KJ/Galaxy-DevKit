@@ -7,6 +7,34 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
 import { ProtocolFactory, ProtocolConfig, Asset, DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
+import { AuditLogger } from '../services/audit-logger';
+
+const auditLogger = new AuditLogger();
+
+/**
+ * Records a DeFi protocol operation (supply/borrow/swap/liquidity) in the
+ * audit trail. Fire-and-forget, mirroring the rest of the audit logging
+ * system — a logging failure must never block the DeFi response.
+ */
+function logDefiOperation(
+    req: Request,
+    action: string,
+    success: boolean,
+    resourceId: string | null,
+    metadata: Record<string, unknown>
+): void {
+    void auditLogger.log({
+        user_id: req.user?.userId || null,
+        action,
+        resource: `${req.baseUrl}${req.path}`,
+        resource_id: resourceId,
+        ip_address: req.ip || null,
+        success,
+        severity: success ? 'info' : 'warning',
+        correlation_id: (req.headers['x-request-id'] as string) || null,
+        metadata,
+    });
+}
 
 // Default configuration for protocols (can be moved to a config file or env vars)
 const defaultConfig: Omit<ProtocolConfig, 'protocolId'> = {
@@ -192,8 +220,16 @@ export function setupDefiRoutes(): express.Router {
             // Pass an empty string for privateKey so the transaction doesn't sign/submit
             const result = await protocol.swap(signerPublicKey, '', tokenIn, tokenOut, amountIn, minAmountOut);
 
+            logDefiOperation(req, 'defi.soroswap.swap', true, signerPublicKey, {
+                assetIn, assetOut, amountIn, minAmountOut,
+            });
             res.json(result);
         } catch (error) {
+            const { signerPublicKey, assetIn, assetOut, amountIn, minAmountOut } = req.body ?? {};
+            logDefiOperation(req, 'defi.soroswap.swap', false, signerPublicKey ?? null, {
+                assetIn, assetOut, amountIn, minAmountOut,
+                error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -274,8 +310,13 @@ export function setupDefiRoutes(): express.Router {
             // Empty string for privateKey means it will just return the unsigned XDR
             const result = await protocol.supply(signerPublicKey, '', tokenAsset, amount);
 
+            logDefiOperation(req, 'defi.blend.supply', true, signerPublicKey, { asset, amount });
             res.json(result);
         } catch (error) {
+            const { asset, amount, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.blend.supply', false, signerPublicKey ?? null, {
+                asset, amount, error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -309,8 +350,13 @@ export function setupDefiRoutes(): express.Router {
 
             const result = await protocol.withdraw(signerPublicKey, '', tokenAsset, amount);
 
+            logDefiOperation(req, 'defi.blend.withdraw', true, signerPublicKey, { asset, amount });
             res.json(result);
         } catch (error) {
+            const { asset, amount, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.blend.withdraw', false, signerPublicKey ?? null, {
+                asset, amount, error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -344,8 +390,13 @@ export function setupDefiRoutes(): express.Router {
 
             const result = await protocol.borrow(signerPublicKey, '', tokenAsset, amount);
 
+            logDefiOperation(req, 'defi.blend.borrow', true, signerPublicKey, { asset, amount });
             res.json(result);
         } catch (error) {
+            const { asset, amount, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.blend.borrow', false, signerPublicKey ?? null, {
+                asset, amount, error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -379,8 +430,13 @@ export function setupDefiRoutes(): express.Router {
 
             const result = await protocol.repay(signerPublicKey, '', tokenAsset, amount);
 
+            logDefiOperation(req, 'defi.blend.repay', true, signerPublicKey, { asset, amount });
             res.json(result);
         } catch (error) {
+            const { asset, amount, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.blend.repay', false, signerPublicKey ?? null, {
+                asset, amount, error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -418,8 +474,16 @@ export function setupDefiRoutes(): express.Router {
             }
             const result = await protocol.addLiquidity(signerPublicKey, '', tokenA, tokenB, amountA, amountB);
 
+            logDefiOperation(req, 'defi.soroswap.liquidity.add', true, signerPublicKey, {
+                assetA, assetB, amountA, amountB,
+            });
             res.json(result);
         } catch (error) {
+            const { assetA, assetB, amountA, amountB, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.soroswap.liquidity.add', false, signerPublicKey ?? null, {
+                assetA, assetB, amountA, amountB,
+                error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });
@@ -457,8 +521,16 @@ export function setupDefiRoutes(): express.Router {
             }
             const result = await protocol.removeLiquidity(signerPublicKey, '', tokenA, tokenB, poolAddress, lpAmount, minAmountA, minAmountB);
 
+            logDefiOperation(req, 'defi.soroswap.liquidity.remove', true, signerPublicKey, {
+                assetA, assetB, poolAddress, lpAmount, minAmountA, minAmountB,
+            });
             res.json(result);
         } catch (error) {
+            const { assetA, assetB, poolAddress, lpAmount, minAmountA, minAmountB, signerPublicKey } = req.body ?? {};
+            logDefiOperation(req, 'defi.soroswap.liquidity.remove', false, signerPublicKey ?? null, {
+                assetA, assetB, poolAddress, lpAmount, minAmountA, minAmountB,
+                error: error instanceof Error ? error.message : String(error),
+            });
             next(error);
         }
     });

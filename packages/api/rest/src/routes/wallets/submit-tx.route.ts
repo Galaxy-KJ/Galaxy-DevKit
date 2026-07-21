@@ -120,6 +120,29 @@ async function pollTransaction(
 }
 
 import { userSubmitTxLimiter, globalSubmitTxLimiter } from "../../middleware/rate-limit";
+import { AuditLogger } from "../../services/audit-logger";
+
+const auditLogger = new AuditLogger();
+
+function logSubmitTxEvent(
+  req: Request,
+  success: boolean,
+  userId: string | null,
+  walletId: string | null,
+  metadata: Record<string, unknown>
+): void {
+  void auditLogger.log({
+    user_id: userId,
+    action: "smart_wallet.transaction_submitted",
+    resource: `${req.baseUrl}${req.path}`,
+    resource_id: walletId,
+    ip_address: req.ip || null,
+    success,
+    severity: success ? "info" : "warning",
+    correlation_id: (req.headers["x-request-id"] as string) || null,
+    metadata,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Route
@@ -177,6 +200,10 @@ router.post(
         feeBumpTx = buildFeeBump(innerTx);
       } catch (buildErr) {
         console.error("[submit-tx] Fee-bump build failed");
+        logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
+          stage: "build_fee_bump",
+          error: "Internal error building fee-bump transaction",
+        });
         return res.status(500).json({
           error: "Internal error building fee-bump transaction",
         });
@@ -192,6 +219,10 @@ router.post(
           "[submit-tx] Stellar RPC submission failed:",
           rpcErr?.message ?? rpcErr
         );
+        logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
+          stage: "rpc_submit",
+          error: "Stellar RPC submission failed",
+        });
         return res.status(502).json({
           error: "Stellar RPC submission failed",
         });
@@ -202,6 +233,10 @@ router.post(
           "[submit-tx] Stellar RPC returned ERROR:",
           rpcResult.errorResult?.toXDR("base64")
         );
+        logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
+          stage: "rpc_submit",
+          error: "Stellar RPC returned an error",
+        });
         return res.status(502).json({
           error: "Stellar RPC returned an error",
         });
@@ -221,6 +256,11 @@ router.post(
             "[submit-tx] Transaction failed after submission:",
             confirmed.status
           );
+          logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
+            stage: "confirmation",
+            transactionHash: txHash,
+            error: "Transaction failed after submission",
+          });
           return res.status(502).json({
             error: "Transaction failed after submission",
           });
@@ -238,6 +278,11 @@ router.post(
       } catch (logErr) {
         console.error("[submit-tx] Failed to log wallet event:", logErr);
       }
+
+      logSubmitTxEvent(req, true, wallet.user_id, wallet.id, {
+        transactionHash: txHash,
+        ledger: ledger ?? null,
+      });
 
       // ---- 8. Respond -----------------------------------------------
       return res.status(200).json({
