@@ -25,6 +25,7 @@ export interface AuditEvent {
 export interface AuditQueryFilters {
   userId?: string;
   action?: string;
+  resource?: string;
   from?: Date;
   to?: Date;
   /** Opaque cursor returned as `nextCursor` from a previous page. */
@@ -134,6 +135,10 @@ export class AuditLogger {
 
       if (filters.action) {
         query = query.eq('action', filters.action);
+      }
+
+      if (filters.resource) {
+        query = query.eq('resource', filters.resource);
       }
 
       if (filters.from) {
