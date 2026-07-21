@@ -38,6 +38,7 @@ import { setupTransactionMonitoringRoutes } from './routes/monitoring/transactio
 import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
 import { setupComplianceRoutes } from './routes/compliance';
+import { setupAuditExportRoutes } from './routes/audit-exports';
 import { kycRoutes } from './routes/kyc-routes';
 import { setupHealthRoutes } from './routes/health';
 import { setupMetricsRoutes } from './routes/metrics';
@@ -181,6 +182,9 @@ class RestApiServer {
 
     // Compliance reporting tools (Issue #335 / Roadmap #67)
     router.use('/compliance', setupComplianceRoutes());
+
+    // Audit trail export with cryptographic integrity (Issue #338 / Roadmap #70)
+    router.use('/audit-exports', setupAuditExportRoutes());
 
     // KYC/AML Integration (Issue #337)
     router.use('/kyc', authenticate(), auditRequest(), kycRoutes);
