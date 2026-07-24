@@ -2439,6 +2439,10 @@ graph LR
     style Store fill:#fff3e0
 ```
 
+**CLI Local Wallet Files**:
+
+The CLI uses `tools/cli/src/utils/wallet-storage.ts` for local developer wallets. New and imported wallets are encrypted by default through `@galaxy-kj/core-invisible-wallet/encryption`; `--no-encrypt` is an explicit plaintext opt-out for disposable development only. Stored encrypted records contain the public key, network, timestamp, `encryptedSecret`, `encrypted: true`, and `encryptionProvider: "invisible-wallet"`. Tests can set `GALAXY_CONFIG_DIR` to avoid reading or writing a developer's real `~/.galaxy/wallets` directory.
+
 **Encrypted Data Structure**:
 ```typescript
 interface EncryptedData {
@@ -2731,29 +2735,40 @@ graph LR
         Create[wallet create<br/>Create new wallet]
         Import[wallet import<br/>Import from secret]
         List[wallet list<br/>List all wallets]
+        Info[wallet info<br/>Show wallet details]
+        Fund[wallet fund<br/>Friendbot testnet funding]
         Balance[wallet balance<br/>Check balance]
         Send[wallet send<br/>Send payment]
     end
 
     subgraph "Wallet Service"
-        WS[WalletService]
+        WS[WalletStorage<br/>local encrypted files]
+        IWEnc[invisible-wallet<br/>encryption]
     end
 
     subgraph "Stellar Network"
         Horizon[Horizon API]
+        Friendbot[Friendbot<br/>testnet only]
     end
 
     Create --> WS
     Import --> WS
     List --> WS
+    Info --> WS
+    Fund --> WS
     Balance --> WS
     Send --> WS
 
+    WS --> IWEnc
+    Info --> Horizon
+    Fund --> Friendbot
     WS --> Horizon
 
     style Create fill:#e8f5e9
     style WS fill:#e3f2fd
+    style IWEnc fill:#f3e5f5
     style Horizon fill:#fff3e0
+    style Friendbot fill:#fff3e0
 ```
 
 #### Oracle Commands (`galaxy oracle`)

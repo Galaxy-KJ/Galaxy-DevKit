@@ -11,6 +11,8 @@ Complete guide to managing Stellar wallets using the Galaxy CLI.
   - [Create Wallet](#create-wallet)
   - [Import Wallet](#import-wallet)
   - [List Wallets](#list-wallets)
+  - [Wallet Info](#wallet-info)
+  - [Fund Testnet Wallet](#fund-testnet-wallet)
   - [Balance](#balance)
   - [Send](#send)
   - [Encrypt Existing Wallet](#encrypt-existing-wallet)
@@ -46,7 +48,7 @@ npm install --save-dev @galaxy/cli
 Create your first wallet:
 
 ```bash
-# Create a new wallet
+# Create a new encrypted testnet wallet
 galaxy wallet create --name my-wallet --testnet
 
 # List all wallets
@@ -71,8 +73,8 @@ galaxy wallet create [options]
 - `-n, --name <name>` - Wallet name (will prompt if not provided)
 - `--testnet` - Use Stellar testnet (default)
 - `--mainnet` - Use Stellar mainnet
-- `--encrypt` - Encrypt the secret key at rest with a password (AES-256-GCM + scrypt)
-- `--password <password>` - Password for encryption (required in `--json` mode when `--encrypt` is set)
+- `--no-encrypt` - Store the secret key as plaintext (not recommended)
+- `--password <password>` - Password for encryption, or set `GALAXY_WALLET_PASSWORD` (required in `--json` mode unless `--no-encrypt` is set)
 - `--json` - Output result as JSON
 
 **Examples:**
@@ -84,14 +86,17 @@ galaxy wallet create
 # Create with specific name
 galaxy wallet create --name my-wallet
 
-# Create with encrypted-at-rest secret (prompts for password)
-galaxy wallet create --name vault --encrypt
+# Create with encrypted-at-rest secret (default; prompts for password)
+galaxy wallet create --name vault
 
 # Same, non-interactive
-galaxy wallet create --name vault --encrypt --password "correcthorsebattery" --json
+galaxy wallet create --name vault --password "correcthorsebattery" --json
 
 # Create mainnet wallet
 galaxy wallet create --name prod-wallet --mainnet
+
+# Plaintext local wallet for disposable development only
+galaxy wallet create --name scratch --testnet --no-encrypt
 
 # Create with JSON output
 galaxy wallet create --name api-wallet --json
@@ -103,8 +108,8 @@ galaxy wallet create --name api-wallet --json
   "success": true,
   "name": "my-wallet",
   "publicKey": "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  "secretKey": "SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
   "network": "testnet",
+  "encrypted": true,
   "createdAt": "2024-01-29T10:30:00.000Z",
   "path": "/home/user/.galaxy/wallets/my-wallet.json"
 }
@@ -128,8 +133,8 @@ galaxy wallet import [secret-key] [options]
 - `-n, --name <name>` - Wallet name (will prompt if not provided)
 - `--testnet` - Use Stellar testnet (default)
 - `--mainnet` - Use Stellar mainnet
-- `--encrypt` - Encrypt the secret key at rest with a password (AES-256-GCM + scrypt)
-- `--password <password>` - Password for encryption (required in `--json` mode when `--encrypt` is set)
+- `--no-encrypt` - Store the secret key as plaintext (not recommended)
+- `--password <password>` - Password for encryption, or set `GALAXY_WALLET_PASSWORD` (required in `--json` mode unless `--no-encrypt` is set)
 - `--json` - Output result as JSON
 
 **Examples:**
@@ -138,8 +143,8 @@ galaxy wallet import [secret-key] [options]
 # Import with all parameters
 galaxy wallet import SXXXXXX... --name imported-wallet
 
-# Import and encrypt at rest in one go
-galaxy wallet import --name imported --encrypt
+# Import and encrypt at rest in one go (default; prompts for password)
+galaxy wallet import --name imported
 
 # Interactive import (prompts for secret)
 galaxy wallet import
@@ -200,6 +205,60 @@ galaxy wallet list --json
     }
   ]
 }
+```
+
+---
+
+### Wallet Info
+
+Display stored wallet metadata and live balances from Horizon.
+
+**Syntax:**
+```bash
+galaxy wallet info [options]
+```
+
+**Options:**
+- `-n, --name <name>` - Wallet name. Optional if only one wallet is stored.
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Show the public key, network, creation date, and balances
+galaxy wallet info --name my-wallet
+
+# JSON output for scripts
+galaxy wallet info --name my-wallet --json
+```
+
+When the account has not been created on-chain yet, the command reports `exists: false` and an empty balance list.
+
+---
+
+### Fund Testnet Wallet
+
+Fund a locally stored testnet wallet with Stellar Friendbot. Friendbot is rejected for mainnet wallets.
+
+**Syntax:**
+```bash
+galaxy wallet fund [options]
+```
+
+**Options:**
+- `-n, --name <name>` - Wallet name. Optional if only one wallet is stored.
+- `--json` - Output result as JSON
+
+**Examples:**
+
+```bash
+# Fund a named testnet wallet
+galaxy wallet fund --name my-wallet
+
+# Create, fund, then inspect
+galaxy wallet create --name demo-wallet --testnet
+galaxy wallet fund --name demo-wallet
+galaxy wallet info --name demo-wallet
 ```
 
 ---
@@ -628,21 +687,23 @@ Wallets are stored in `~/.galaxy/wallets/` directory:
 
 ### Encryption at Rest
 
-Wallets can be stored encrypted with a password using AES-256-GCM and a scrypt-derived key. There are three entry points:
+Wallets are encrypted by default when created or imported. The CLI delegates secret-key encryption to `@galaxy-kj/core-invisible-wallet/encryption` and stores local wallet files with restricted permissions. Use `--no-encrypt` only for disposable local development wallets.
 
-- `galaxy wallet create --encrypt` — encrypt on creation
-- `galaxy wallet import --encrypt` — encrypt on import
+- `galaxy wallet create` — encrypted on creation
+- `galaxy wallet import` — encrypted on import
 - `galaxy wallet encrypt <name>` — migrate an existing plaintext wallet
+- `GALAXY_CONFIG_DIR=/tmp/galaxy-test` — override the config directory for isolated tests
 
 Encrypted wallet files have shape:
 
 ```json
 {
   "publicKey": "G...",
-  "encryptedSecret": { "salt": "...", "iv": "...", "authTag": "...", "content": "..." },
+  "encryptedSecret": "v2:...",
   "network": "testnet",
   "createdAt": "2024-01-29T10:30:00.000Z",
-  "encrypted": true
+  "encrypted": true,
+  "encryptionProvider": "invisible-wallet"
 }
 ```
 
@@ -650,7 +711,7 @@ Commands that need the secret (`wallet send`, etc.) prompt for the password on d
 
 ### Security Best Practices
 
-1. **Secret Keys**: Store secret keys securely. Prefer `--encrypt` for any wallet that holds real value.
+1. **Secret Keys**: Store secret keys encrypted. Do not use `--no-encrypt` for any wallet that holds real value.
 
 2. **Permissions**: Ensure `.galaxy` directory has appropriate permissions:
    ```bash

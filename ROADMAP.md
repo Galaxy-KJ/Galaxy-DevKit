@@ -54,7 +54,7 @@ gantt
 
 ### CLI Improvements (5 issues)
 
-- [ ] **#16** Implement wallet management commands (Issue #268 🔄)
+- [x] **#16** Implement wallet management commands (Issue #268 ✅)
 - [ ] **#17** Add protocol interaction commands (Issue #269 🔄)
 - [X] **#18** Create oracle data query commands
 - [X] **#207** Implement WebAuthn registration UI (Issue #207 ✅)
@@ -216,12 +216,12 @@ gantt
 ## 🎯 Current Status
 
 **Phase**: Phase 1 - Foundation & Core
-**Progress**: 14/20 issues completed (70% ✅)
-**Remaining**: 2 open issues + 4 CLI improvements pending
+**Progress**: 15/20 issues completed (75% ✅)
+**Remaining**: 2 open issues + 3 CLI improvements pending
 **Next Milestones**:
 - Setup integration tests infrastructure (#72)
 - Path payment improvements (#81)
-- CLI improvements (#16, #17, #19, #20)
+- CLI improvements (#17, #19, #20)
 
 ---
 
@@ -235,5 +235,5 @@ gantt
 
 ---
 
-**Last Updated**: 2026-01-29
+**Last Updated**: 2026-07-24
 **Maintained By**: Galaxy DevKit Team
