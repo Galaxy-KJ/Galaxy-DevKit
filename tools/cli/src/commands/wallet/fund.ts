@@ -6,7 +6,6 @@ import { walletStorage } from '../../utils/wallet-storage.js';
 export const fundWalletCommand = new Command('fund')
     .description('Fund a testnet wallet using friendbot')
     .option('-n, --name <name>', 'Wallet name')
-    .option('-a, --amount <amount>', 'Amount to fund in XLM', '10000')
     .option('--json', 'Output as JSON')
     .action(async (options: any) => {
         const spinner = ora('Funding wallet...').start();
@@ -44,11 +43,12 @@ export const fundWalletCommand = new Command('fund')
             }
 
             const publicKey = walletData.publicKey;
-            const amount = parseFloat(options.amount);
+            const amount = 10000;
 
             spinner.text = `Requesting ${amount} XLM from friendbot...`;
 
-            const friendbotUrl = `https://friendbot.stellar.org?addr=${publicKey}&amount=${amount}`;
+            const friendbotUrl =
+                `https://friendbot.stellar.org/?addr=${encodeURIComponent(publicKey)}`;
 
             const response = await fetch(friendbotUrl, { method: 'GET' });
 
