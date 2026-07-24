@@ -687,8 +687,13 @@ See the [examples directory](../../docs/examples/stellar-sdk/) for complete work
 - `15-sponsor-account.ts` - Create sponsored accounts
 - `16-sponsor-trustline.ts` - Create sponsored trustlines
 - `17-onboarding-flow.ts` - Complete user onboarding flow
+- `26-soroban-rpc-import.ts` - Import Soroban RPC from the current Stellar SDK namespace
 
 ## Security Notes
+
+### Soroban RPC Imports
+
+This package imports Soroban RPC types from the current `@stellar/stellar-sdk` namespace with `rpc as SorobanRpc`. Do not import `SorobanRpc` as a named export from `@stellar/stellar-sdk`; recent SDK versions expose it under `rpc`.
 
 ### `privateKey` Field Convention
 

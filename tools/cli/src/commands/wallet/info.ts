@@ -2,7 +2,12 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { walletStorage } from '../../utils/wallet-storage.js';
-import { Keypair, Horizon, Networks } from '@stellar/stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
+
+interface WalletBalance {
+    asset: string;
+    balance: string;
+}
 
 export const infoWalletCommand = new Command('info')
     .description('Display detailed wallet information')
@@ -45,13 +50,24 @@ export const infoWalletCommand = new Command('info')
                     : 'https://horizon-testnet.stellar.org'
             );
 
-            let balance = 'N/A';
+            let balances: WalletBalance[] = [];
+            let exists = false;
             try {
                 const account = await server.loadAccount(walletData.publicKey);
-                const balanceEntry = account.balances.find((b: any) => b.asset_type === 'native');
-                balance = balanceEntry ? balanceEntry.balance : 'N/A';
-            } catch (e) {
-                balance = 'Not found on network';
+                exists = true;
+                balances = account.balances.map((balance: any) => ({
+                    asset: balance.asset_type === 'native'
+                        ? 'XLM'
+                        : balance.asset_type === 'liquidity_pool_shares'
+                            ? `LP:${balance.liquidity_pool_id}`
+                            : `${balance.asset_code}:${balance.asset_issuer}`,
+                    balance: balance.balance
+                }));
+            } catch (error: any) {
+                const notFound =
+                    error?.response?.status === 404 ||
+                    error?.name === 'NotFoundError';
+                if (!notFound) throw error;
             }
 
             spinner.stop();
@@ -62,14 +78,22 @@ export const infoWalletCommand = new Command('info')
                     publicKey: walletData.publicKey,
                     network: walletData.network,
                     createdAt: walletData.createdAt,
-                    balance: balance
+                    exists,
+                    balances
                 }, null, 2));
             } else {
                 console.log(chalk.blue(`\n💼 Wallet: ${walletName}\n`));
                 console.log(chalk.gray('  Public Key: ') + walletData.publicKey);
                 console.log(chalk.gray('  Network:    ') + walletData.network);
                 console.log(chalk.gray('  Created:    ') + walletData.createdAt);
-                console.log(chalk.gray('  Balance:    ') + chalk.cyan(`${balance} XLM`));
+                if (!exists) {
+                    console.log(chalk.gray('  Balances:   ') + chalk.yellow('Account not found on network'));
+                } else {
+                    console.log(chalk.gray('  Balances:'));
+                    for (const balance of balances) {
+                        console.log(chalk.gray('    - ') + chalk.cyan(`${balance.balance} ${balance.asset}`));
+                    }
+                }
                 console.log();
             }
 

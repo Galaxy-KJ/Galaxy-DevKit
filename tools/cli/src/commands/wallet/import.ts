@@ -11,13 +11,17 @@ export const importWalletCommand = new Command('import')
     .option('-n, --name <name>', 'Wallet name')
     .option('--testnet', 'Use testnet (default)')
     .option('--mainnet', 'Use mainnet')
-    .option('--encrypt', 'Encrypt the secret key at rest with a password')
-    .option('--password <password>', 'Password for encryption (required in --json mode when --encrypt is set)')
+    .option('--no-encrypt', 'Store the secret key as plaintext (not recommended)')
+    .option('--password <password>', 'Encryption password (or set GALAXY_WALLET_PASSWORD)')
     .option('--json', 'Output as JSON')
     .action(async (secretKey: string | undefined, options: any) => {
         const spinner = ora('Importing wallet...').start();
 
         try {
+            if (options.mainnet && options.testnet) {
+                throw new Error('Choose either --mainnet or --testnet, not both');
+            }
+
             // 1. Get secret key if not provided
             let actualSecretKey = secretKey;
             if (!actualSecretKey) {
@@ -97,10 +101,12 @@ export const importWalletCommand = new Command('import')
             // 6. Optional encryption
             let encryptionPassword: string | undefined;
             if (options.encrypt) {
-                encryptionPassword = options.password;
+                encryptionPassword = options.password || process.env.GALAXY_WALLET_PASSWORD;
                 if (!encryptionPassword) {
                     if (options.json) {
-                        console.error(JSON.stringify({ error: '--password is required when using --encrypt in --json mode' }));
+                        console.error(JSON.stringify({
+                            error: '--password or GALAXY_WALLET_PASSWORD is required in --json mode'
+                        }));
                         process.exit(1);
                     }
                     spinner.stop();

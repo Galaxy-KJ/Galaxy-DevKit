@@ -43,12 +43,9 @@ describe('WalletStorage encrypted-at-rest', () => {
         const raw = await fs.readJson(storage.getWalletPath('enc-1'));
         expect(raw.encrypted).toBe(true);
         expect(raw.publicKey).toBe(data.publicKey);
-        expect(raw.encryptedSecret).toMatchObject({
-            salt: expect.any(String),
-            iv: expect.any(String),
-            authTag: expect.any(String),
-            content: expect.any(String)
-        });
+        expect(raw.encryptionProvider).toBe('invisible-wallet');
+        expect(raw.encryptedSecret).toEqual(expect.any(String));
+        expect(raw.encryptedSecret).toMatch(/^v2:/);
         expect(raw.secretKey).toBeUndefined();
         expect(JSON.stringify(raw)).not.toContain(data.secretKey);
     });

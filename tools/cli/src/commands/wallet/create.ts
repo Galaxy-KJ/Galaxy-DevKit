@@ -10,13 +10,17 @@ export const createWalletCommand = new Command('create')
     .option('-n, --name <name>', 'Wallet name')
     .option('--testnet', 'Use testnet (default)')
     .option('--mainnet', 'Use mainnet')
-    .option('--encrypt', 'Encrypt the secret key at rest with a password')
-    .option('--password <password>', 'Password for encryption (required in --json mode when --encrypt is set)')
+    .option('--no-encrypt', 'Store the secret key as plaintext (not recommended)')
+    .option('--password <password>', 'Encryption password (or set GALAXY_WALLET_PASSWORD)')
     .option('--json', 'Output as JSON')
     .action(async (options: any) => {
         const spinner = ora('Creating new wallet...').start();
 
         try {
+            if (options.mainnet && options.testnet) {
+                throw new Error('Choose either --mainnet or --testnet, not both');
+            }
+
             // 1. Generate Keypair
             const pair = Keypair.random();
             const secret = pair.secret();
@@ -64,10 +68,12 @@ export const createWalletCommand = new Command('create')
             // 5. Optional encryption
             let encryptionPassword: string | undefined;
             if (options.encrypt) {
-                encryptionPassword = options.password;
+                encryptionPassword = options.password || process.env.GALAXY_WALLET_PASSWORD;
                 if (!encryptionPassword) {
                     if (options.json) {
-                        console.error(JSON.stringify({ error: '--password is required when using --encrypt in --json mode' }));
+                        console.error(JSON.stringify({
+                            error: '--password or GALAXY_WALLET_PASSWORD is required in --json mode'
+                        }));
                         process.exit(1);
                     }
                     spinner.stop();
@@ -103,7 +109,6 @@ export const createWalletCommand = new Command('create')
                     success: true,
                     name: walletName,
                     publicKey,
-                    secretKey: secret,
                     network: walletData.network,
                     createdAt: walletData.createdAt,
                     encrypted: !!options.encrypt,
@@ -114,12 +119,12 @@ export const createWalletCommand = new Command('create')
                 console.log(chalk.blue('\n🔑 Wallet Details:'));
                 console.log(chalk.gray(`  Name: ${walletName}`));
                 console.log(chalk.gray(`  Public Key: ${publicKey}`));
-                console.log(chalk.gray(`  Secret Key: ${secret}`));
                 console.log(chalk.gray(`  Network: ${walletData.network}`));
                 console.log(chalk.gray(`  Encrypted: ${options.encrypt ? 'yes' : 'no'}`));
-                console.log(chalk.yellow('\n⚠️  WARNING: Keep your secret key safe! Do not share it with anyone.'));
                 if (options.encrypt) {
-                    console.log(chalk.yellow('⚠️  Lose the password and the secret cannot be recovered from the file.'));
+                    console.log(chalk.yellow('\n⚠️  Keep the password safe; it cannot be recovered.'));
+                } else {
+                    console.log(chalk.yellow('\n⚠️  The secret key is stored as plaintext.'));
                 }
                 console.log(chalk.gray(`  Saved to: ${walletStorage.getWalletPath(walletName)}`));
             }

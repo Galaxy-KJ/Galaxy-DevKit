@@ -10,7 +10,7 @@
 
 import {
   xdr,
-  SorobanRpc,
+  rpc as SorobanRpc,
   TransactionBuilder,
   Keypair,
   Contract,

@@ -32,7 +32,7 @@ const isV2Enabled = () => process.env.ENCRYPTION_V2_ENABLED !== 'false';
 let argon2Module: any = null;
 let argon2Available = false;
 
-(async () => {
+const argon2LoadPromise = (async () => {
   try {
     argon2Module = await import('argon2');
     argon2Available = true;
@@ -42,6 +42,10 @@ let argon2Available = false;
     );
   }
 })();
+
+async function ensureArgon2Loaded(): Promise<void> {
+  await argon2LoadPromise;
+}
 
 /**
  * Checks if Argon2 native module is available
@@ -69,6 +73,7 @@ export async function encryptPrivateKey(
   let key: Buffer;
 
   if (isV2Enabled()) {
+    await ensureArgon2Loaded();
     if (!argon2Available || !argon2Module) {
       throw new Error(
         'Argon2id unavailable — cannot create secure encryption. Install argon2 native module.'
@@ -133,6 +138,7 @@ export async function decryptPrivateKey(
   const isV2 = encryptedData.startsWith(ENCRYPTION_VERSION_PREFIX);
 
   if (isV2) {
+    await ensureArgon2Loaded();
     // v2 format: v2:salt:iv:authTag:argon2Params:ciphertext
     const parts = encryptedData.split(':');
     const [, saltB64, ivB64, authTagB64, argon2ParamsB64, encryptedB64] = parts;
