@@ -39,6 +39,17 @@ describe('buildHashChain', () => {
     const { rootHash: rootB } = buildHashChain([makeEvent({ id: '1', success: false })]);
     expect(rootA).not.toBe(rootB);
   });
+
+  it('covers the enhanced structured fields (severity, correlation_id, organization_id, resource_id)', () => {
+    const base = makeEvent({ id: '1' });
+    const { rootHash: rootA } = buildHashChain([base]);
+    const { rootHash: rootB } = buildHashChain([{ ...base, severity: 'critical' }]);
+    const { rootHash: rootC } = buildHashChain([{ ...base, correlation_id: 'req-123' }]);
+    const { rootHash: rootD } = buildHashChain([{ ...base, organization_id: 'org-1' }]);
+    const { rootHash: rootE } = buildHashChain([{ ...base, resource_id: 'wallet-1' }]);
+
+    expect(new Set([rootA, rootB, rootC, rootD, rootE]).size).toBe(5);
+  });
 });
 
 describe('verifyHashChain', () => {

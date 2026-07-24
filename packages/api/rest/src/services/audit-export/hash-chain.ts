@@ -31,11 +31,15 @@ function canonicalize(event: AuditEvent): string {
     id: event.id,
     timestamp: event.timestamp,
     user_id: event.user_id,
+    organization_id: event.organization_id ?? null,
     action: event.action,
     resource: event.resource,
+    resource_id: event.resource_id ?? null,
     ip_address: event.ip_address,
     success: event.success,
     error_code: event.error_code ?? null,
+    severity: event.severity ?? 'info',
+    correlation_id: event.correlation_id ?? null,
     metadata: event.metadata ?? null,
   });
 }

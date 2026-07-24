@@ -39,6 +39,7 @@ import { setupApprovalsRoutes } from './routes/approvals';
 import { setupTeamRoutes } from './routes/teams';
 import { setupComplianceRoutes } from './routes/compliance';
 import { setupAuditExportRoutes } from './routes/audit-exports';
+import { setupAuditLogRoutes } from './routes/audit-logs';
 import { kycRoutes } from './routes/kyc-routes';
 import { setupHealthRoutes } from './routes/health';
 import { setupMetricsRoutes } from './routes/metrics';
@@ -185,6 +186,9 @@ class RestApiServer {
 
     // Audit trail export with cryptographic integrity (Issue #338 / Roadmap #70)
     router.use('/audit-exports', setupAuditExportRoutes());
+
+    // Enhanced structured audit log query API (Issue #334)
+    router.use('/audit-logs', setupAuditLogRoutes());
 
     // KYC/AML Integration (Issue #337)
     router.use('/kyc', authenticate(), auditRequest(), kycRoutes);

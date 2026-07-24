@@ -850,6 +850,9 @@ export class InvisibleWalletService {
     resource?: string | null;
     success: boolean;
     errorCode?: string;
+    /** Defaults to 'info' on success and 'warning' on failure when omitted. */
+    severity?: 'info' | 'warning' | 'critical';
+    correlationId?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
     try {
@@ -861,6 +864,8 @@ export class InvisibleWalletService {
           ip_address: null,
           success: params.success,
           error_code: params.errorCode,
+          severity: params.severity ?? (params.success ? 'info' : 'warning'),
+          correlation_id: params.correlationId ?? null,
           metadata: this.sanitizeAuditMetadata(params.metadata),
         },
       ]);

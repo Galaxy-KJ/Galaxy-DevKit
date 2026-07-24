@@ -95,6 +95,26 @@ jest.mock('../middleware/auth', () => ({
     }
 }));
 
+// Mock AuditLogger so route tests don't need real Supabase credentials, and
+// so we can assert DeFi mutations are recorded in the audit trail. The mock's
+// `log` fn is self-contained in the factory (not an outer closure variable)
+// to avoid a TDZ hazard: `jest.mock` factories are hoisted above imports, but
+// `./defi.routes` (imported above) eagerly constructs a singleton
+// `new AuditLogger()` at module load time, before any later `const` in this
+// file would have run.
+jest.mock('../services/audit-logger', () => ({
+    AuditLogger: jest.fn().mockImplementation(() => ({
+        log: jest.fn().mockResolvedValue(undefined),
+    })),
+}));
+
+// `./defi.routes` has already been imported above by this point, so the
+// singleton `new AuditLogger()` it constructs at module load already exists
+// — safe to grab its `log` mock reference here (this statement itself runs
+// in normal textual order, well after that import).
+const mockAuditLog: jest.Mock = jest.requireMock('../services/audit-logger').AuditLogger.mock
+    .results[0].value.log;
+
 describe('DeFi Routes', () => {
     let app: express.Application;
 
@@ -370,6 +390,70 @@ describe('DeFi Routes', () => {
 
             expect(response.status).toBe(400);
             expect(response.body.error.code).toBe('VALIDATION_ERROR');
+        });
+    });
+
+    describe('Audit logging for DeFi mutations', () => {
+        it('records a successful defi.blend.supply audit event', async () => {
+            await request(app)
+                .post('/api/v1/defi/blend/supply')
+                .send({ asset: 'USDC', amount: '100', signerPublicKey: 'GD...SIGNER' });
+
+            expect(mockAuditLog).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    user_id: 'mock-user-id',
+                    action: 'defi.blend.supply',
+                    resource_id: 'GD...SIGNER',
+                    success: true,
+                    severity: 'info',
+                })
+            );
+        });
+
+        it('records a successful defi.soroswap.swap audit event', async () => {
+            await request(app)
+                .post('/api/v1/defi/swap')
+                .send({
+                    assetIn: 'XLM',
+                    assetOut: 'USDC',
+                    amountIn: '100',
+                    minAmountOut: '98',
+                    signerPublicKey: 'GD...SIGNER',
+                });
+
+            expect(mockAuditLog).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    action: 'defi.soroswap.swap',
+                    resource_id: 'GD...SIGNER',
+                    success: true,
+                })
+            );
+        });
+
+        it('records a failed audit event when the protocol call throws', async () => {
+            const { ProtocolFactory } = jest.requireMock('@galaxy-kj/core-defi-protocols');
+            ProtocolFactory.getInstance().createProtocol.mockReturnValueOnce({
+                initialize: jest.fn().mockResolvedValue(undefined),
+                supply: jest.fn().mockRejectedValue(new Error('rpc unreachable')),
+            });
+
+            await request(app)
+                .post('/api/v1/defi/blend/supply')
+                .send({ asset: 'USDC', amount: '100', signerPublicKey: 'GD...SIGNER' });
+
+            expect(mockAuditLog).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    action: 'defi.blend.supply',
+                    resource_id: 'GD...SIGNER',
+                    success: false,
+                    severity: 'warning',
+                })
+            );
+        });
+
+        it('does not log an audit event for a 400 validation failure', async () => {
+            await request(app).post('/api/v1/defi/blend/supply').send({ asset: 'USDC' });
+            expect(mockAuditLog).not.toHaveBeenCalled();
         });
     });
 });

@@ -10,12 +10,16 @@ import request from "supertest";
 // Supabase mock
 // ---------------------------------------------------------------------------
 const mockInsert = jest.fn().mockResolvedValue({ error: null });
+const mockAuditInsert = jest.fn().mockResolvedValue({ error: null });
 const mockSingle = jest.fn();
 const mockEq = jest.fn().mockReturnValue({ single: mockSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
 const mockFrom = jest.fn((table: string) => {
   if (table === "wallet_events") {
     return { insert: mockInsert };
+  }
+  if (table === "audit_logs") {
+    return { insert: mockAuditInsert };
   }
   return { select: mockSelect };
 });
@@ -132,6 +136,7 @@ describe("POST /submit-tx", () => {
     mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: FAKE_HASH });
     mockGetTransaction.mockResolvedValue({ status: "SUCCESS", ledger: 42 });
     mockInsert.mockResolvedValue({ error: null });
+    mockAuditInsert.mockResolvedValue({ error: null });
   });
 
   // ---- Success ----
@@ -162,6 +167,36 @@ describe("POST /submit-tx", () => {
   it("queries smart_wallets table (not invisible_wallets)", async () => {
     await request(buildApp()).post("/submit-tx").send(VALID_BODY).expect(200);
     expect(mockFrom).toHaveBeenCalledWith("smart_wallets");
+  });
+
+  it("writes a successful audit log entry with the wallet owner as actor", async () => {
+    await request(buildApp()).post("/submit-tx").send(VALID_BODY).expect(200);
+
+    expect(mockFrom).toHaveBeenCalledWith("audit_logs");
+    expect(mockAuditInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        user_id: "user-1",
+        resource_id: "known-wallet",
+        action: "smart_wallet.transaction_submitted",
+        success: true,
+        severity: "info",
+      }),
+    ]);
+  });
+
+  it("writes a failed audit log entry when Stellar RPC submission fails", async () => {
+    mockSendTransaction.mockRejectedValueOnce(new Error("connection refused"));
+    await request(buildApp()).post("/submit-tx").send(VALID_BODY).expect(502);
+
+    expect(mockAuditInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        user_id: "user-1",
+        resource_id: "known-wallet",
+        action: "smart_wallet.transaction_submitted",
+        success: false,
+        severity: "warning",
+      }),
+    ]);
   });
 
   // ---- 400: missing fields ----
