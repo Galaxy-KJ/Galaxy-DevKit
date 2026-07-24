@@ -7,6 +7,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import {
+    encryptPrivateKey,
+    withDecryptedKey
+} from '@galaxy-kj/core-invisible-wallet/encryption';
 
 const WALLETS_DIR = 'wallets';
 const GALAXY_DIR = '.galaxy';
@@ -29,11 +33,12 @@ export interface WalletData {
 
 export interface EncryptedWalletData {
     publicKey: string;
-    encryptedSecret: EncryptedPayload;
+    encryptedSecret: string | EncryptedPayload;
     network: 'testnet' | 'mainnet';
     createdAt: string;
     importedAt?: string;
     encrypted: true;
+    encryptionProvider?: 'invisible-wallet';
 }
 
 export interface WalletInfo {
@@ -55,7 +60,8 @@ export class WalletStorage {
      * Ensures the wallets directory exists
      */
     async ensureDir(): Promise<void> {
-        await fs.ensureDir(this.walletsDir);
+        await fs.ensureDir(this.walletsDir, 0o700);
+        await fs.chmod(this.walletsDir, 0o700);
     }
 
     /**
@@ -69,7 +75,21 @@ export class WalletStorage {
      * Get wallet file path
      */
     getWalletPath(name: string): string {
+        this.validateName(name);
         return path.join(this.walletsDir, `${name}.json`);
+    }
+
+    private validateName(name: string): void {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) {
+            throw new Error(
+                'Wallet name must be 1-64 characters and contain only letters, numbers, ".", "_" or "-".'
+            );
+        }
+    }
+
+    private async writeWalletFile(walletPath: string, data: object): Promise<void> {
+        await fs.writeJson(walletPath, data, { spaces: 2, mode: 0o600 });
+        await fs.chmod(walletPath, 0o600);
     }
 
     /**
@@ -86,25 +106,29 @@ export class WalletStorage {
     async saveWallet(name: string, data: WalletData): Promise<void> {
         await this.ensureDir();
         const walletPath = this.getWalletPath(name);
-        await fs.writeJson(walletPath, data, { spaces: 2 });
+        await this.writeWalletFile(walletPath, data);
     }
 
     /**
-     * Save wallet with secret encrypted at rest using password (AES-256-GCM + scrypt).
+     * Save wallet with the invisible-wallet module (AES-256-GCM + Argon2id).
      */
     async saveWalletEncrypted(name: string, data: WalletData, password: string): Promise<void> {
+        if (password.length < 8) {
+            throw new Error('Wallet password must be at least 8 characters');
+        }
         await this.ensureDir();
         const walletPath = this.getWalletPath(name);
-        const encryptedSecret = WalletStorage.encrypt(data.secretKey, password);
+        const encryptedSecret = await encryptPrivateKey(data.secretKey, password);
         const payload: EncryptedWalletData = {
             publicKey: data.publicKey,
             encryptedSecret,
             network: data.network,
             createdAt: data.createdAt,
             ...(data.importedAt ? { importedAt: data.importedAt } : {}),
-            encrypted: true
+            encrypted: true,
+            encryptionProvider: 'invisible-wallet'
         };
-        await fs.writeJson(walletPath, payload, { spaces: 2 });
+        await this.writeWalletFile(walletPath, payload);
     }
 
     /**
@@ -138,7 +162,13 @@ export class WalletStorage {
             if (!password) {
                 throw new Error(`Wallet '${name}' is encrypted; a password is required`);
             }
-            const secretKey = WalletStorage.decrypt(enc.encryptedSecret, password);
+            const secretKey = typeof enc.encryptedSecret === 'string'
+                ? await withDecryptedKey(
+                    enc.encryptedSecret,
+                    password,
+                    keyBuffer => keyBuffer.toString('utf8')
+                )
+                : WalletStorage.decrypt(enc.encryptedSecret, password);
             return {
                 publicKey: enc.publicKey,
                 secretKey,
