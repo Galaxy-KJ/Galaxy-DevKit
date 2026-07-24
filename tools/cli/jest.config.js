@@ -8,6 +8,7 @@ export default {
     '^@galaxy/sdk/(.*)$': '<rootDir>/packages/sdk/$1/src',
     '^@galaxy/templates/(.*)$': '<rootDir>/packages/templates/$1/src',
     '^@galaxy/tools/(.*)$': '<rootDir>/tools/$1/src',
+    '^@galaxy-kj/core-invisible-wallet/encryption$': '<rootDir>/../../packages/core/invisible-wallet/src/utils/encryption.utils.ts',
     // Resolve relative .js imports to .ts (ESM-style imports in source)
     '^(\\.\\.?/.*)\\.js$': '$1',
     // Mock node-cache for tests that load session (e.g. REPL tests)
