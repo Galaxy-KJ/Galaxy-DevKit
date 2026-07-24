@@ -52,8 +52,9 @@ export class WalletStorage {
     private walletsDir: string;
 
     constructor() {
-        const homeDir = os.homedir();
-        this.walletsDir = path.join(homeDir, GALAXY_DIR, WALLETS_DIR);
+        const galaxyDir =
+            process.env.GALAXY_CONFIG_DIR || path.join(os.homedir(), GALAXY_DIR);
+        this.walletsDir = path.join(galaxyDir, WALLETS_DIR);
     }
 
     /**
