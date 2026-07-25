@@ -125,6 +125,14 @@ export const SUPPORTED_PROTOCOLS: SupportedProtocol[] = [
     networks: ['testnet', 'mainnet'],
     capabilities: [ProtocolCapability.SWAP, ProtocolCapability.LIQUIDITY],
   },
+  {
+    id: PROTOCOL_IDS.SDEX,
+    name: PROTOCOL_NAMES[PROTOCOL_IDS.SDEX],
+    type: ProtocolType.DEX,
+    description: 'Native Stellar DEX path payments',
+    networks: ['testnet', 'mainnet'],
+    capabilities: [ProtocolCapability.SWAP],
+  },
 ];
 
 /**

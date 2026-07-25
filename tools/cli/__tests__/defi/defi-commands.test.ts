@@ -3,6 +3,12 @@ import { defiCommand } from '../../src/commands/defi/index.js';
 import { blendCommand } from '../../src/commands/defi/blend.js';
 import { swapCommand } from '../../src/commands/defi/swap.js';
 import { poolsCommand } from '../../src/commands/defi/pools.js';
+import {
+  supplyCommand,
+  withdrawCommand,
+  borrowCommand,
+  repayCommand,
+} from '../../src/commands/defi/lending.js';
 
 function resetCommandOptions(cmd: Command): void {
   const c = cmd as any;
@@ -56,6 +62,28 @@ jest.mock('../../src/utils/protocol-registry', () => {
       ledger: 12346,
       createdAt: new Date(),
       metadata: {},
+    }),
+    withdraw: jest.fn().mockResolvedValue({
+      hash: 'withdraw123456',
+      status: 'success',
+      ledger: 12348,
+      createdAt: new Date(),
+      metadata: {},
+    }),
+    repay: jest.fn().mockResolvedValue({
+      hash: 'repay123456789',
+      status: 'success',
+      ledger: 12349,
+      createdAt: new Date(),
+      metadata: {},
+    }),
+    getPosition: jest.fn().mockResolvedValue({
+      address: 'GD1234567890ABCDEF',
+      healthFactor: '1.5',
+      collateralValue: '1000',
+      debtValue: '200',
+      supplied: [{ asset: { code: 'USDC' }, amount: '100', valueUSD: '100' }],
+      borrowed: [{ asset: { code: 'XLM' }, amount: '50', valueUSD: '20' }],
     }),
     getSwapQuote: jest.fn().mockResolvedValue({
       tokenIn: { code: 'XLM', type: 'native' },
@@ -120,6 +148,7 @@ jest.mock('../../src/utils/protocol-formatter', () => ({
   outputTransactionPreview: jest.fn(),
   outputTransactionResult: jest.fn(),
   outputSwapQuote: jest.fn(),
+  outputPosition: jest.fn(),
   outputError: jest.fn(),
   outputCancelled: jest.fn(),
 }));
@@ -154,10 +183,52 @@ describe('defi command group', () => {
     expect(sub!.description()).toContain('Swap');
   });
 
+  it('should register top-level lending commands', () => {
+    for (const name of ['supply', 'withdraw', 'borrow', 'repay']) {
+      const sub = defiCommand.commands.find((c) => c.name() === name);
+      expect(sub).toBeDefined();
+    }
+  });
+
   it('should register pools subcommand', () => {
     const sub = defiCommand.commands.find((c) => c.name() === 'pools');
     expect(sub).toBeDefined();
     expect(sub!.description()).toContain('pools');
+  });
+});
+
+describe('defi lending commands', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    console.log = jest.fn();
+    console.error = jest.fn();
+    for (const cmd of [supplyCommand, withdrawCommand, borrowCommand, repayCommand]) {
+      resetCommandOptions(cmd);
+    }
+  });
+
+  afterAll(() => {
+    console.log = originalLog;
+    console.error = originalError;
+  });
+
+  it('withdraw should accept asset and amount arguments', () => {
+    const args = (withdrawCommand as any)._args;
+    expect(args.length).toBeGreaterThanOrEqual(2);
+    expect(args[0].name()).toBe('asset');
+    expect(args[1].name()).toBe('amount');
+  });
+
+  it('repay should accept asset and amount arguments', () => {
+    const args = (repayCommand as any)._args;
+    expect(args.length).toBeGreaterThanOrEqual(2);
+    expect(args[0].name()).toBe('asset');
+    expect(args[1].name()).toBe('amount');
+  });
+
+  it('should have --json flag on withdraw', () => {
+    const opt = withdrawCommand.options.find((o) => o.long === '--json');
+    expect(opt).toBeDefined();
   });
 });
 
@@ -234,6 +305,12 @@ describe('defi swap command', () => {
   it('should have --slippage option with default 1', () => {
     const opt = swapCommand.options.find((o) => o.long === '--slippage');
     expect(opt).toBeDefined();
+  });
+
+  it('should have --protocol option defaulting to soroswap', () => {
+    const opt = swapCommand.options.find((o) => o.long === '--protocol');
+    expect(opt).toBeDefined();
+    expect(opt!.defaultValue).toBe('soroswap');
   });
 });
 
