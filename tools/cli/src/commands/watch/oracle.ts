@@ -1,7 +1,8 @@
 // @ts-nocheck
 /**
  * @fileoverview Oracle monitoring command
- * @description Streams real-time price updates from oracles (mainnet = CoinGecko, testnet = mocks)
+ * @description Streams real-time price updates from an on-chain pool when available,
+ *   with a legacy aggregator fallback when no streamable pool is configured.
  * @author Galaxy DevKit Team
  */
 
@@ -10,16 +11,30 @@ import chalk from 'chalk';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { createOracleAggregator } from '../../utils/oracle-registry.js';
 import { MedianStrategy } from '@galaxy-kj/core-oracles';
+import { getBlendConfig } from '../../utils/protocol-registry.js';
+import { timer, defer, of, from } from 'rxjs';
+import { switchMap, catchError, timeout, retry } from 'rxjs/operators';
 
 const oracleWatchCommand = new Command('oracle-watch')
   .description('Stream real-time price updates for a symbol')
   .argument('<symbol>', 'Asset symbol (e.g. XLM, BTC)')
   .option('--network <type>', 'Network (testnet/mainnet)', 'testnet')
+  .option('--pool-id <id>', 'Stream price from this liquidity pool id')
   .option('--interval <seconds>', 'Update interval in seconds', '5')
   .option('--json', 'Output stream as JSON instead of dashboard', false)
   .action(async (symbol, options) => {
     const upperSymbol = symbol.toUpperCase();
     const intervalMs = parseInt(options.interval) * 1000;
+    const poolId =
+      options.poolId?.trim() ||
+      getBlendConfig(options.network as 'testnet' | 'mainnet').contractAddresses.pool?.trim() ||
+      '';
+
+    if (poolId) {
+      await runSseOracleWatch(upperSymbol, poolId, options);
+      return;
+    }
+
     const aggregator = await createOracleAggregator({ network: options.network });
     aggregator.setStrategy(new MedianStrategy());
 
@@ -66,8 +81,20 @@ const oracleWatchCommand = new Command('oracle-watch')
         }
       };
 
-      fetchAndPrint();
-      setInterval(fetchAndPrint, intervalMs);
+      timer(0, intervalMs)
+        .pipe(
+          switchMap(() =>
+            defer(() => from(fetchAndPrint())).pipe(
+              timeout({ first: 10000, each: 10000 }),
+              retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
+              catchError(err => {
+                console.error(err);
+                return of(null);
+              })
+            )
+          )
+        )
+        .subscribe();
       return;
     }
 
@@ -155,12 +182,115 @@ const oracleWatchCommand = new Command('oracle-watch')
       }
     };
 
-    // Initial fetch
-    await updatePrice();
-
-    // Set up interval
-    setInterval(updatePrice, intervalMs);
+    // Setup timer stream
+    timer(0, intervalMs)
+      .pipe(
+        switchMap(() =>
+          defer(() => from(updatePrice())).pipe(
+            timeout({ first: 10000, each: 10000 }),
+            retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
+            catchError(err => {
+              logBox.log(chalk.red(`[STREAM ERROR] ${err.message}`));
+              ui.render();
+              return of(null);
+            })
+          )
+        )
+      )
+      .subscribe();
     ui.render();
   });
+
+async function runSseOracleWatch(
+  upperSymbol: string,
+  poolId: string,
+  options: { network: 'testnet' | 'mainnet'; json: boolean; interval: string }
+) {
+  const streamManager = new (await import('../../utils/stream-manager.js')).StreamManager({
+    network: options.network,
+  });
+  const intervalMs = Math.max(1000, parseInt(options.interval, 10) * 1000);
+  let lastPrice: number | null = null;
+
+  const fetchPrice = async () => {
+    const pool = await streamManager
+      .getServer()
+      .liquidityPools()
+      .liquidityPool(poolId)
+      .call();
+
+    const reserves = (pool.reserves ?? []) as Array<{ asset: string; amount: string }>;
+    if (reserves.length < 2) {
+      throw new Error(`Pool ${poolId} does not expose two reserves`);
+    }
+
+    const base = reserves[0];
+    const quote = reserves[1];
+    const baseAmount = Number.parseFloat(base.amount);
+    const quoteAmount = Number.parseFloat(quote.amount);
+    if (!Number.isFinite(baseAmount) || !Number.isFinite(quoteAmount) || baseAmount <= 0) {
+      throw new Error('Unable to derive price from pool reserves');
+    }
+
+    return {
+      price: quoteAmount / baseAmount,
+      reserveBase: base,
+      reserveQuote: quote,
+    };
+  };
+
+  const emit = (tick: {
+    symbol: string;
+    price?: number;
+    change?: number;
+    changePercent?: number;
+    error?: string;
+    timestamp: string;
+  }) => {
+    if (options.json) {
+      console.log(JSON.stringify(tick));
+      return;
+    }
+    console.log(
+      chalk.cyan(`[${new Date(tick.timestamp).toLocaleTimeString()}]`) +
+        ` ${upperSymbol}: ` +
+        (tick.error ? chalk.red(tick.error) : chalk.bold(`$${tick.price?.toFixed(6) ?? '?'}`))
+    );
+  };
+
+  emit({ symbol: upperSymbol, timestamp: new Date().toISOString() });
+
+  timer(0, intervalMs)
+    .pipe(
+      switchMap(() =>
+        defer(() => from(fetchPrice())).pipe(
+          timeout({ first: 10000, each: 10000 }),
+          retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
+          catchError(err => {
+            emit({
+              symbol: upperSymbol,
+              error: err?.message || 'Oracle stream error',
+              timestamp: new Date().toISOString(),
+            });
+            return of(null);
+          })
+        )
+      )
+    )
+    .subscribe(result => {
+      if (!result) return;
+      const change = lastPrice !== null ? result.price - lastPrice : 0;
+      const changePercent =
+        lastPrice !== null && lastPrice !== 0 ? (change / lastPrice) * 100 : 0;
+      emit({
+        symbol: upperSymbol,
+        price: result.price,
+        change,
+        changePercent,
+        timestamp: new Date().toISOString(),
+      });
+      lastPrice = result.price;
+    });
+}
 
 export { oracleWatchCommand };
