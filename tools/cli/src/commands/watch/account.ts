@@ -37,9 +37,45 @@ accountWatchCommand
 
     if (options.json) {
       console.log(chalk.blue(`Watching account: ${cleanAddress} (JSON mode)`));
-      streamManager.watchAccountPayments(cleanAddress).subscribe({
-        next: payment => console.log(JSON.stringify(payment)),
-        error: err => console.error(chalk.red('Stream Error:'), err),
+      let balanceRefresh: Promise<void> = Promise.resolve();
+
+      const emitBalance = async () => {
+        try {
+          const account = await streamManager.loadAccount(cleanAddress);
+          console.log(
+            JSON.stringify({
+              address: cleanAddress,
+              balances: account.balances,
+              timestamp: new Date().toISOString(),
+            })
+          );
+        } catch (err: any) {
+          console.log(
+            JSON.stringify({
+              address: cleanAddress,
+              error: err?.message || 'Unknown error',
+              timestamp: new Date().toISOString(),
+            })
+          );
+        }
+      };
+
+      await emitBalance();
+      streamManager.watchAccountEffects(cleanAddress).subscribe({
+        next: () => {
+          balanceRefresh = balanceRefresh
+            .catch(() => undefined)
+            .then(() => emitBalance());
+        },
+        error: err => {
+          console.log(
+            JSON.stringify({
+              address: cleanAddress,
+              error: err?.message || 'Stream Error',
+              timestamp: new Date().toISOString(),
+            })
+          );
+        },
       });
       return;
     }
@@ -69,9 +105,8 @@ accountWatchCommand
     logBox.log(chalk.yellow(`[*] Starting monitor for ${cleanAddress}`));
     logBox.log(chalk.gray(`[*] Press 'q' or 'Ctrl+C' to stop`));
 
-    // Poll for balance
-    const pollInterval = parseInt(options.interval) * 1000;
     let lastBalances: Record<string, string> = {};
+    let balanceRefresh: Promise<void> = Promise.resolve();
 
     const fetchBalance = async () => {
       try {
@@ -108,7 +143,19 @@ accountWatchCommand
     };
 
     fetchBalance();
-    setInterval(fetchBalance, pollInterval);
+    
+    // Subscribe to account effects so balance refreshes happen on-chain events.
+    streamManager.watchAccountEffects(cleanAddress).subscribe({
+      next: () => {
+        balanceRefresh = balanceRefresh
+          .catch(() => undefined)
+          .then(() => fetchBalance());
+      },
+      error: err => {
+        logBox.log(chalk.red(`[EFFECTS STREAM ERROR] ${err.message}`));
+        ui.render();
+      },
+    });
 
     // Subscribe to payments
     streamManager.watchAccountPayments(cleanAddress).subscribe({

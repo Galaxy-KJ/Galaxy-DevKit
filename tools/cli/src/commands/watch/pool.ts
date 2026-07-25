@@ -1,11 +1,9 @@
 /**
  * @fileoverview Liquidity pool monitoring command (`galaxy watch pool <id>`).
  *
- * Polls Horizon's `/liquidity_pools/{id}` endpoint on a fixed interval and
- * surfaces reserve and price changes. Horizon does not expose a streaming
- * endpoint for pools, so polling is the only option — the loop is rebuilt to
- * survive transient RPC errors and prints diagnostic ALERTs whenever
- * reserves change between ticks.
+ * Watches Horizon liquidity-pool trade events and refreshes the pool snapshot
+ * when a trade is observed. This keeps the terminal responsive without
+ * hammering the pool endpoint on a fixed interval.
  *
  * Supports both `--json` (one JSON tick per line) and dashboard output, in
  * keeping with the rest of the `galaxy watch` family.
@@ -45,7 +43,6 @@ interface PoolWatchOptions {
 interface PoolPollDeps {
   streamManager?: StreamManager;
   ui?: { logBox?: { log: (line: string) => void }; render?: () => void };
-  sleep?: (ms: number) => Promise<void>;
   maxTicks?: number;
 }
 
@@ -80,28 +77,83 @@ export async function runPoolWatch(
 
   const stream = deps.streamManager ?? new StreamManager({ network: options.network });
   const handler = options.json ? jsonHandler() : dashboardHandler(cleanId, options, deps.ui);
-
-  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  let ticksRemaining = deps.maxTicks ?? Number.POSITIVE_INFINITY;
+  const maxTicks = deps.maxTicks ?? Number.POSITIVE_INFINITY;
+  let emittedTicks = 0;
   let previous: PoolReserve[] | undefined;
+  let tradeQueue: Promise<void> = Promise.resolve();
 
   if (options.json) {
     handler.emit({ poolId: cleanId, timestamp: new Date().toISOString() });
   }
 
-  while (ticksRemaining > 0) {
-    const next = await pollOnce(stream, cleanId);
-    if (next.error) {
-      handler.emit(next);
-    } else {
-      const changes = previous ? diffReserves(previous, next.reserves ?? []) : [];
-      handler.emit({ ...next, changes });
-      previous = next.reserves;
-    }
-    ticksRemaining -= 1;
-    if (ticksRemaining <= 0) break;
-    await sleep(intervalSec * 1000);
-  }
+  return new Promise<void>((resolve) => {
+    const fetchAndEmit = async (reason: 'initial' | 'trade') => {
+      const next = await pollOnce(stream, cleanId);
+      if (next.error) {
+        handler.emit(next);
+      } else {
+        const changes = previous ? diffReserves(previous, next.reserves ?? []) : [];
+        handler.emit({ ...next, changes });
+        previous = next.reserves;
+      }
+
+      emittedTicks += 1;
+      if (emittedTicks >= maxTicks) {
+        resolve();
+      }
+    };
+
+    const scheduleFetch = (reason: 'initial' | 'trade') => {
+      tradeQueue = tradeQueue
+        .catch(() => undefined)
+        .then(() => fetchAndEmit(reason));
+      return tradeQueue;
+    };
+
+    scheduleFetch('initial').then(() => {
+      if (emittedTicks >= maxTicks) return;
+
+      const watchTrades = (stream as any).watchLiquidityPoolTrades?.bind(stream);
+      if (!watchTrades) {
+        const pump = async () => {
+          if (emittedTicks >= maxTicks) {
+            resolve();
+            return;
+          }
+          await new Promise((r) => setTimeout(r, intervalSec * 1000));
+          await scheduleFetch('trade');
+          if (emittedTicks < maxTicks) {
+            void pump();
+          }
+        };
+
+        void pump();
+        return;
+      }
+
+      const sub = watchTrades(cleanId).subscribe({
+        next: () => {
+          if (emittedTicks >= maxTicks) {
+            sub.unsubscribe();
+            resolve();
+            return;
+          }
+          void scheduleFetch('trade').then(() => {
+            if (emittedTicks >= maxTicks) {
+              sub.unsubscribe();
+            }
+          });
+        },
+        error: (err) => {
+          handler.emit({
+            poolId: cleanId,
+            error: `[STREAM ERROR] ${err.message}`,
+            timestamp: new Date().toISOString(),
+          });
+        },
+      });
+    });
+  });
 }
 
 async function pollOnce(stream: StreamManager, poolId: string): Promise<PoolTick> {
