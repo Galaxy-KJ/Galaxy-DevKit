@@ -37,6 +37,8 @@ accountWatchCommand
 
     if (options.json) {
       console.log(chalk.blue(`Watching account: ${cleanAddress} (JSON mode)`));
+      let balanceRefresh: Promise<void> = Promise.resolve();
+
       const emitBalance = async () => {
         try {
           const account = await streamManager.loadAccount(cleanAddress);
@@ -60,9 +62,20 @@ accountWatchCommand
 
       await emitBalance();
       streamManager.watchAccountEffects(cleanAddress).subscribe({
-        next: () => emitBalance(),
-        error: err =>
-          console.error(chalk.red('Stream Error:'), err?.message || err),
+        next: () => {
+          balanceRefresh = balanceRefresh
+            .catch(() => undefined)
+            .then(() => emitBalance());
+        },
+        error: err => {
+          console.log(
+            JSON.stringify({
+              address: cleanAddress,
+              error: err?.message || 'Stream Error',
+              timestamp: new Date().toISOString(),
+            })
+          );
+        },
       });
       return;
     }
@@ -93,6 +106,7 @@ accountWatchCommand
     logBox.log(chalk.gray(`[*] Press 'q' or 'Ctrl+C' to stop`));
 
     let lastBalances: Record<string, string> = {};
+    let balanceRefresh: Promise<void> = Promise.resolve();
 
     const fetchBalance = async () => {
       try {
@@ -132,7 +146,11 @@ accountWatchCommand
     
     // Subscribe to account effects so balance refreshes happen on-chain events.
     streamManager.watchAccountEffects(cleanAddress).subscribe({
-      next: () => fetchBalance(),
+      next: () => {
+        balanceRefresh = balanceRefresh
+          .catch(() => undefined)
+          .then(() => fetchBalance());
+      },
       error: err => {
         logBox.log(chalk.red(`[EFFECTS STREAM ERROR] ${err.message}`));
         ui.render();

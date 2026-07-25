@@ -80,6 +80,7 @@ export async function runPoolWatch(
   const maxTicks = deps.maxTicks ?? Number.POSITIVE_INFINITY;
   let emittedTicks = 0;
   let previous: PoolReserve[] | undefined;
+  let tradeQueue: Promise<void> = Promise.resolve();
 
   if (options.json) {
     handler.emit({ poolId: cleanId, timestamp: new Date().toISOString() });
@@ -102,7 +103,14 @@ export async function runPoolWatch(
       }
     };
 
-    fetchAndEmit('initial').then(() => {
+    const scheduleFetch = (reason: 'initial' | 'trade') => {
+      tradeQueue = tradeQueue
+        .catch(() => undefined)
+        .then(() => fetchAndEmit(reason));
+      return tradeQueue;
+    };
+
+    scheduleFetch('initial').then(() => {
       if (emittedTicks >= maxTicks) return;
 
       const watchTrades = (stream as any).watchLiquidityPoolTrades?.bind(stream);
@@ -112,7 +120,8 @@ export async function runPoolWatch(
             resolve();
             return;
           }
-          await fetchAndEmit('trade');
+          await new Promise((r) => setTimeout(r, intervalSec * 1000));
+          await scheduleFetch('trade');
           if (emittedTicks < maxTicks) {
             void pump();
           }
@@ -123,16 +132,17 @@ export async function runPoolWatch(
       }
 
       const sub = watchTrades(cleanId).subscribe({
-        next: async () => {
+        next: () => {
           if (emittedTicks >= maxTicks) {
             sub.unsubscribe();
             resolve();
             return;
           }
-          await fetchAndEmit('trade');
-          if (emittedTicks >= maxTicks) {
-            sub.unsubscribe();
-          }
+          void scheduleFetch('trade').then(() => {
+            if (emittedTicks >= maxTicks) {
+              sub.unsubscribe();
+            }
+          });
         },
         error: (err) => {
           handler.emit({
@@ -140,7 +150,6 @@ export async function runPoolWatch(
             error: `[STREAM ERROR] ${err.message}`,
             timestamp: new Date().toISOString(),
           });
-          resolve();
         },
       });
     });

@@ -212,6 +212,54 @@ export class StreamManager {
   }
 
   /**
+   * Stream account effects with auto-reconnection
+   */
+  watchAccountEffects(
+    address: string,
+    config: StreamConfig = {}
+  ): Observable<StellarSDK.Horizon.ServerApi.EffectRecord> {
+    const cleanAddress = address.trim();
+
+    return this.createReconnectingStream<StellarSDK.Horizon.ServerApi.EffectRecord>(
+      (onMessage, onError) => {
+        return this.server
+          .effects()
+          .forAccount(cleanAddress)
+          .cursor('now')
+          .stream({
+            onmessage: effect => onMessage(effect),
+            onerror: error => onError(error),
+          });
+      },
+      config
+    );
+  }
+
+  /**
+   * Stream liquidity pool trades with auto-reconnection
+   */
+  watchLiquidityPoolTrades(
+    poolId: string,
+    config: StreamConfig = {}
+  ): Observable<StellarSDK.Horizon.ServerApi.TradeRecord> {
+    const cleanPoolId = poolId.trim().toLowerCase();
+
+    return this.createReconnectingStream<StellarSDK.Horizon.ServerApi.TradeRecord>(
+      (onMessage, onError) => {
+        return this.server
+          .trades()
+          .forLiquidityPool(cleanPoolId)
+          .cursor('now')
+          .stream({
+            onmessage: trade => onMessage(trade),
+            onerror: error => onError(error),
+          });
+      },
+      config
+    );
+  }
+
+  /**
    * Watch a specific transaction until settled with configurable timeout
    */
   watchTransaction(

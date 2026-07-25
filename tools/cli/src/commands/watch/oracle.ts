@@ -1,8 +1,8 @@
 // @ts-nocheck
 /**
  * @fileoverview Oracle monitoring command
- * @description Streams real-time price updates from an on-chain pool when available,
- *   with a legacy aggregator fallback when no streamable pool is configured.
+ * @description Polls oracle prices on a timer and, when configured with a liquidity
+ *   pool, derives prices from live reserve snapshots with retry and timeout handling.
  * @author Galaxy DevKit Team
  */
 
@@ -81,19 +81,7 @@ const oracleWatchCommand = new Command('oracle-watch')
         }
       };
 
-      timer(0, intervalMs)
-        .pipe(
-          switchMap(() =>
-            defer(() => from(fetchAndPrint())).pipe(
-              timeout({ first: 10000, each: 10000 }),
-              retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
-              catchError(err => {
-                console.error(err);
-                return of(null);
-              })
-            )
-          )
-        )
+      pollWithBackoff(fetchAndPrint, intervalMs, err => console.error(err))
         .subscribe();
       return;
     }
@@ -183,20 +171,14 @@ const oracleWatchCommand = new Command('oracle-watch')
     };
 
     // Setup timer stream
-    timer(0, intervalMs)
-      .pipe(
-        switchMap(() =>
-          defer(() => from(updatePrice())).pipe(
-            timeout({ first: 10000, each: 10000 }),
-            retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
-            catchError(err => {
-              logBox.log(chalk.red(`[STREAM ERROR] ${err.message}`));
-              ui.render();
-              return of(null);
-            })
-          )
-        )
-      )
+    pollWithBackoff(
+      updatePrice,
+      intervalMs,
+      err => {
+        logBox.log(chalk.red(`[STREAM ERROR] ${err.message}`));
+        ui.render();
+      }
+    )
       .subscribe();
     ui.render();
   });
@@ -260,23 +242,13 @@ async function runSseOracleWatch(
 
   emit({ symbol: upperSymbol, timestamp: new Date().toISOString() });
 
-  timer(0, intervalMs)
-    .pipe(
-      switchMap(() =>
-        defer(() => from(fetchPrice())).pipe(
-          timeout({ first: 10000, each: 10000 }),
-          retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
-          catchError(err => {
-            emit({
-              symbol: upperSymbol,
-              error: err?.message || 'Oracle stream error',
-              timestamp: new Date().toISOString(),
-            });
-            return of(null);
-          })
-        )
-      )
-    )
+  pollWithBackoff(fetchPrice, intervalMs, err => {
+    emit({
+      symbol: upperSymbol,
+      error: err?.message || 'Oracle stream error',
+      timestamp: new Date().toISOString(),
+    });
+  })
     .subscribe(result => {
       if (!result) return;
       const change = lastPrice !== null ? result.price - lastPrice : 0;
@@ -290,7 +262,26 @@ async function runSseOracleWatch(
         timestamp: new Date().toISOString(),
       });
       lastPrice = result.price;
-    });
+  });
+}
+
+function pollWithBackoff<T>(
+  fn: () => Promise<T>,
+  intervalMs: number,
+  onError: (err: any) => void
+) {
+  return timer(0, intervalMs).pipe(
+    switchMap(() =>
+      defer(() => from(fn())).pipe(
+        timeout({ first: 10000, each: 10000 }),
+        retry({ count: 2, delay: (_, retryCount) => timer(500 * retryCount) }),
+        catchError(err => {
+          onError(err);
+          return of(null);
+        })
+      )
+    )
+  );
 }
 
 export { oracleWatchCommand };
