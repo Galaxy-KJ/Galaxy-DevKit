@@ -129,27 +129,50 @@ See [Oracle CLI reference](../cli/oracle.md) for the full command reference.
 
 ## Layer 2 — On-chain Soroban oracle
 
-> **Status:** The on-chain Soroban oracle contract is tracked in issue #167. The TypeScript interface described here matches the planned contract surface.
-
-The on-chain oracle stores a price feed on Stellar/Soroban so that other Soroban contracts can read price data directly without an off-chain call.
+The on-chain oracle (`packages/contracts/price-oracle`) stores a bounded price-history ring buffer per asset pair on Stellar/Soroban, so other Soroban contracts — and DeFi integrations that need manipulation-resistant pricing — can read price data and a Time-Weighted Average Price (TWAP) directly without an off-chain call.
 
 ### Contract interface
 
 ```rust
-// Soroban oracle contract (planned — issue #167)
-pub fn set_price(env: Env, asset: Symbol, price: i128, timestamp: u64);
-pub fn get_price(env: Env, asset: Symbol) -> Option<PriceData>;
-pub fn get_prices(env: Env, assets: Vec<Symbol>) -> Vec<Option<PriceData>>;
+// packages/contracts/price-oracle — deployed contract surface
+pub fn initialize(env: &Env, admin: Address);
+pub fn add_pusher(env: &Env, admin: Address, pusher: Address);
+pub fn remove_pusher(env: &Env, admin: Address, pusher: Address);
+
+pub fn push_price(env: &Env, pusher: Address, base: Symbol, quote: Symbol, price: i128);
+
+pub fn get_price(env: &Env, base: Symbol, quote: Symbol) -> PriceEntry;
+pub fn get_price_history(env: &Env, base: Symbol, quote: Symbol) -> Vec<PriceEntry>;
+pub fn get_price_checked(env: &Env, base: Symbol, quote: Symbol, max_age_seconds: u64) -> PriceResult;
+pub fn get_price_strict(env: &Env, base: Symbol, quote: Symbol, max_age_seconds: u64) -> PriceEntry;
+pub fn get_all_prices(env: &Env) -> Map<(Symbol, Symbol), PriceEntry>;
+
+// TWAP — manipulation-resistant pricing
+pub fn get_twap(env: &Env, base: Symbol, quote: Symbol) -> i128;
+pub fn get_twap_window(env: &Env, base: Symbol, quote: Symbol, window_seconds: u64) -> i128;
+pub fn get_twap_5m(env: &Env, base: Symbol, quote: Symbol) -> i128;
+pub fn get_twap_15m(env: &Env, base: Symbol, quote: Symbol) -> i128;
+pub fn get_twap_1h(env: &Env, base: Symbol, quote: Symbol) -> i128;
 ```
 
-### TypeScript SDK usage (planned)
+Prices are scaled by 1,000,000 (six implied decimals). Price history is a fixed-capacity ring buffer (`TWAP_WINDOW_SIZE = 10` observations per pair) — `get_twap_window` computes a time-weighted average over the requested window using whichever of those observations fall inside it, correctly holding the last known price constant across gaps larger than the window.
+
+### TypeScript SDK usage
 
 ```ts
-import { OracleAggregator } from '@galaxy-kj/core-oracles';
+import { OnChainOracleSource, verifyOnChainTwap } from '@galaxy-kj/core-oracles';
 
-// Once the on-chain oracle contract is deployed, the SDK will expose:
-const price = await oracle.getPrice('XLM/USDC');
-// Returns: { price: number, timestamp: Date, confidence: number }
+const source = new OnChainOracleSource(contractId, rpcUrl);
+
+const price = await source.getPrice('XLM/USDC');
+// { price: number, timestamp: Date, source: 'on-chain-oracle', metadata: {...} }
+
+const twap5m = await source.getTwapWindow('XLM/USDC', 300);
+
+// Independently recompute the TWAP from raw history and compare against the
+// contract's own get_twap_window result, to catch a manipulated/diverging value.
+const verification = await verifyOnChainTwap(source, 'XLM/USDC', 300);
+// { matches: boolean, onChainTwap, recomputedTwap, diffBps, history }
 ```
 
 ### Update cadence

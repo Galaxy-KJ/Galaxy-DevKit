@@ -2,7 +2,7 @@
 //!
 //! All SDK-annotated items live here so that `lib.rs` can stay focused on logic.
 
-use soroban_sdk::{contracterror, contracttype, Address};
+use soroban_sdk::{contracterror, contracttype, Address, Env, Vec};
 
 // ---------------------------------------------------------------------------
 // Error codes
@@ -74,4 +74,71 @@ pub struct PriceResult {
     pub age_seconds: u64,
     /// `true` when `age_seconds` exceeds the requested `max_age` threshold.
     pub is_stale: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Ring buffer
+// ---------------------------------------------------------------------------
+
+/// Fixed-capacity circular buffer of [`PriceEntry`] observations for one pair.
+///
+/// Unlike a plain `Vec` that gets rebuilt (read + copy + write of every
+/// element) each time it overflows, this buffer overwrites the oldest slot
+/// in place once `count` reaches capacity — writes become O(1) instead of
+/// O(capacity). Chronological ordering is only reconstructed on read via
+/// [`PriceRingBuffer::chronological`], which is the cheaper place to pay
+/// that cost since reads don't consume write-fee budget.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceRingBuffer {
+    /// Backing storage. Grows via `push_back` until it reaches capacity,
+    /// after which entries are overwritten in place by index.
+    pub entries: Vec<PriceEntry>,
+    /// Index of the next slot to overwrite once the buffer is full.
+    /// Meaningless while `count < entries.len()`'s capacity.
+    pub head: u32,
+    /// Number of valid entries currently stored (`<= capacity`).
+    pub count: u32,
+}
+
+impl PriceRingBuffer {
+    /// Create an empty buffer.
+    pub fn new(env: &Env) -> Self {
+        PriceRingBuffer {
+            entries: Vec::new(env),
+            head: 0,
+            count: 0,
+        }
+    }
+
+    /// Push a new entry, evicting the oldest one in place once `capacity`
+    /// is reached.
+    pub fn push(&mut self, entry: PriceEntry, capacity: u32) {
+        if self.count < capacity {
+            self.entries.push_back(entry);
+            self.count += 1;
+            self.head = self.count % capacity;
+        } else {
+            self.entries.set(self.head, entry);
+            self.head = (self.head + 1) % capacity;
+        }
+    }
+
+    /// Return all stored entries ordered oldest-to-newest.
+    ///
+    /// `capacity` must be the same value passed to [`PriceRingBuffer::push`]
+    /// (i.e. `TWAP_WINDOW_SIZE`) — it cannot be inferred from `entries.len()`
+    /// alone, since that also equals `count` while the buffer is still filling.
+    pub fn chronological(&self, env: &Env, capacity: u32) -> Vec<PriceEntry> {
+        if self.count < capacity {
+            // Never wrapped yet — insertion order is already chronological.
+            return self.entries.clone();
+        }
+        let mut ordered: Vec<PriceEntry> = Vec::new(env);
+        for i in 0..capacity {
+            let idx = (self.head + i) % capacity;
+            ordered.push_back(self.entries.get(idx).unwrap());
+        }
+        ordered
+    }
 }

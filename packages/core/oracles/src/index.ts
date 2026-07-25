@@ -52,3 +52,7 @@ export * from './utils/retry-utils.js';
 export * from './sources/mocks/MockOracleSources.js';
 export * from './sources/real/index.js';
 export { BaseSource, type BaseSourceConfig } from './sources/base-source.js';
+
+// TWAP verification
+export { computeTwapWindow, type TwapObservation } from './verification/twap-math.js';
+export { verifyOnChainTwap, type TwapVerificationResult } from './verification/twap-verifier.js';
