@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
 import {
   getProtocolInstance,
@@ -15,15 +14,36 @@ import {
   outputError,
   outputCancelled,
 } from '../../utils/protocol-formatter.js';
-import { PROTOCOL_IDS, Asset } from '@galaxy-kj/core-defi-protocols';
+import { PROTOCOL_IDS, PROTOCOL_NAMES, Asset } from '@galaxy-kj/core-defi-protocols';
 
 interface SwapOptions {
   wallet?: string;
   network: string;
+  protocol: string;
   json?: boolean;
   yes?: boolean;
   slippage: string;
   quoteOnly?: boolean;
+}
+
+const SWAP_PROTOCOLS: Record<string, string> = {
+  soroswap: PROTOCOL_IDS.SOROSWAP,
+  sdex: PROTOCOL_IDS.SDEX,
+};
+
+function resolveSwapProtocol(protocolOption: string): string {
+  const id = protocolOption.toLowerCase();
+  const protocolId = SWAP_PROTOCOLS[id];
+  if (!protocolId) {
+    throw new Error(
+      `Swap protocol '${protocolOption}' is not supported. Use soroswap or sdex.`
+    );
+  }
+  return protocolId;
+}
+
+function swapProtocolDisplayName(protocolId: string): string {
+  return PROTOCOL_NAMES[protocolId as keyof typeof PROTOCOL_NAMES] ?? protocolId;
 }
 
 function resolveAsset(assetCode: string): Asset {
@@ -38,11 +58,12 @@ function resolveAsset(assetCode: string): Asset {
 }
 
 export const swapCommand = new Command('swap')
-  .description('Swap tokens via Soroswap DEX')
+  .description('Swap tokens via Soroswap or Stellar DEX (SDEX)')
   .argument('<from-asset>', 'Source asset code (e.g., XLM)')
   .argument('<to-asset>', 'Destination asset code (e.g., USDC)')
   .argument('<amount>', 'Amount of source asset to swap')
   .option('-w, --wallet <name>', 'Wallet name to use')
+  .option('-p, --protocol <name>', 'DEX protocol (soroswap or sdex)', 'soroswap')
   .option('--network <network>', 'Network (testnet/mainnet)', 'testnet')
   .option('--json', 'Output as JSON')
   .option('-y, --yes', 'Skip confirmation prompt')
@@ -59,8 +80,10 @@ export const swapCommand = new Command('swap')
         throw new Error('Network must be either "testnet" or "mainnet"');
       }
       const network = options.network as 'testnet' | 'mainnet';
+      const protocolId = resolveSwapProtocol(options.protocol);
+      const protocolName = swapProtocolDisplayName(protocolId);
 
-      const protocol = await getProtocolInstance(PROTOCOL_IDS.SOROSWAP, network);
+      const protocol = await getProtocolInstance(protocolId, network);
       await protocol.initialize();
 
       const assetIn = resolveAsset(fromAsset);
@@ -85,7 +108,7 @@ export const swapCommand = new Command('swap')
 
       const preview: TransactionPreview = {
         operation: 'SWAP',
-        protocol: 'Soroswap',
+        protocol: protocolName,
         network,
         estimatedFee: '100',
         walletAddress: wallet.publicKey,

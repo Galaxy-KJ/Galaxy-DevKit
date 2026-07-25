@@ -149,7 +149,7 @@ program
     console.log(chalk.gray('  galaxy oracle <cmd>    Oracle price data'));
     console.log(chalk.gray('  galaxy protocol <cmd>  DeFi protocol interactions'));
     console.log(chalk.gray('  galaxy blend <cmd>     Blend Protocol DeFi'));
-    console.log(chalk.gray('  galaxy defi <cmd>      DeFi CLI (blend, swap, pools)'));
+    console.log(chalk.gray('  galaxy defi <cmd>      DeFi CLI (supply, borrow, swap, pools)'));
     console.log(chalk.gray('  galaxy help            Show this help'));
     console.log(chalk.gray('\nRun galaxy <command> --help for detailed command help.'));
   });
