@@ -39,6 +39,8 @@ export interface UserInfo {
   userId: string;
   email: string;
   permissions: string[];
+  /** RBAC role (e.g. 'admin', 'manager', 'operator', 'auditor'). */
+  role?: string;
 }
 
 /**
