@@ -4,6 +4,7 @@
 
 import { OracleAggregator } from './OracleAggregator.js';
 import { MedianStrategy } from './strategies/MedianStrategy.js';
+import { SorobanOraclePusher, type SorobanOraclePusherConfig, type SorobanPushResult } from './soroban-pusher.js';
 import { AggregatorScheduler } from './scheduler.js';
 import { createOracleSources, type OracleSourceConfig } from './sources/index.js';
 import type { AggregatedPrice } from '../types/oracle-types.js';
@@ -14,7 +15,8 @@ export interface AggregatorConfig {
   updateIntervalMs: number;
   deviationThresholdPercent: number;
   onChainOracleId: string;
-  pushPrice?: (symbol: string, price: number, oracleId: string) => Promise<void>;
+  soroban?: SorobanOraclePusherConfig;
+  pushPrice?: (symbol: string, price: number, oracleId: string) => Promise<void | SorobanPushResult>;
 }
 
 export interface PricePushEvent {
@@ -35,15 +37,18 @@ export class PriceAggregatorService {
   private scheduler: AggregatorScheduler | null = null;
   private lastPushedPrices = new Map<string, number>();
   private readonly pushLog: PricePushEvent[] = [];
+  private readonly sorobanPusher?: SorobanOraclePusher;
 
   constructor(config: AggregatorConfig) {
     this.config = config;
     this.aggregator = new OracleAggregator({ minSources: Math.min(2, config.sources.length) });
     this.aggregator.setStrategy(new MedianStrategy());
+    this.sorobanPusher = config.soroban ? new SorobanOraclePusher(config.soroban) : undefined;
 
-    for (const source of createOracleSources(config.sources)) {
-      this.aggregator.addSource(source);
-    }
+    const sources = createOracleSources(config.sources);
+    sources.forEach((source, index) => {
+      this.aggregator.addSource(source, config.sources[index]?.weight ?? 1);
+    });
   }
 
   async start(): Promise<void> {
@@ -102,6 +107,8 @@ export class PriceAggregatorService {
 
     if (this.config.pushPrice) {
       await this.config.pushPrice(symbol, price, this.config.onChainOracleId);
+    } else if (this.sorobanPusher) {
+      await this.sorobanPusher.pushPrice(symbol, price);
     }
 
     this.lastPushedPrices.set(symbol, price);

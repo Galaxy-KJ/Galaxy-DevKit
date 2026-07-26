@@ -96,4 +96,32 @@ describe('PriceAggregatorService', () => {
     await service.runUpdateCycle();
     expect(pushPrice).toHaveBeenCalledTimes(2);
   });
+  it('uses configured Soroban pusher when no custom push callback is provided', async () => {
+    const { SorobanOraclePusher } = await import('../../src/aggregator/soroban-pusher.js');
+    const pushSpy = jest.spyOn(SorobanOraclePusher.prototype, 'pushPrice').mockResolvedValue({
+      symbol: 'XLM/USD',
+      price: 0.12,
+      scaledPrice: '120000',
+      transactionHash: 'hash',
+      status: 'PENDING',
+    });
+
+    const service = new PriceAggregatorService({
+      sources: [{ kind: 'coingecko' }, { kind: 'binance' }],
+      symbols: ['XLM'],
+      updateIntervalMs: 60_000,
+      deviationThresholdPercent: 0.1,
+      onChainOracleId: 'CORACLE',
+      soroban: {
+        contractId: 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526',
+        rpcUrl: 'https://soroban-testnet.stellar.org',
+        secretKey: 'SCUPFLPQDTSICX3DQLZDPYSV3FQHMEN3CR2TN2CPOBFKPJFPYPYBDFXI',
+      },
+    });
+
+    await service.runUpdateCycle();
+    expect(pushSpy).toHaveBeenCalledWith('XLM', 0.12);
+    pushSpy.mockRestore();
+  });
+
 });
