@@ -20,6 +20,12 @@ export {
 } from './aggregator/price-aggregator.js';
 export { AggregatorScheduler, type SchedulerOptions } from './aggregator/scheduler.js';
 export {
+  SorobanOraclePusher,
+  parsePair,
+  type SorobanOraclePusherConfig,
+  type SorobanPushResult,
+} from './aggregator/soroban-pusher.js';
+export {
   createOracleSources,
   type OracleSourceConfig,
   type OracleSourceKind,
