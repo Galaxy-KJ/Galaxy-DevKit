@@ -9,15 +9,18 @@ export class SDEXAnalyticsEngine {
   private horizon: Horizon.Server;
   private cache = new Map<string, { data: UnifiedPoolAnalytics; expiresAt: number }>();
   private cacheTtlMs: number;
-  private priceResolver: (asset: string) => Promise<number>;
+  private priceResolver?: (asset: string) => Promise<number>;
 
   constructor(config: LiquidityAnalyticsConfig = {}) {
     this.horizon = new Horizon.Server(config.horizonUrl || 'https://horizon.stellar.org');
-    this.cacheTtlMs = config.cacheTtlMs || 60_000;
-    this.priceResolver = config.priceResolver || (() => Promise.resolve(0));
+    this.cacheTtlMs = config.cacheTtlMs ?? 60_000;
+    this.priceResolver = config.priceResolver;
   }
 
   private async resolvePrice(assetObj: any): Promise<number> {
+    if (!this.priceResolver) {
+      throw new Error('A priceResolver is required to calculate SDEX analytics in USD.');
+    }
     const assetString = assetObj.asset === 'native' ? 'native' : `${assetObj.asset.split(':')[0]}:${assetObj.asset.split(':')[1]}`;
     return this.priceResolver(assetString);
   }
@@ -41,21 +44,20 @@ export class SDEXAnalyticsEngine {
       tvlUSD = valA + valB;
     }
 
-    // 2. Fetch 24h volume
+    // 2. Fetch 7d and 24h volume
     const oneDayAgo = new Date(Date.now() - MS_PER_DAY);
+    const sevenDaysAgo = new Date(Date.now() - 7 * MS_PER_DAY);
     let volume24hUSD = 0;
+    let volume7dUSD = 0;
     
-    // We traverse up to 10 pages maximum to prevent rate limiting
+    // We traverse until 7 days ago
     let page = await this.horizon.liquidityPools().liquidityPoolId(poolId).trades().order('desc').limit(200).call();
     let keepGoing = true;
-    let pageCount = 0;
-    const MAX_PAGES = 10;
 
-    while (keepGoing && page.records.length > 0 && pageCount < MAX_PAGES) {
-      pageCount++;
+    while (keepGoing && page.records.length > 0) {
       for (const trade of page.records) {
         const tradeDate = new Date(trade.ledger_close_time);
-        if (tradeDate < oneDayAgo) {
+        if (tradeDate < sevenDaysAgo) {
           keepGoing = false;
           break;
         }
@@ -65,7 +67,11 @@ export class SDEXAnalyticsEngine {
         // It's safer to price the base asset.
         const basePrice = await this.resolvePrice({ asset: trade.base_asset_type === 'native' ? 'native' : `${trade.base_asset_code}:${trade.base_asset_issuer}` });
         const tradeValueUSD = parseFloat(trade.base_amount) * basePrice;
-        volume24hUSD += tradeValueUSD;
+        
+        volume7dUSD += tradeValueUSD;
+        if (tradeDate >= oneDayAgo) {
+          volume24hUSD += tradeValueUSD;
+        }
       }
 
       if (keepGoing) {
@@ -74,7 +80,8 @@ export class SDEXAnalyticsEngine {
     }
 
     const feesEarned24hUSD = volume24hUSD * (SDEX_FEE_BPS / 10000);
-    const apy7d = tvlUSD > 0 ? (feesEarned24hUSD * DAYS_PER_YEAR) / tvlUSD * 100 : 0;
+    const feesEarned7dUSD = volume7dUSD * (SDEX_FEE_BPS / 10000);
+    const apy7d = tvlUSD > 0 ? (feesEarned7dUSD / tvlUSD) * (DAYS_PER_YEAR / 7) * 100 : 0;
 
     const result: UnifiedPoolAnalytics = {
       protocol: 'sdex',
