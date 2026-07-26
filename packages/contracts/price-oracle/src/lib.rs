@@ -25,8 +25,11 @@
 
 #![no_std]
 
+mod twap;
 mod types;
 pub use types::{OracleError, PriceEntry, PriceResult};
+use twap::{compute_twap, compute_twap_window};
+use types::PriceRingBuffer;
 
 use soroban_sdk::{
     contract, contractimpl, panic_with_error, symbol_short, Address, Env, Map, Symbol, Vec,
@@ -39,7 +42,7 @@ use soroban_sdk::{
 /// Symbol keys for instance storage.
 const KEY_ADMIN: Symbol = symbol_short!("ADMIN");
 const KEY_PUSHERS: Symbol = symbol_short!("PUSHERS");
-/// `Map<(Symbol, Symbol), Vec<PriceEntry>>` — rolling TWAP window per pair.
+/// `Map<(Symbol, Symbol), PriceRingBuffer>` — rolling TWAP window per pair.
 const KEY_PRICES: Symbol = symbol_short!("PRICES");
 
 /// Maximum number of historical observations retained per pair.
@@ -52,6 +55,19 @@ pub const TWAP_WINDOW_SIZE: u32 = 10;
 /// units" — astronomically above any real-world supply limit.  This constant
 /// prevents overflow in the `weighted_sum` computation inside `get_twap`.
 pub const MAX_SAFE_PRICE: i128 = 1_000_000_000_000_000_000_000_000_000_000_i128; // 10^30
+
+/// Convenience window lengths (seconds) for [`PriceOracleContract::get_twap_5m`],
+/// [`PriceOracleContract::get_twap_15m`] and [`PriceOracleContract::get_twap_1h`].
+///
+/// Note: actual window *coverage* is bounded by however much history fits in
+/// `TWAP_WINDOW_SIZE` observations. If the pusher updates more often than
+/// `window_seconds / TWAP_WINDOW_SIZE`, the oldest requested seconds of the
+/// window will simply have no observation to draw from and are excluded from
+/// the weighted average — this is a best-effort window, not a guarantee of
+/// full coverage.
+pub const WINDOW_5M: u64 = 300;
+pub const WINDOW_15M: u64 = 900;
+pub const WINDOW_1H: u64 = 3600;
 
 // ---------------------------------------------------------------------------
 // Event topic symbols  (≤ 9 ASCII chars for symbol_short!)
@@ -87,7 +103,7 @@ impl PriceOracleContract {
         storage.set(&KEY_ADMIN, &admin);
         let empty_pushers: Vec<Address> = Vec::new(env);
         storage.set(&KEY_PUSHERS, &empty_pushers);
-        let empty_prices: Map<(Symbol, Symbol), Vec<PriceEntry>> = Map::new(env);
+        let empty_prices: Map<(Symbol, Symbol), PriceRingBuffer> = Map::new(env);
         storage.set(&KEY_PRICES, &empty_prices);
 
         env.events().publish((EVT_INIT,), admin);
@@ -203,29 +219,24 @@ impl PriceOracleContract {
         }
 
         let storage = env.storage().instance();
-        let mut prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
+        let mut prices: Map<(Symbol, Symbol), PriceRingBuffer> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
 
         let key = (base.clone(), quote.clone());
-        let mut history: Vec<PriceEntry> = prices.get(key.clone()).unwrap_or(Vec::new(env));
+        let mut buffer: PriceRingBuffer = prices.get(key.clone()).unwrap_or(PriceRingBuffer::new(env));
 
-        history.push_back(PriceEntry {
-            price,
-            timestamp: env.ledger().timestamp(),
-            pusher: pusher.clone(),
-        });
+        // O(1) amortized: overwrites the oldest slot in place once full,
+        // instead of rebuilding the whole vector on every push past capacity.
+        buffer.push(
+            PriceEntry {
+                price,
+                timestamp: env.ledger().timestamp(),
+                pusher: pusher.clone(),
+            },
+            TWAP_WINDOW_SIZE,
+        );
 
-        // Bound the rolling window by evicting the oldest entry when full
-        if history.len() > TWAP_WINDOW_SIZE {
-            let mut trimmed: Vec<PriceEntry> = Vec::new(env);
-            let start = history.len() - TWAP_WINDOW_SIZE;
-            for i in start..history.len() {
-                trimmed.push_back(history.get(i).unwrap());
-            }
-            history = trimmed;
-        }
-
-        prices.set(key, history);
+        prices.set(key, buffer);
         storage.set(&KEY_PRICES, &prices);
 
         env.events().publish((EVT_PRICE,), (base, quote, price));
@@ -246,13 +257,17 @@ impl PriceOracleContract {
         history.get(history.len() - 1).unwrap()
     }
 
-    /// Return the full rolling history (up to `TWAP_WINDOW_SIZE` entries).
+    /// Return the full rolling history (up to `TWAP_WINDOW_SIZE` entries),
+    /// oldest-to-newest.
     pub fn get_price_history(env: &Env, base: Symbol, quote: Symbol) -> Vec<PriceEntry> {
         let storage = env.storage().instance();
-        let prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
+        let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
         let key = (base, quote);
-        prices.get(key).unwrap_or(Vec::new(env))
+        match prices.get(key) {
+            Some(buffer) => buffer.chronological(env, TWAP_WINDOW_SIZE),
+            None => Vec::new(env),
+        }
     }
 
     // =======================================================================
@@ -323,6 +338,47 @@ impl PriceOracleContract {
         compute_twap(&history, now)
     }
 
+    /// Compute the Time-Weighted Average Price over the last `window_seconds`.
+    ///
+    /// Unlike [`get_twap`], this never requires a minimum number of
+    /// observations: a single price inside the window degrades gracefully to
+    /// that price, and a price observed before the window started is treated
+    /// as held constant since `window_start` (correctly handles gaps larger
+    /// than `window_seconds` between updates).
+    ///
+    /// Panics with [`OracleError::PriceNotFound`] only when the pair has no
+    /// price data at all.
+    ///
+    /// Actual coverage is bounded by however many of the last
+    /// `TWAP_WINDOW_SIZE` observations fall inside the window — see the
+    /// [`WINDOW_5M`]/[`WINDOW_15M`]/[`WINDOW_1H`] doc note.
+    pub fn get_twap_window(env: &Env, base: Symbol, quote: Symbol, window_seconds: u64) -> i128 {
+        let history = Self::get_price_history(env, base, quote);
+
+        if history.is_empty() {
+            panic_with_error!(env, OracleError::PriceNotFound);
+        }
+
+        let now = env.ledger().timestamp();
+        let window_start = now.saturating_sub(window_seconds);
+        compute_twap_window(&history, now, window_start)
+    }
+
+    /// TWAP over the last 5 minutes. See [`get_twap_window`](Self::get_twap_window).
+    pub fn get_twap_5m(env: &Env, base: Symbol, quote: Symbol) -> i128 {
+        Self::get_twap_window(env, base, quote, WINDOW_5M)
+    }
+
+    /// TWAP over the last 15 minutes. See [`get_twap_window`](Self::get_twap_window).
+    pub fn get_twap_15m(env: &Env, base: Symbol, quote: Symbol) -> i128 {
+        Self::get_twap_window(env, base, quote, WINDOW_15M)
+    }
+
+    /// TWAP over the last hour. See [`get_twap_window`](Self::get_twap_window).
+    pub fn get_twap_1h(env: &Env, base: Symbol, quote: Symbol) -> i128 {
+        Self::get_twap_window(env, base, quote, WINDOW_1H)
+    }
+
     // =======================================================================
     // Multi-asset helpers
     // =======================================================================
@@ -333,11 +389,12 @@ impl PriceOracleContract {
     /// [`PriceEntry`].  Pairs that have no data are omitted.
     pub fn get_all_prices(env: &Env) -> Map<(Symbol, Symbol), PriceEntry> {
         let storage = env.storage().instance();
-        let prices: Map<(Symbol, Symbol), Vec<PriceEntry>> =
+        let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
 
         let mut latest: Map<(Symbol, Symbol), PriceEntry> = Map::new(env);
-        for (key, history) in prices.iter() {
+        for (key, buffer) in prices.iter() {
+            let history = buffer.chronological(env, TWAP_WINDOW_SIZE);
             if !history.is_empty() {
                 let last = history.get(history.len() - 1).unwrap();
                 latest.set(key, last);

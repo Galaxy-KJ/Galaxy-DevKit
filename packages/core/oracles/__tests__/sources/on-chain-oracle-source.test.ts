@@ -145,6 +145,85 @@ describe('OnChainOracleSource', () => {
     });
   });
 
+  // ── getPriceHistory ────────────────────────────────────────────────────────
+
+  describe('getPriceHistory', () => {
+    it('decodes the raw price history oldest-to-newest', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({
+        result: { retval: {} },
+      });
+      mockScValToNative.mockReturnValueOnce([
+        { price: 1000000n, timestamp: 1716767000n, pusher: 'GAAAAAA' },
+        { price: 1250000n, timestamp: 1716768000n, pusher: 'GBBBBBB' },
+      ]);
+
+      const history = await source.getPriceHistory('XLM');
+
+      expect(history).toHaveLength(2);
+      expect(history[0].price).toBe(1.0);
+      expect(history[0].timestamp).toEqual(new Date(1716767000 * 1000));
+      expect(history[0].pusher).toBe('GAAAAAA');
+      expect(history[1].price).toBe(1.25);
+    });
+
+    it('throws if scValToNative does not return an array', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({
+        result: { retval: {} },
+      });
+      mockIsSimulationError.mockReturnValueOnce(false);
+      mockScValToNative.mockReturnValueOnce(null);
+
+      await expect(source.getPriceHistory('XLM')).rejects.toThrow(
+        'Failed to decode price history'
+      );
+    });
+
+    it('throws if simulation returns an error', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({
+        error: 'Contract panicked: PriceNotFound',
+      });
+      mockIsSimulationError.mockReturnValueOnce(true);
+
+      await expect(source.getPriceHistory('XLM')).rejects.toThrow(
+        'Soroban RPC simulation failed'
+      );
+    });
+  });
+
+  // ── getTwapWindow ──────────────────────────────────────────────────────────
+
+  describe('getTwapWindow', () => {
+    it('decodes the on-chain windowed TWAP', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({
+        result: { retval: {} },
+      });
+      mockScValToNative.mockReturnValueOnce(1250000n); // 1.25
+
+      const twap = await source.getTwapWindow('XLM', 300);
+
+      expect(twap).toBe(1.25);
+    });
+
+    it('throws if scValToNative does not return a bigint', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({
+        result: { retval: {} },
+      });
+      mockIsSimulationError.mockReturnValueOnce(false);
+      mockScValToNative.mockReturnValueOnce({ not: 'a bigint' });
+
+      await expect(source.getTwapWindow('XLM', 300)).rejects.toThrow('Failed to decode TWAP');
+    });
+
+    it('throws if simulation returns no result', async () => {
+      mockSimulateTransaction.mockResolvedValueOnce({});
+      mockIsSimulationError.mockReturnValueOnce(false);
+
+      await expect(source.getTwapWindow('XLM', 300)).rejects.toThrow(
+        'Invalid simulation response'
+      );
+    });
+  });
+
   // ── getPrices ──────────────────────────────────────────────────────────────
 
   describe('getPrices', () => {

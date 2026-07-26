@@ -98,7 +98,7 @@ gantt
 - [ ] **#36** Create on-chain oracle Soroban contract (Issue #276 🔄)
 - [ ] **#37** Implement off-chain oracle aggregator service (Issue #277 🔄)
 - [ ] **#38** Add price feed integrations (CoinGecko, CMC) (Issue #278 🔄)
-- [ ] **#39** Implement TWAP (Time-Weighted Average Price) (Issue #279 🔄)
+- [x] **#39** Implement TWAP (Time-Weighted Average Price) (Issue #279 ✅)
 - [ ] **#40** Add oracle data validation and anomaly detection (Issue #280 🔄)
 
 ---

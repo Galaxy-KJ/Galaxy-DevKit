@@ -347,6 +347,141 @@ fn test_twap_multiple_observations() {
 }
 
 // ---------------------------------------------------------------------------
+// Ring buffer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ring_buffer_wraparound_preserves_chronological_order() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    // Push 15 observations — 5 more than TWAP_WINDOW_SIZE (10), forcing the
+    // ring buffer to wrap around and overwrite the oldest 5 slots in place.
+    for i in 0..15u32 {
+        env.ledger().with_mut(|li| li.timestamp += 10);
+        client.push_price(&pusher, &base, &quote, &(1_000_000 + i as i128));
+    }
+
+    let history = client.get_price_history(&base, &quote);
+    assert_eq!(history.len(), 10);
+
+    // Surviving entries must still read oldest-to-newest (pushes 5..14).
+    for (idx, i) in (5u32..15u32).enumerate() {
+        assert_eq!(history.get(idx as u32).unwrap().price, 1_000_000 + i as i128);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Windowed TWAP (get_twap_window / get_twap_5m / get_twap_15m / get_twap_1h)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic]
+fn test_twap_window_empty_buffer_panics() {
+    let (env, contract_id, admin, _) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+    client.get_twap_window(&base, &quote, &300_u64);
+}
+
+#[test]
+fn test_twap_window_single_data_point_returns_price_without_panic() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_500_000);
+
+    // A single observation is insufficient for `get_twap` (which panics),
+    // but `get_twap_window` must degrade gracefully to that one price.
+    let twap = client.get_twap_window(&base, &quote, &300_u64);
+    assert_eq!(twap, 1_500_000);
+}
+
+#[test]
+fn test_twap_window_large_gap_holds_last_price_constant() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+    // No further updates for far longer than the requested window.
+    env.ledger().with_mut(|li| li.timestamp += 10_000);
+
+    let twap = client.get_twap_window(&base, &quote, &300_u64); // 5m window
+    assert_eq!(twap, 1_000_000);
+}
+
+#[test]
+fn test_twap_window_covering_full_history_matches_get_twap() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+    env.ledger().with_mut(|li| li.timestamp += 60);
+    client.push_price(&pusher, &base, &quote, &1_200_000);
+
+    let full = client.get_twap(&base, &quote);
+    let windowed = client.get_twap_window(&base, &quote, &1_000_u64); // window > total history
+    assert_eq!(full, windowed);
+}
+
+#[test]
+fn test_twap_window_partial_excludes_data_before_window_start() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_000_000); // t=0
+    env.ledger().with_mut(|li| li.timestamp += 500);
+    client.push_price(&pusher, &base, &quote, &2_000_000); // t=500
+    env.ledger().with_mut(|li| li.timestamp += 100); // now = 600
+
+    // 50s window covers only [550, 600] — entirely after the price changed.
+    let twap = client.get_twap_window(&base, &quote, &50_u64);
+    assert_eq!(twap, 2_000_000);
+}
+
+#[test]
+fn test_twap_named_windows_delegate_to_get_twap_window() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+    env.ledger().with_mut(|li| li.timestamp += 60);
+    client.push_price(&pusher, &base, &quote, &1_200_000);
+
+    assert_eq!(
+        client.get_twap_5m(&base, &quote),
+        client.get_twap_window(&base, &quote, &300_u64)
+    );
+    assert_eq!(
+        client.get_twap_15m(&base, &quote),
+        client.get_twap_window(&base, &quote, &900_u64)
+    );
+    assert_eq!(
+        client.get_twap_1h(&base, &quote),
+        client.get_twap_window(&base, &quote, &3600_u64)
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Staleness checks
 // ---------------------------------------------------------------------------
 

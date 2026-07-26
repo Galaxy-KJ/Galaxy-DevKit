@@ -149,6 +149,105 @@ export class OnChainOracleSource implements IOracleSource {
   }
 
   /**
+   * Fetch the raw on-chain price history (up to the contract's ring-buffer
+   * capacity) for a symbol, oldest-to-newest.
+   */
+  async getPriceHistory(
+    symbol: string
+  ): Promise<{ price: number; timestamp: Date; pusher: string }[]> {
+    const { base, quote } = this.parseSymbol(symbol);
+    const contract = new Contract(this.contractId);
+
+    const getHistoryOp = contract.call(
+      'get_price_history',
+      xdr.ScVal.scvSymbol(base),
+      xdr.ScVal.scvSymbol(quote)
+    );
+
+    const dummyAccount = new Account(SIMULATION_PUBLIC_KEY, '0');
+    const tx = new TransactionBuilder(dummyAccount, {
+      fee: '100',
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(getHistoryOp)
+      .setTimeout(30)
+      .build();
+
+    try {
+      const simulation = await this.rpcServer.simulateTransaction(tx);
+
+      if (SorobanRpc.Api.isSimulationError(simulation)) {
+        throw new Error(`Soroban RPC simulation failed: ${simulation.error}`);
+      }
+
+      if (!simulation.result || !simulation.result.retval) {
+        throw new Error(`Invalid simulation response: no return value for ${symbol}`);
+      }
+
+      const native = scValToNative(simulation.result.retval);
+      if (!Array.isArray(native)) {
+        throw new Error(`Failed to decode price history for ${symbol}`);
+      }
+
+      return native.map((entry: { price: bigint; timestamp: bigint; pusher: string }) => ({
+        price: Number(entry.price) / Number(PRICE_SCALE),
+        timestamp: new Date(Number(entry.timestamp) * 1000),
+        pusher: entry.pusher,
+      }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to get on-chain price history for ${symbol}: ${message}`);
+    }
+  }
+
+  /**
+   * Fetch the on-chain TWAP for a symbol over the last `windowSeconds`,
+   * computed by the contract's `get_twap_window` view method.
+   */
+  async getTwapWindow(symbol: string, windowSeconds: number): Promise<number> {
+    const { base, quote } = this.parseSymbol(symbol);
+    const contract = new Contract(this.contractId);
+
+    const getTwapOp = contract.call(
+      'get_twap_window',
+      xdr.ScVal.scvSymbol(base),
+      xdr.ScVal.scvSymbol(quote),
+      nativeToScVal(windowSeconds, { type: 'u64' })
+    );
+
+    const dummyAccount = new Account(SIMULATION_PUBLIC_KEY, '0');
+    const tx = new TransactionBuilder(dummyAccount, {
+      fee: '100',
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(getTwapOp)
+      .setTimeout(30)
+      .build();
+
+    try {
+      const simulation = await this.rpcServer.simulateTransaction(tx);
+
+      if (SorobanRpc.Api.isSimulationError(simulation)) {
+        throw new Error(`Soroban RPC simulation failed: ${simulation.error}`);
+      }
+
+      if (!simulation.result || !simulation.result.retval) {
+        throw new Error(`Invalid simulation response: no return value for ${symbol}`);
+      }
+
+      const native = scValToNative(simulation.result.retval);
+      if (typeof native !== 'bigint') {
+        throw new Error(`Failed to decode TWAP for ${symbol}`);
+      }
+
+      return Number(native) / Number(PRICE_SCALE);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to get on-chain TWAP for ${symbol}: ${message}`);
+    }
+  }
+
+  /**
    * Fetch prices for multiple symbols in parallel.
    */
   async getPrices(symbols: string[]): Promise<PriceData[]> {
