@@ -25,6 +25,8 @@ export interface AggregatorQuote {
   totalAmountOut: string;
   effectivePrice: number;
   savingsVsBestSingle: number;
+  /** Weighted-average price impact across all routes, as a percentage. */
+  totalPriceImpact: number;
 }
 
 /**

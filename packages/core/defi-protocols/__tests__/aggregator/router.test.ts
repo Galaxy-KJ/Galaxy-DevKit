@@ -35,19 +35,19 @@ describe('SmartRouter', () => {
       // Direct route XLM -> TEST gives 90
       if (assetIn.code === 'XLM' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '90', routes: [{ venue: 'soroswap', amountIn, amountOut: '90', priceImpact: 0, path: [] }], effectivePrice: 0.9, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '90', routes: [{ venue: 'soroswap', amountIn, amountOut: '90', priceImpact: 0, path: [] }], effectivePrice: 0.9, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       // XLM -> USDC gives 100
       if (assetIn.code === 'XLM' && assetOut.code === 'USDC') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       // USDC -> TEST gives 80
       if (assetIn.code === 'USDC' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       throw new Error(`No mock route for ${assetIn.code} -> ${assetOut.code}`);
@@ -65,19 +65,19 @@ describe('SmartRouter', () => {
       // Direct route XLM -> TEST gives 80
       if (assetIn.code === 'XLM' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       // XLM -> USDC gives 100
       if (assetIn.code === 'XLM' && assetOut.code === 'USDC') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       // USDC -> TEST (with input 100) gives 95
       if (assetIn.code === 'USDC' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '95', routes: [{ venue: 'soroswap', amountIn, amountOut: '95', priceImpact: 0, path: [] }], effectivePrice: 0.95, savingsVsBestSingle: 0
+          assetIn, assetOut, amountIn, totalAmountOut: '95', routes: [{ venue: 'soroswap', amountIn, amountOut: '95', priceImpact: 0, path: [] }], effectivePrice: 0.95, savingsVsBestSingle: 0, totalPriceImpact: 0
         };
       }
       throw new Error(`No mock route for ${assetIn.code} -> ${assetOut.code}`);
@@ -98,17 +98,17 @@ describe('SmartRouter', () => {
       mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
         if (assetIn.code === 'XLM' && assetOut.code === 'TEST') {
             return {
-              assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0
+              assetIn, assetOut, amountIn, totalAmountOut: '80', routes: [{ venue: 'soroswap', amountIn, amountOut: '80', priceImpact: 0, path: [] }], effectivePrice: 0.8, savingsVsBestSingle: 0, totalPriceImpact: 0
             };
         }
         if (assetIn.code === 'XLM' && assetOut.code === 'USDC') {
             return {
-              assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0
+              assetIn, assetOut, amountIn, totalAmountOut: '100', routes: [{ venue: 'sdex', amountIn, amountOut: '100', priceImpact: 0, path: [] }], effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0
             };
         }
         if (assetIn.code === 'USDC' && assetOut.code === 'TEST') {
             return {
-              assetIn, assetOut, amountIn, totalAmountOut: '95', routes: [{ venue: 'soroswap', amountIn, amountOut: '95', priceImpact: 0, path: [] }], effectivePrice: 0.95, savingsVsBestSingle: 0
+              assetIn, assetOut, amountIn, totalAmountOut: '95', routes: [{ venue: 'soroswap', amountIn, amountOut: '95', priceImpact: 0, path: [] }], effectivePrice: 0.95, savingsVsBestSingle: 0, totalPriceImpact: 0
             };
         }
         throw new Error(`No mock route for ${assetIn.code} -> ${assetOut.code}`);
