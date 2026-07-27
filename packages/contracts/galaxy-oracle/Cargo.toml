@@ -8,10 +8,10 @@ description = "On-chain oracle Soroban contract for Galaxy DevKit"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "20.0.0"
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "20.0.0", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
