@@ -74,6 +74,7 @@ CONTRACTS=(
   "smart_wallet_wallet:smart-wallet-account:target/wasm32v1-none/release/smart_wallet_account_wallet.wasm"
   "smart_swap:smart-swap:target/wasm32v1-none/release/smart_swap.wasm"
   "security_limits:security-limits:target/wasm32v1-none/release/security_limits.wasm"
+  "galaxy_oracle:galaxy-oracle:target/wasm32v1-none/release/galaxy_oracle.wasm"
 )
 
 # ── Pre-flight checks ────────────────────────────────────────────────────────
