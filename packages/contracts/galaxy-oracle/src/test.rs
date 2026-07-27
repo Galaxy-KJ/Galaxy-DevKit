@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Ledger},
     Address, Env, Symbol,
 };
 
@@ -39,11 +39,11 @@ fn test_initialize_sets_admin() {
 }
 
 #[test]
-#[should_panic]
-fn test_initialize_twice_panics() {
+fn test_initialize_twice_fails() {
     let (env, contract_id, admin, _) = setup();
     let client = init_client(&env, &contract_id, &admin);
-    client.initialize(&admin);
+    let res = client.try_initialize(&admin);
+    assert!(res.is_err());
 }
 
 #[test]
@@ -75,32 +75,32 @@ fn test_add_and_remove_pusher() {
 }
 
 #[test]
-#[should_panic]
-fn test_add_duplicate_pusher_panics() {
+fn test_add_duplicate_pusher_fails() {
     let (env, contract_id, admin, pusher) = setup();
     let client = init_client(&env, &contract_id, &admin);
 
     client.add_pusher(&admin, &pusher);
-    client.add_pusher(&admin, &pusher);
+    let res = client.try_add_pusher(&admin, &pusher);
+    assert!(res.is_err());
 }
 
 #[test]
-#[should_panic]
-fn test_remove_nonexistent_pusher_panics() {
+fn test_remove_nonexistent_pusher_fails() {
     let (env, contract_id, admin, pusher) = setup();
     let client = init_client(&env, &contract_id, &admin);
 
-    client.remove_pusher(&admin, &pusher);
+    let res = client.try_remove_pusher(&admin, &pusher);
+    assert!(res.is_err());
 }
 
 #[test]
-#[should_panic]
-fn test_unauthorized_add_pusher_panics() {
+fn test_unauthorized_add_pusher_fails() {
     let (env, contract_id, admin, pusher) = setup();
     let client = init_client(&env, &contract_id, &admin);
 
     let imposter = Address::generate(&env);
-    client.add_pusher(&imposter, &pusher);
+    let res = client.try_add_pusher(&imposter, &pusher);
+    assert!(res.is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ fn test_push_and_get_price() {
     let quote = Symbol::new(&env, "USDC");
     let price = 1250000; // $1.25
 
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|l| l.timestamp = 1000);
     client.push_price(&pusher, &base, &quote, &price);
 
     let entry = client.get_price(&base, &quote);
@@ -127,8 +127,7 @@ fn test_push_and_get_price() {
 }
 
 #[test]
-#[should_panic]
-fn test_unauthorized_push_price_panics() {
+fn test_unauthorized_push_price_fails() {
     let (env, contract_id, admin, _) = setup();
     let client = init_client(&env, &contract_id, &admin);
 
@@ -136,12 +135,12 @@ fn test_unauthorized_push_price_panics() {
     let base = Symbol::new(&env, "BTC");
     let quote = Symbol::new(&env, "USDT");
 
-    client.push_price(&unauthorized_pusher, &base, &quote, &50000000000);
+    let res = client.try_push_price(&unauthorized_pusher, &base, &quote, &50000000000);
+    assert!(res.is_err());
 }
 
 #[test]
-#[should_panic]
-fn test_invalid_price_zero_panics() {
+fn test_invalid_price_zero_fails() {
     let (env, contract_id, admin, pusher) = setup();
     let client = init_client(&env, &contract_id, &admin);
     client.add_pusher(&admin, &pusher);
@@ -149,19 +148,20 @@ fn test_invalid_price_zero_panics() {
     let base = Symbol::new(&env, "ETH");
     let quote = Symbol::new(&env, "USD");
 
-    client.push_price(&pusher, &base, &quote, &0);
+    let res = client.try_push_price(&pusher, &base, &quote, &0);
+    assert!(res.is_err());
 }
 
 #[test]
-#[should_panic]
-fn test_get_price_nonexistent_pair_panics() {
+fn test_get_price_nonexistent_pair_fails() {
     let (env, contract_id, admin, _) = setup();
     let client = init_client(&env, &contract_id, &admin);
 
     let base = Symbol::new(&env, "FOO");
     let quote = Symbol::new(&env, "BAR");
 
-    client.get_price(&base, &quote);
+    let res = client.try_get_price(&base, &quote);
+    assert!(res.is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -177,11 +177,11 @@ fn test_price_staleness_check() {
     let base = Symbol::new(&env, "SOL");
     let quote = Symbol::new(&env, "USD");
 
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|l| l.timestamp = 1000);
     client.push_price(&pusher, &base, &quote, &150000000);
 
     // Fast-forward timestamp to 1200 (age 200s)
-    env.ledger().set_timestamp(1200);
+    env.ledger().with_mut(|l| l.timestamp = 1200);
 
     let checked = client.get_price_checked(&base, &quote, &150);
     assert_eq!(checked.age_seconds, 200);
@@ -201,13 +201,13 @@ fn test_twap_computation() {
     let base = Symbol::new(&env, "XLM");
     let quote = Symbol::new(&env, "USDC");
 
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|l| l.timestamp = 1000);
     client.push_price(&pusher, &base, &quote, &1000000);
 
-    env.ledger().set_timestamp(1100);
+    env.ledger().with_mut(|l| l.timestamp = 1100);
     client.push_price(&pusher, &base, &quote, &2000000);
 
-    env.ledger().set_timestamp(1200);
+    env.ledger().with_mut(|l| l.timestamp = 1200);
 
     let twap = client.get_twap(&base, &quote);
     assert_eq!(twap, 1500000);
