@@ -72,6 +72,14 @@ export class DexAggregator implements IDexAggregator {
       deps.protocolFactory ?? (ProtocolFactory.getInstance() as AggregatorProtocolFactoryLike);
   }
 
+  async getQuote(
+    assetIn: Asset,
+    assetOut: Asset,
+    amountIn: string,
+  ): Promise<AggregatorQuote> {
+    return this.quoteService.getBestQuote(assetIn, assetOut, amountIn);
+  }
+
   async getBestPrice(
     assetIn: Asset,
     assetOut: Asset,
@@ -125,10 +133,17 @@ export class DexAggregator implements IDexAggregator {
 
   /** Build the per-venue ProtocolConfig the factory expects. */
   private configForVenue(venue: AggregatorVenue): ProtocolConfig {
-    if (venue === 'sdex') {
-      return { ...this.baseConfig, protocolId: 'sdex', name: 'Stellar DEX' };
+    switch (venue) {
+      case 'sdex':
+        return { ...this.baseConfig, protocolId: 'sdex', name: 'Stellar DEX' };
+      case 'aquarius':
+        // Aquarius AMM orders settle through the Stellar DEX order book,
+        // so execution uses the SDEX path-payment protocol.
+        return { ...this.baseConfig, protocolId: 'sdex', name: 'Stellar DEX' };
+      case 'soroswap':
+      default:
+        return { ...this.baseConfig, protocolId: 'soroswap' };
     }
-    return { ...this.baseConfig, protocolId: 'soroswap' };
   }
 
   /** Pick the highest-output route from a quote. Exposed for unit tests. */

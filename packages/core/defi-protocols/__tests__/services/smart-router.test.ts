@@ -37,6 +37,7 @@ function quote(
     totalAmountOut: amountOut,
     effectivePrice: Number(amountOut) / Number(amountIn),
     savingsVsBestSingle: venues.length > 1 ? 1.25 : 0,
+    totalPriceImpact: 0,
     routes: venues.map((venue, index) => ({
       venue,
       amountIn: (Number(amountIn) / venues.length).toFixed(7),

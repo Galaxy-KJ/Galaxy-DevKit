@@ -82,6 +82,13 @@ export interface AggregatorExecutionResult {
  */
 export interface IDexAggregator {
   /**
+   * Return a raw {@link AggregatorQuote} covering every supported venue without
+   * wrapping it in a `BestPriceResult`. Useful for callers who want to inspect
+   * the full route breakdown before deciding to execute.
+   */
+  getQuote(assetIn: Asset, assetOut: Asset, amountIn: string): Promise<AggregatorQuote>;
+
+  /**
    * Quote a swap across every supported venue and return the best execution
    * price.
    *

@@ -577,5 +577,198 @@ describe('DexAggregatorService', () => {
       aggregator.getSplitQuote(XLM, USDC, '100', [0, 100])
     ).rejects.toThrow('SDEX protocol does not implement getSwapQuote');
   });
+
+  it('includes totalPriceImpact in the quote', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '95.0000000',
+            priceImpact: '1.5',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '93.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    const quote = await aggregator.getSplitQuote(XLM, USDC, '100', [60, 40]);
+
+    expect(quote.totalPriceImpact).toBeGreaterThan(0);
+    // Weighted: 0.6 * 1.5 + 0.4 * 0.5 = 1.1
+    expect(quote.totalPriceImpact).toBeCloseTo(1.1, 1);
+  });
+
+  it('returns totalPriceImpact of 0 for a single route with zero impact', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '95.0000000',
+            priceImpact: '0',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockRejectedValue(new Error('SDEX unavailable')),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    const quote = await aggregator.getBestQuote(XLM, USDC, '100');
+
+    expect(quote.totalPriceImpact).toBe(0);
+  });
+
+  it('includes Aquarius in single-venue route discovery', async () => {
+    const aquariusFetchRoute = jest.fn().mockResolvedValue({
+      venue: 'aquarius' as const,
+      amountIn: '100',
+      amountOut: '96.0000000',
+      priceImpact: 0.2,
+      path: ['pool-aquarius'],
+    });
+
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn: Asset, _assetOut: Asset, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: (parseFloat(amountIn) * 0.9).toFixed(7),
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockImplementation((_assetIn: Asset, _assetOut: Asset, amountIn: string) => ({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn,
+            amountOut: (parseFloat(amountIn) * 0.88).toFixed(7),
+            priceImpact: '0.3',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          })),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+      aquariusAdapter: { fetchRoute: aquariusFetchRoute },
+    });
+
+    const quote = await aggregator.getBestQuote(XLM, USDC, '100');
+
+    expect(aquariusFetchRoute).toHaveBeenCalled();
+    // Aquarius gives 96 (0.96 per unit) — better than soroswap (0.90) or sdex (0.88).
+    // The best single route should be Aquarius.
+    expect(quote.routes[0].venue).toBe('aquarius');
+    expect(quote.totalAmountOut).toBe('96.0000000');
+  });
+
+  it('continues when Aquarius fails but other venues succeed', async () => {
+    const aquariusFetchRoute = jest.fn().mockRejectedValue(new Error('Aquarius timeout'));
+
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '95.0000000',
+            priceImpact: '0.5',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockResolvedValue({
+            tokenIn: XLM,
+            tokenOut: USDC,
+            amountIn: '100',
+            amountOut: '93.0000000',
+            priceImpact: '0.3',
+            minimumReceived: '0',
+            path: [],
+            validUntil: new Date(),
+          }),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+      aquariusAdapter: { fetchRoute: aquariusFetchRoute },
+    });
+
+    const quote = await aggregator.getBestQuote(XLM, USDC, '100');
+
+    expect(quote.routes.length).toBeGreaterThanOrEqual(1);
+    expect(quote.routes.every((r) => r.venue !== 'aquarius')).toBe(true);
+  });
 });
 

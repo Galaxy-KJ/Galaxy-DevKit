@@ -238,6 +238,8 @@ export class DexAggregatorService implements IDEXAggregator {
           .decimalPlaces(4)
           .toNumber();
 
+    const totalPriceImpact = this.weightedPriceImpact(routes, amountIn);
+
     return {
       assetIn,
       assetOut,
@@ -246,6 +248,7 @@ export class DexAggregatorService implements IDEXAggregator {
       totalAmountOut,
       effectivePrice,
       savingsVsBestSingle,
+      totalPriceImpact,
     };
   }
 
@@ -317,5 +320,24 @@ export class DexAggregatorService implements IDEXAggregator {
 
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  /**
+   * Weighted-average price impact across all routes. Each route's impact
+   * is weighted by its share of the total input amount so that a 90/10
+   * split doesn't let the smaller leg dominate the aggregate figure.
+   */
+  private weightedPriceImpact(routes: AggregatorRoute[], totalAmountIn: string): number {
+    const totalIn = new BigNumber(totalAmountIn);
+    if (totalIn.isZero() || routes.length === 0) {
+      return 0;
+    }
+
+    const weightedSum = routes.reduce((acc, route) => {
+      const fraction = new BigNumber(route.amountIn).dividedBy(totalIn);
+      return acc.plus(fraction.multipliedBy(route.priceImpact));
+    }, new BigNumber(0));
+
+    return weightedSum.decimalPlaces(4).toNumber();
   }
 }

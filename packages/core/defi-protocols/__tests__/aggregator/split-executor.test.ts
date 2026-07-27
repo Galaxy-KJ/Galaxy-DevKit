@@ -29,6 +29,9 @@ function quote(routes: AggregatorRoute[]): AggregatorQuote {
     totalAmountOut: routes.reduce((s, r) => s + Number(r.amountOut), 0).toString(),
     effectivePrice: 0,
     savingsVsBestSingle: 0,
+    totalPriceImpact: routes.length === 0
+      ? 0
+      : routes.reduce((s, r) => s + r.priceImpact * (Number(r.amountIn) / Number(routes.reduce((a, rr) => a + Number(rr.amountIn), 0))), 0),
   };
 }
 

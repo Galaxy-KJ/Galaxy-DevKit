@@ -58,6 +58,9 @@ const sampleQuote = (routes: AggregatorRoute[], totalAmountOut?: string): Aggreg
       .toFixed(7),
   effectivePrice: 0.95,
   savingsVsBestSingle: 0,
+  totalPriceImpact: routes.length === 0
+    ? 0
+    : routes.reduce((s, r) => s + r.priceImpact * (parseFloat(r.amountIn) / 100), 0),
 });
 
 describe('DexAggregator (services/dex-aggregator.ts)', () => {
@@ -258,6 +261,72 @@ describe('DexAggregator (services/dex-aggregator.ts)', () => {
           privateKey: 'SKEY',
         }),
       ).rejects.toThrow(/does not expose a swap/);
+    });
+
+    it('routes Aquarius venue through the SDEX protocol for execution', async () => {
+      const aquariusRoute = sampleQuote([
+        sampleRoute({ venue: 'aquarius', amountIn: '100', amountOut: '94.0000000' }),
+      ]);
+      const proto = buildSwappingProtocol();
+      const factory = { createProtocol: jest.fn().mockReturnValue(proto) };
+
+      const aggregator = new DexAggregator(baseConfig, {
+        quoteService: { getBestQuote: jest.fn().mockResolvedValue(aquariusRoute) },
+        protocolFactory: factory,
+      });
+
+      await aggregator.executeBestRoute(XLM, USDC, '100', {
+        walletAddress: 'GUSER',
+        privateKey: 'SKEY',
+      });
+
+      expect(factory.createProtocol).toHaveBeenCalledTimes(1);
+      const cfg = factory.createProtocol.mock.calls[0][0];
+      expect(cfg.protocolId).toBe('sdex');
+      expect(cfg.name).toBe('Stellar DEX');
+    });
+
+    it('dispatches a split with Aquarius + Soroswap and applies correct venue configs', async () => {
+      const split = sampleQuote([
+        sampleRoute({ venue: 'soroswap', amountIn: '50', amountOut: '47.5000000' }),
+        sampleRoute({ venue: 'aquarius', amountIn: '50', amountOut: '46.0000000' }),
+      ]);
+      const proto = buildSwappingProtocol();
+      const factory = { createProtocol: jest.fn().mockReturnValue(proto) };
+
+      const aggregator = new DexAggregator(baseConfig, {
+        quoteService: { getBestQuote: jest.fn().mockResolvedValue(split) },
+        protocolFactory: factory,
+      });
+
+      await aggregator.executeBestRoute(XLM, USDC, '100', {
+        walletAddress: 'GUSER',
+        privateKey: 'SKEY',
+        slippageBps: 50,
+      });
+
+      expect(proto.swap).toHaveBeenCalledTimes(2);
+      const venueConfigs = factory.createProtocol.mock.calls.map((c) => c[0].protocolId);
+      expect(venueConfigs).toEqual(['soroswap', 'sdex']);
+    });
+  });
+
+  describe('getQuote', () => {
+    it('returns the raw AggregatorQuote from the underlying service', async () => {
+      const quote = sampleQuote([
+        sampleRoute({ venue: 'soroswap', amountOut: '95' }),
+      ]);
+      const quoteService = { getBestQuote: jest.fn().mockResolvedValue(quote) };
+      const aggregator = new DexAggregator(baseConfig, {
+        quoteService,
+        protocolFactory: { createProtocol: jest.fn() },
+      });
+
+      const result = await aggregator.getQuote(XLM, USDC, '100');
+
+      expect(quoteService.getBestQuote).toHaveBeenCalledWith(XLM, USDC, '100');
+      expect(result).toBe(quote);
+      expect(result.totalAmountOut).toBe('95.0000000');
     });
   });
 });
