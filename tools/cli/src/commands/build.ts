@@ -9,6 +9,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import inquirer from 'inquirer';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import path from 'path';
@@ -22,8 +23,13 @@ buildCommand
   .option('--contracts', 'Build smart contracts only')
   .option('--frontend', 'Build frontend only')
   .option('--backend', 'Build backend only')
+  .option('--json', 'Output in JSON format (disables interactive prompts)')
+  .option('-y, --yes', 'Skip confirmation prompts')
   .action(async (options) => {
     try {
+      const isJson = options.json === true;
+      const skipConfirm = options.yes === true;
+
       console.log(chalk.blue('Building Galaxy project...'));
 
       // Check if we're in a Galaxy project
@@ -41,16 +47,87 @@ buildCommand
         process.exit(1);
       }
 
+      // Detect available components
+      const hasContracts = await fs.pathExists(path.join(process.cwd(), 'contracts'));
+      const hasFrontend = await fs.pathExists(path.join(process.cwd(), 'next.config.js'));
+      const hasBackend = await fs.pathExists(path.join(process.cwd(), 'backend')) ||
+                         await fs.pathExists(path.join(process.cwd(), 'api'));
+
+      const componentFlagsProvided = options.contracts || options.frontend || options.backend;
+
+      // If no component flags were provided, prompt interactively
+      if (!componentFlagsProvided) {
+        const availableComponents: string[] = [];
+        if (hasContracts) availableComponents.push('contracts');
+        if (hasFrontend) availableComponents.push('frontend');
+        if (hasBackend) availableComponents.push('backend');
+
+        if (availableComponents.length === 0) {
+          console.log(chalk.yellow('No buildable components found in this project'));
+          process.exit(0);
+        }
+
+        if (isJson) {
+          // In JSON mode, build all available components
+          options.contracts = hasContracts;
+          options.frontend = hasFrontend;
+          options.backend = hasBackend;
+        } else {
+          const choices = [
+            ...availableComponents,
+            { name: chalk.gray('Build all components'), value: '__all__' },
+          ];
+          const answer = await inquirer.prompt([{
+            type: 'checkbox',
+            name: 'components',
+            message: 'Select components to build:',
+            choices,
+            validate: (selected: string[]) => selected.length > 0 ? true : 'Select at least one component',
+          }]);
+
+          const selected = answer.components as string[];
+          const buildAll = selected.includes('__all__');
+          options.contracts = buildAll || selected.includes('contracts');
+          options.frontend = buildAll || selected.includes('frontend');
+          options.backend = buildAll || selected.includes('backend');
+        }
+      }
+
+      // Show build preview
+      if (!skipConfirm && !isJson) {
+        const targets: string[] = [];
+        if (options.contracts) targets.push('contracts');
+        if (options.frontend) targets.push('frontend');
+        if (options.backend) targets.push('backend');
+
+        console.log(chalk.cyan('\n--- Build Preview ---'));
+        console.log(chalk.white(`  Targets:  ${targets.join(', ')}`));
+        console.log(chalk.white(`  Output:   ${options.output}`));
+        console.log(chalk.white(`  Optimize: ${options.optimize ? 'Yes' : 'No'}`));
+        console.log(chalk.cyan('---------------------\n'));
+
+        const { confirm } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Proceed with build?',
+          default: true,
+        }]);
+
+        if (!confirm) {
+          console.log(chalk.yellow('Build cancelled.'));
+          process.exit(0);
+        }
+      }
+
       // Build based on options
       if (options.contracts) {
         await buildContracts(options);
-      } else if (options.frontend) {
+      }
+      if (options.frontend) {
         await buildFrontend(options);
-      } else if (options.backend) {
+      }
+      if (options.backend) {
         await buildBackend(options);
-      } else {
-        // Build all components
-        await buildAll(options);
       }
 
       console.log(chalk.green('\n✅ Build completed successfully!'));
@@ -188,22 +265,4 @@ async function buildBackend(options: any): Promise<void> {
   }
 }
 
-/**
- * Builds all components
- * @param options - Build options
- */
-async function buildAll(options: any): Promise<void> {
-  console.log(chalk.blue('Building all components...'));
-
-  // Build contracts
-  await buildContracts(options);
-
-  // Build frontend
-  await buildFrontend(options);
-
-  // Build backend
-  await buildBackend(options);
-}
-
 export { buildCommand };
-

@@ -9,6 +9,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import inquirer from 'inquirer';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import path from 'path';
@@ -17,12 +18,15 @@ const devCommand = new Command('dev');
 
 devCommand
   .description('Start development mode with hot reload')
-  .option('-p, --port <port>', 'Port to run on', '3000')
+  .option('-p, --port <port>', 'Port to run on')
   .option('--hot-reload', 'Enable hot reload')
   .option('--watch', 'Watch for file changes')
   .option('--debug', 'Enable debug mode')
+  .option('--json', 'Output in JSON format (disables interactive prompts)')
   .action(async (options) => {
     try {
+      const isJson = options.json === true;
+
       console.log(chalk.blue('Starting Galaxy development mode...'));
 
       // Check if we're in a Galaxy project
@@ -39,6 +43,70 @@ devCommand
         console.error(chalk.yellow('This command must be run from a Galaxy project'));
         process.exit(1);
       }
+
+      // Resolve options interactively if not explicitly provided via flags
+      const portExplicitlySet = process.argv.includes('-p') || process.argv.includes('--port');
+      const hotReloadExplicitlySet = process.argv.includes('--hot-reload');
+      const watchExplicitlySet = process.argv.includes('--watch');
+      const debugExplicitlySet = process.argv.includes('--debug');
+
+      if (!isJson && (!portExplicitlySet || !hotReloadExplicitlySet || !watchExplicitlySet || !debugExplicitlySet)) {
+        const prompts: any[] = [];
+
+        if (!portExplicitlySet) {
+          prompts.push({
+            type: 'input',
+            name: 'port',
+            message: 'Port to run on:',
+            default: '3000',
+            validate: (val: string) => {
+              const n = parseInt(val, 10);
+              return n > 0 && n <= 65535 ? true : 'Enter a valid port number (1-65535)';
+            },
+          });
+        }
+
+        if (!hotReloadExplicitlySet) {
+          prompts.push({
+            type: 'confirm',
+            name: 'hotReload',
+            message: 'Enable hot reload?',
+            default: true,
+          });
+        }
+
+        if (!watchExplicitlySet) {
+          prompts.push({
+            type: 'confirm',
+            name: 'watch',
+            message: 'Watch for file changes?',
+            default: true,
+          });
+        }
+
+        if (!debugExplicitlySet) {
+          prompts.push({
+            type: 'confirm',
+            name: 'debug',
+            message: 'Enable debug mode?',
+            default: false,
+          });
+        }
+
+        if (prompts.length > 0) {
+          const answers = await inquirer.prompt(prompts);
+          if (!portExplicitlySet) options.port = answers.port;
+          if (!hotReloadExplicitlySet) options.hotReload = answers.hotReload;
+          if (!watchExplicitlySet) options.watch = answers.watch;
+          if (!debugExplicitlySet) options.debug = answers.debug;
+        }
+      }
+
+      // Apply defaults for any still-unset options
+      if (!options.port) options.port = '3000';
+      if (options.hotReload === undefined) options.hotReload = false;
+      if (options.watch === undefined) options.watch = false;
+      if (options.debug === undefined) options.debug = false;
 
       // Start development mode
       await startDevelopmentMode(options);
@@ -225,4 +293,3 @@ app.listen(PORT, () => {
 }
 
 export { devCommand };
-
