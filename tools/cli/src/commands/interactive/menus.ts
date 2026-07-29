@@ -156,7 +156,12 @@ export const ROOT_MENU: MenuEntry[] = [
     description: 'Read price feeds and oracle data',
     children: [
       {
-        label: 'Get asset price',
+        label: 'Get asset price (guided)',
+        description: 'Query aggregated price with strategy selection',
+        promptFlow: 'oracle:price',
+      },
+      {
+        label: 'Get asset price (quick)',
         command: 'oracle price',
         params: [
           {
@@ -190,6 +195,31 @@ export const ROOT_MENU: MenuEntry[] = [
       {
         label: 'List supported strategies',
         command: 'oracle strategies',
+      },
+    ],
+  },
+  {
+    label: '🏗️  Protocol',
+    description: 'Protocol operations: supply, swap, liquidity',
+    children: [
+      {
+        label: 'Supply assets (guided)',
+        description: 'Supply to Blend lending protocol',
+        promptFlow: 'protocol:supply',
+      },
+      {
+        label: 'Swap tokens (guided)',
+        description: 'Execute a DEX swap on Soroswap',
+        promptFlow: 'protocol:swap',
+      },
+      {
+        label: 'Add liquidity (guided)',
+        description: 'Add liquidity to a Soroswap pool',
+        promptFlow: 'protocol:liquidity',
+      },
+      {
+        label: 'List liquidity pools',
+        command: 'protocol liquidity pools',
       },
     ],
   },

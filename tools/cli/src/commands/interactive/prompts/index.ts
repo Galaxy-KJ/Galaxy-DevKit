@@ -229,14 +229,20 @@ export async function runPromptFlow(
 
 import { WALLET_PROMPTS } from './wallet-prompts.js';
 import { DEFI_PROMPTS } from './defi-prompts.js';
+import { ORACLE_PROMPTS } from './oracle-prompts.js';
+import { PROTOCOL_PROMPTS } from './protocol-prompts.js';
 
 export { WALLET_PROMPTS } from './wallet-prompts.js';
 export { DEFI_PROMPTS } from './defi-prompts.js';
+export { ORACLE_PROMPTS } from './oracle-prompts.js';
+export { PROTOCOL_PROMPTS } from './protocol-prompts.js';
 
 /** Combined registry of every prompt flow shipped with the CLI. */
 export const PROMPT_FLOWS: Record<string, PromptFlow> = {
   ...WALLET_PROMPTS,
   ...DEFI_PROMPTS,
+  ...ORACLE_PROMPTS,
+  ...PROTOCOL_PROMPTS,
 };
 
 export function getPromptFlow(id: string): PromptFlow | undefined {
