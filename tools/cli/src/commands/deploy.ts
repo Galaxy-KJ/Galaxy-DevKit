@@ -18,12 +18,32 @@ const deployCommand = new Command('deploy');
 
 deployCommand
   .description('Deploy contracts and applications to Stellar networks')
-  .option('-n, --network <network>', 'Network to deploy to', 'testnet')
+  .option('-n, --network <network>', 'Network to deploy to')
   .option('-c, --contract <contract>', 'Contract to deploy')
   .option('--verify', 'Verify contract after deployment')
   .option('--gas-limit <limit>', 'Gas limit for deployment', '1000000')
+  .option('--json', 'Output in JSON format (disables interactive prompts)')
+  .option('-y, --yes', 'Skip confirmation prompts')
   .action(async (options) => {
     try {
+      const isJson = options.json === true;
+      const skipConfirm = options.yes === true;
+
+      // Resolve network interactively if not provided
+      if (!options.network) {
+        if (isJson) {
+          console.error(JSON.stringify({ error: 'Network is required. Use --network flag.' }));
+          process.exit(1);
+        }
+        const answer = await inquirer.prompt([{
+          type: 'list',
+          name: 'network',
+          message: 'Select network to deploy to:',
+          choices: ['testnet', 'mainnet'],
+        }]);
+        options.network = answer.network;
+      }
+
       console.log(chalk.blue('Deploying to Stellar network...'));
       console.log(chalk.gray(`Network: ${options.network}`));
 
@@ -48,6 +68,59 @@ deployCommand
         console.error(chalk.red('Not a Galaxy project'));
         console.error(chalk.yellow('This command must be run from a Galaxy project'));
         process.exit(1);
+      }
+
+      // Resolve contract interactively if not provided
+      if (!options.contract) {
+        const contractsDir = path.join(process.cwd(), 'contracts');
+        if (await fs.pathExists(contractsDir)) {
+          const entries = await fs.readdir(contractsDir);
+          const contractDirs: string[] = [];
+          for (const entry of entries) {
+            const stat = await fs.stat(path.join(contractsDir, entry));
+            if (stat.isDirectory()) {
+              contractDirs.push(entry);
+            }
+          }
+
+          if (contractDirs.length > 0) {
+            if (isJson) {
+              // In JSON mode, deploy all contracts
+              options.contract = null;
+            } else {
+              const choices = [...contractDirs, { name: chalk.gray('Deploy all contracts'), value: '__all__' }];
+              const answer = await inquirer.prompt([{
+                type: 'list',
+                name: 'contract',
+                message: 'Select a contract to deploy:',
+                choices,
+              }]);
+              options.contract = answer.contract === '__all__' ? null : answer.contract;
+            }
+          }
+        }
+      }
+
+      // Show deployment preview
+      if (!skipConfirm && !isJson) {
+        console.log(chalk.cyan('\n--- Deployment Preview ---'));
+        console.log(chalk.white(`  Network:  ${options.network}`));
+        console.log(chalk.white(`  Contract: ${options.contract || 'All contracts'}`));
+        console.log(chalk.white(`  Verify:   ${options.verify ? 'Yes' : 'No'}`));
+        console.log(chalk.white(`  Gas limit: ${options.gasLimit}`));
+        console.log(chalk.cyan('----------------------------\n'));
+
+        const { confirm } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Proceed with deployment?',
+          default: true,
+        }]);
+
+        if (!confirm) {
+          console.log(chalk.yellow('Deployment cancelled.'));
+          process.exit(0);
+        }
       }
 
       // Deploy contracts if specified
@@ -209,4 +282,3 @@ async function deployApplication(options: any): Promise<void> {
 }
 
 export { deployCommand };
-
