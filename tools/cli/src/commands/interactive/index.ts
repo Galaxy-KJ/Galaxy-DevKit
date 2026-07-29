@@ -23,6 +23,8 @@ import {
   PROMPT_FLOWS,
   WALLET_PROMPTS,
   DEFI_PROMPTS,
+  ORACLE_PROMPTS,
+  PROTOCOL_PROMPTS,
 } from './prompts/index.js';
 
 // Re-export types
@@ -91,6 +93,8 @@ export {
   PROMPT_FLOWS,
   WALLET_PROMPTS,
   DEFI_PROMPTS,
+  ORACLE_PROMPTS,
+  PROTOCOL_PROMPTS,
 };
 
 /**

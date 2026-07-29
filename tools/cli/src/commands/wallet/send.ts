@@ -52,6 +52,14 @@ function buildMemo(input: string | undefined): Memo | undefined {
     return Memo.text(input);
 }
 
+/** Check if we should skip interactive prompts (CI/CD, --json, --non-interactive). */
+function isNonInteractiveFlag(): boolean {
+    const args = process.argv.slice(2);
+    if (args.includes('--non-interactive') || args.includes('--json')) return true;
+    if (process.env.CI || process.env.NON_INTERACTIVE) return true;
+    return false;
+}
+
 export const sendCommand = new Command('send')
     .description('Transfer XLM or an issued asset from a stored wallet to another address')
     .argument('<from>', 'Source wallet name (must be stored locally)')
@@ -61,6 +69,7 @@ export const sendCommand = new Command('send')
     .option('--memo <text>', 'Optional memo text (max 28 bytes UTF-8)')
     .option('--password <password>', 'Password to decrypt the source wallet (if encrypted)')
     .option('--network <network>', 'Override the network (testnet|mainnet); defaults to wallet network')
+    .option('-y, --yes', 'Skip transaction preview confirmation (for CI/CD and scripting)')
     .option('--json', 'Output as JSON')
     .action(async (from: string, to: string, amount: string, assetInput: string, options: any) => {
         const spinner = ora('Preparing transaction...').start();
@@ -150,8 +159,42 @@ export const sendCommand = new Command('send')
             const tx = builder.setTimeout(180).build();
             tx.sign(Keypair.fromSecret(wallet.secretKey));
 
-            // 5. Submit.
-            spinner.text = 'Submitting to Horizon...';
+            // 5. Transaction preview.
+            spinner.stop();
+            console.log('');
+            console.log(chalk.cyan('  ═══════════════════════════════════'));
+            console.log(chalk.cyan('  📋 Transaction Preview'));
+            console.log(chalk.cyan('  ═══════════════════════════════════'));
+            console.log(chalk.gray('  From:     ') + chalk.white(`${from} (${wallet.publicKey})`));
+            console.log(chalk.gray('  To:       ') + chalk.white(to));
+            console.log(chalk.gray('  Amount:   ') + chalk.cyan(`${amount} ${asset.isNative() ? 'XLM' : asset.getCode()}`));
+            if (!asset.isNative()) {
+              console.log(chalk.gray('  Issuer:   ') + chalk.white(asset.getIssuer()));
+            }
+            console.log(chalk.gray('  Fee:      ') + chalk.white(`${BASE_FEE} stroops`));
+            if (options.memo) console.log(chalk.gray('  Memo:     ') + chalk.white(options.memo));
+            console.log(chalk.gray('  Network:  ') + chalk.white(network));
+            console.log(chalk.cyan('  ═══════════════════════════════════'));
+            console.log('');
+
+            // Ask for confirmation before submitting (skip in non-interactive mode).
+            const skipConfirm = options.yes || isNonInteractiveFlag();
+            if (!skipConfirm) {
+              const { confirm } = await inquirer.prompt([
+                {
+                  type: 'confirm',
+                  name: 'confirm',
+                  message: 'Proceed with transaction?',
+                  default: false,
+                },
+              ]);
+              if (!confirm) {
+                console.log(chalk.yellow('\n  Transaction cancelled.\n'));
+                return;
+              }
+            }
+
+            spinner.start('Submitting to Horizon...');
             const result = await server.submitTransaction(tx);
 
             spinner.succeed(chalk.green('Payment submitted!'));
