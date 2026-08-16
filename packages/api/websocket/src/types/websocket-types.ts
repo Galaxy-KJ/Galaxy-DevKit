@@ -16,7 +16,7 @@ export interface BaseWebSocketEvent {
   /** Event timestamp */
   timestamp: number;
   /** Event source */
-  source: 'galaxy-websocket';
+  source: string;
 }
 
 /**
@@ -35,6 +35,9 @@ export interface MarketPriceUpdateEvent extends BaseWebSocketEvent {
     change24h: number;
     /** Market cap */
     marketCap?: number;
+    source: string;
+    upstreamTimestamp: number;
+    sourcesUsed?: string[];
   };
 }
 
@@ -49,6 +52,8 @@ export interface MarketOrderbookUpdateEvent extends BaseWebSocketEvent {
     asks: Array<[number, number]>;
     /** Orderbook depth */
     depth: number;
+    source: string;
+    upstreamTimestamp: number;
   };
 }
 
@@ -65,6 +70,18 @@ export interface MarketTradeEvent extends BaseWebSocketEvent {
     side: 'buy' | 'sell';
     /** Trade timestamp */
     tradeTimestamp: number;
+    source: string;
+    upstreamTimestamp: number;
+  };
+}
+
+export interface MarketErrorEvent extends BaseWebSocketEvent {
+  type: 'market:error';
+  data: {
+    pair: string;
+    channel: 'price' | 'orderbook' | 'trade';
+    error: string;
+    code?: string;
   };
 }
 
@@ -243,6 +260,7 @@ export type WebSocketEvent =
   | MarketPriceUpdateEvent
   | MarketOrderbookUpdateEvent
   | MarketTradeEvent
+  | MarketErrorEvent
   | TransactionPendingEvent
   | TransactionConfirmedEvent
   | TransactionFailedEvent

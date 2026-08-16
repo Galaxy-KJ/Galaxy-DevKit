@@ -147,7 +147,14 @@ class WebSocketServer {
 
     // Initialize handlers
     this.connectionHandler = new ConnectionHandler(this.io, this.roomManager, this.eventBroadcaster);
-    this.marketHandler = new MarketHandler(this.io, this.roomManager, this.eventBroadcaster);
+    this.marketHandler = new MarketHandler(this.io, this.roomManager, this.eventBroadcaster, {
+      horizonUrl: config.stellar.horizonUrl,
+      network: config.stellar.network,
+      maxStalenessMs: config.market.maxStalenessMs,
+      pricePollIntervalMs: config.market.pricePollIntervalMs,
+      orderbookPollIntervalMs: config.market.orderbookPollIntervalMs,
+      tradePollIntervalMs: config.market.tradePollIntervalMs,
+    });
     this.transactionHandler = new TransactionHandler(this.io, this.roomManager, this.eventBroadcaster);
     this.automationHandler = new AutomationHandler(this.io, this.roomManager, this.eventBroadcaster);
     this.transactionMonitoringHandler = new TransactionMonitoringHandler(this.io);
@@ -174,6 +181,7 @@ class WebSocketServer {
 
         // Cleanup handlers
         this.connectionHandler.cleanup();
+        this.marketHandler.shutdown();
         this.roomManager.destroy();
         this.eventBroadcaster.destroy();
         this.transactionHandler.cleanup();
@@ -329,6 +337,7 @@ class WebSocketServer {
 
       // Cleanup handlers
       this.connectionHandler.cleanup();
+      this.marketHandler.shutdown();
       this.roomManager.destroy();
       this.eventBroadcaster.destroy();
       this.transactionHandler.cleanup();
@@ -386,6 +395,7 @@ export * from './services/room-manager';
 export * from './services/event-broadcaster';
 export * from './handlers/connection-handler';
 export * from './handlers/market-handler';
+export * from './services/market-data-source';
 export * from './handlers/transaction-handler';
 export * from './handlers/automation-handler';
 export * from './middleware/auth';
