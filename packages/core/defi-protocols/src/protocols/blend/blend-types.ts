@@ -21,6 +21,8 @@ export interface BlendPoolConfig {
   assets: BlendPoolAsset[];
   /** Pool oracle address */
   oracleAddress: string;
+  /** Indexer URL (optional) for querying pool positions */
+  indexerUrl?: string;
 }
 
 /**
