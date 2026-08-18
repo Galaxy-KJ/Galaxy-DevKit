@@ -74,6 +74,12 @@ function createRoomManager() {
   };
 }
 
+function jwtWithExp(exp: number): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ sub: 'user-1', exp })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
+
 function createHandler() {
   const connectionListeners: Array<(socket: ExtendedSocket) => void> = [];
   const sockets = new Map<string, ExtendedSocket>();
@@ -301,5 +307,32 @@ describe('ConnectionHandler authentication', () => {
 
     handler.cleanup();
     jest.useRealTimers();
+  });
+
+  it('disconnects a long-lived socket when the jwt expires after auth', async () => {
+    jest.useFakeTimers();
+    try {
+      const now = Date.now();
+      const token = jwtWithExp(Math.floor(now / 1000) + 5);
+
+      const { handler, socket } = await connectAndAuthenticate(token, {
+        success: true,
+        userId: 'user-long-lived'
+      });
+
+      expect(socket.isAuthenticated).toBe(true);
+      expect(socket.disconnect).not.toHaveBeenCalled();
+
+      jest.setSystemTime(now + 31_000);
+      await jest.advanceTimersByTimeAsync(30_000);
+
+      expect(socket.emitted.some((item) => item.event === 'auth_error')).toBe(true);
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(socket.isAuthenticated).toBeFalsy();
+
+      handler.cleanup();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
