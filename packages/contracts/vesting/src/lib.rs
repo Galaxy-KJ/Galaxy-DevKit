@@ -7,6 +7,9 @@ use soroban_sdk::{
 const SCHEDULES: Symbol = symbol_short!("SCHED");
 const CLAIMED: Symbol = symbol_short!("CLAIMD");
 
+const INSTANCE_TTL_THRESHOLD: u32 = 241_920; // ~14 days
+const INSTANCE_TTL_EXTEND: u32 = 483_840; // ~28 days
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VestingSchedule {
@@ -57,6 +60,9 @@ impl VestingContract {
 
         schedules.set(beneficiary, schedule);
         env.storage().instance().set(&SCHEDULES, &schedules);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn claim_tokens(env: Env, beneficiary: Address) -> i128 {
@@ -93,11 +99,18 @@ impl VestingContract {
 
         claimed_map.set(beneficiary, vested_amount);
         env.storage().instance().set(&CLAIMED, &claimed_map);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         claimable
     }
 
     pub fn get_vested_amount(env: Env, beneficiary: Address) -> i128 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let schedules: Map<Address, VestingSchedule> =
             env.storage().instance().get(&SCHEDULES).unwrap_or(Map::new(&env));
 
@@ -121,12 +134,20 @@ impl VestingContract {
     }
 
     pub fn get_claimed_amount(env: Env, beneficiary: Address) -> i128 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let claimed_map: Map<Address, i128> =
             env.storage().instance().get(&CLAIMED).unwrap_or(Map::new(&env));
         claimed_map.get(beneficiary).unwrap_or(0)
     }
 
     pub fn get_schedule(env: Env, beneficiary: Address) -> Option<VestingSchedule> {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let schedules: Map<Address, VestingSchedule> =
             env.storage().instance().get(&SCHEDULES).unwrap_or(Map::new(&env));
         schedules.get(beneficiary)

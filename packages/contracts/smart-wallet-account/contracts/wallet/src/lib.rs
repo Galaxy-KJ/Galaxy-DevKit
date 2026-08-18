@@ -11,6 +11,8 @@ use smart_wallet_account_common::{
 };
 
 /// TTL constants for admin signers (in ledgers). ~1 ledger ≈ 5 seconds.
+/// Admin passkeys must never archive silently — a week of slack, renewed
+/// on every auth check, keeps them alive across long gaps between logins.
 const ADMIN_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
 const ADMIN_TTL_EXTEND: u32 = 120_960;   // ~7 days
 
@@ -99,6 +101,9 @@ impl SmartWallet {
         env.storage()
             .instance()
             .set(&WalletDataKey::AdminSignerCount, &(count + 1));
+        env.storage()
+            .instance()
+            .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
 
         Ok(())
     }
@@ -179,6 +184,9 @@ impl SmartWallet {
                 env.storage()
                     .instance()
                     .set(&WalletDataKey::AdminSignerCount, &(count - 1));
+                env.storage()
+                    .instance()
+                    .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
             }
             env.storage().persistent().remove(&key);
             return Ok(());
@@ -411,3 +419,6 @@ pub fn base64url_encode(env: &Env, input: &[u8]) -> Bytes {
 
     out
 }
+
+#[cfg(test)]
+mod test;

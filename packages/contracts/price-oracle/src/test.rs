@@ -11,7 +11,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{storage::Instance as _, Address as _, Ledger as _},
     Address, Env, Symbol,
 };
 
@@ -679,4 +679,108 @@ fn test_price_latest_entry_after_multiple_pushes() {
     // get_price must return the most recent
     let entry = client.get_price(&base, &quote);
     assert_eq!(entry.price, 5_000_000);
+}
+
+// ---------------------------------------------------------------------------
+// TTL — instance storage survivability and exact boundary behavior
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_initialize_extends_instance_ttl() {
+    let (env, contract_id, admin, _) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let _client = init_client(&env, &contract_id, &admin);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_push_price_survives_past_initial_threshold() {
+    let (env, contract_id, admin, pusher) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    // live_until = 100 + INSTANCE_TTL_EXTEND
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let (env, contract_id, admin, pusher) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.push_price(&pusher, &base, &quote, &1_100_000);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_get_price_keeps_feed_alive_across_long_dormancy() {
+    let (env, contract_id, admin, pusher) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+
+    // No further pushes — only reads — for several TTL horizons. If reads
+    // didn't extend the TTL, the feed would archive on the first gap and
+    // every call below would fail against a missing instance entry.
+    for _ in 0..3 {
+        env.ledger()
+            .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+        let entry = client.get_price(&base, &quote);
+        assert_eq!(entry.price, 1_000_000);
+    }
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_add_pusher_and_set_admin_extend_instance_ttl() {
+    let (env, contract_id, admin, pusher) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = init_client(&env, &contract_id, &admin);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.add_pusher(&admin, &pusher);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    let new_admin = Address::generate(&env);
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.set_admin(&new_admin);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }

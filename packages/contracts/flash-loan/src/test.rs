@@ -15,7 +15,10 @@
 //! all guard paths that can be exercised without a callback.
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env};
+use soroban_sdk::{
+    testutils::{storage::Instance as _, Address as _, Ledger},
+    token, Address, Bytes, Env,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -282,3 +285,78 @@ fn test_get_pool_info_admin_is_set() {
     let (_, client, _, _, admin) = setup(&env);
     assert_eq!(client.get_pool_info().admin, admin);
 }
+
+// ---------------------------------------------------------------------------
+// TTL — instance storage survivability and exact boundary behavior
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_initialize_extends_instance_ttl() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let (flash_loan_id, _client, _, _, _) = setup(&env);
+
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_survives_past_initial_threshold_via_set_fee() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let (flash_loan_id, client, _, _, _) = setup(&env);
+    // live_until = 100 + INSTANCE_TTL_EXTEND
+
+    // Advance to one ledger before the entry would have expired had nothing
+    // touched it again.
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.set_fee(&42_i128);
+
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let (flash_loan_id, client, _, _, _) = setup(&env);
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.set_fee(&1_i128);
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.set_fee(&2_i128);
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_deposit_and_withdraw_extend_instance_ttl() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let (flash_loan_id, client, _, _, admin) = setup(&env);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.deposit(&admin, &1_000_i128);
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.withdraw(&500_i128);
+    let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+

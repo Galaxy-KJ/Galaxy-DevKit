@@ -23,6 +23,11 @@ const QUORUM_THRESHOLD: i128 = 1_000;
 /// Minimum FOR weight as a percentage of total votes cast (50 % = majority).
 const APPROVAL_THRESHOLD_PCT: i128 = 50;
 
+/// Proposals, votes and locks can sit idle for weeks between interactions
+/// (the voting period alone is 7 days), so use a longer TTL horizon.
+const INSTANCE_TTL_THRESHOLD: u32 = 241_920; // ~14 days
+const INSTANCE_TTL_EXTEND: u32 = 483_840; // ~28 days
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /// On-chain status of a proposal.
@@ -129,6 +134,9 @@ impl GovernanceContract {
         proposals.set(id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
         env.storage().instance().set(&NEXT_ID, &next_id);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         id
     }
@@ -207,6 +215,9 @@ impl GovernanceContract {
 
         proposals.set(proposal_id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Finalise a proposal after its voting period has ended.
@@ -245,6 +256,9 @@ impl GovernanceContract {
 
         proposals.set(proposal_id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Execute a proposal that has `Passed`.
@@ -270,6 +284,9 @@ impl GovernanceContract {
         proposal.status = ProposalStatus::Executed;
         proposals.set(proposal_id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // ── Token lock management ─────────────────────────────────────────────────
@@ -307,6 +324,9 @@ impl GovernanceContract {
 
         locks.set(voter, lock);
         env.storage().instance().set(&LOCKS, &locks);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Unlock and return governance tokens to the voter.
@@ -328,6 +348,9 @@ impl GovernanceContract {
 
         locks.remove(voter);
         env.storage().instance().set(&LOCKS, &locks);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // ── View functions ────────────────────────────────────────────────────────
@@ -336,6 +359,9 @@ impl GovernanceContract {
     pub fn get_proposal(env: Env, proposal_id: u32) -> Option<Proposal> {
         let proposals: Map<u32, Proposal> =
             env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         proposals.get(proposal_id)
     }
 
@@ -344,6 +370,9 @@ impl GovernanceContract {
         let key = (voter, proposal_id);
         let all_votes: Map<(Address, u32), VoteRecord> =
             env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         all_votes.get(key)
     }
 
@@ -351,11 +380,17 @@ impl GovernanceContract {
     pub fn get_lock(env: Env, voter: Address) -> Option<TokenLock> {
         let locks: Map<Address, TokenLock> =
             env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         locks.get(voter)
     }
 
     /// Return the next proposal ID that will be assigned.
     pub fn next_proposal_id(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         env.storage().instance().get(&NEXT_ID).unwrap_or(0u32)
     }
 
@@ -366,7 +401,10 @@ impl GovernanceContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
+    use soroban_sdk::{
+        testutils::{storage::Instance as _, Address as _, Ledger},
+        Address, Env, String,
+    };
 
     fn setup() -> (Env, GovernanceContractClient<'static>) {
         let env = Env::default();
@@ -652,5 +690,102 @@ mod tests {
         let record = client.get_vote(&voter, &id).unwrap();
         assert_eq!(record.weight, 600);
         assert!(record.support);
+    }
+
+    // ── TTL — instance storage survivability and exact boundary behavior ──────
+
+    #[test]
+    fn test_lock_tokens_extends_instance_ttl() {
+        let (env, client) = setup();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let voter = Address::generate(&env);
+
+        client.lock_tokens(&voter, &500);
+
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+    }
+
+    #[test]
+    fn test_instance_ttl_survives_past_initial_threshold_via_propose() {
+        let (env, client) = setup();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let proposer = Address::generate(&env);
+        client.lock_tokens(&proposer, &500);
+
+        env.ledger()
+            .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+        client.propose(&proposer, &String::from_str(&env, "keep alive"));
+
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+    }
+
+    #[test]
+    fn test_instance_ttl_boundary_behavior() {
+        let (env, client) = setup();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let voter = Address::generate(&env);
+        client.lock_tokens(&voter, &500);
+
+        let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+        env.ledger()
+            .with_mut(|li| li.sequence_number = just_before_threshold);
+        client.lock_tokens(&voter, &1);
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(
+            ttl,
+            INSTANCE_TTL_THRESHOLD + 1,
+            "must not re-extend before threshold"
+        );
+
+        env.ledger()
+            .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+        client.lock_tokens(&voter, &1);
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+    }
+
+    #[test]
+    fn test_finalize_and_execute_extend_instance_ttl() {
+        let (env, client) = setup();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let executor = Address::generate(&env);
+
+        client.lock_tokens(&proposer, &100);
+        client.lock_tokens(&voter, &2_000);
+        let id = client.propose(&proposer, &String::from_str(&env, "mint_rewards"));
+        client.vote(&voter, &id, &2_000, &true);
+
+        env.ledger().with_mut(|li| {
+            li.timestamp += VOTING_PERIOD_SECS + 1;
+            li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1;
+        });
+        client.finalize(&id);
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+        env.ledger()
+            .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+        client.execute(&executor, &id);
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+    }
+
+    #[test]
+    fn test_unlock_tokens_extends_instance_ttl() {
+        let (env, client) = setup();
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        let voter = Address::generate(&env);
+        client.lock_tokens(&voter, &500);
+
+        env.ledger()
+            .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+        client.unlock_tokens(&voter);
+
+        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
+        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
     }
 }

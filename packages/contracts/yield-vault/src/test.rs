@@ -1,7 +1,10 @@
 //! Tests for the Yield Vault contract.
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, vec, Address, Env, Symbol};
+use soroban_sdk::{
+    testutils::{storage::Instance as _, Address as _, Ledger as _},
+    vec, Address, Env, Symbol,
+};
 
 fn setup() -> (Env, Address, Address, Address) {
     let env = Env::default();
@@ -294,4 +297,100 @@ fn test_get_share_value_after_deposit() {
 
     // 1:1 ratio → share value = 1e7 (scaled by 1e7)
     assert_eq!(client.get_share_value(), 10_000_000u64);
+}
+
+// ---------------------------------------------------------------------------
+// TTL — instance storage survivability and exact boundary behavior
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_initialize_extends_instance_ttl() {
+    let (env, contract_id, admin, asset) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = YieldVaultContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &asset);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_deposit_survives_past_initial_threshold() {
+    let (env, contract_id, admin, asset) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = YieldVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &asset);
+    // live_until = 100 + INSTANCE_TTL_EXTEND
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    let user = Address::generate(&env);
+    client.deposit(&user, &1_000u64);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let (env, contract_id, admin, asset) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = YieldVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &asset);
+    let user = Address::generate(&env);
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.deposit(&user, &1_000u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.deposit(&user, &1_000u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_withdraw_harvest_and_set_strategies_extend_instance_ttl() {
+    let (env, contract_id, admin, asset) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = YieldVaultContractClient::new(&env, &contract_id);
+    client.initialize(&admin, &asset);
+    let user = Address::generate(&env);
+    client.deposit(&user, &1_000u64);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.withdraw(&user, &500u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.harvest(&100u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.set_strategies(&vec![
+        &env,
+        StrategyAllocation {
+            name: Symbol::new(&env, "blend_usdc"),
+            strategy_type: StrategyType::Blend,
+            contract_address: Address::generate(&env),
+            weight_bps: 10_000,
+            active: true,
+        },
+    ]);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }

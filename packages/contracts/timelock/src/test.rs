@@ -1,6 +1,6 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{storage::Instance as _, Address as _, Ledger as _},
     Address, Env, String,
 };
 
@@ -160,4 +160,84 @@ fn test_queue_multiple_transactions() {
 
     assert!(client.get_queued_transaction(&hash1).is_some());
     assert!(client.get_queued_transaction(&hash2).is_some());
+}
+
+#[test]
+fn test_queue_transaction_sets_instance_ttl() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = TimelockContractClient::new(&env, &contract_id);
+
+    let target = Address::generate(&env);
+    let action = String::from_str(&env, "transfer");
+    client.queue_transaction(&target, &action, &2000u64);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_execute_transaction_survives_past_initial_threshold() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = TimelockContractClient::new(&env, &contract_id);
+
+    let target = Address::generate(&env);
+    let action = String::from_str(&env, "transfer");
+    let tx_hash = client.queue_transaction(&target, &action, &2000u64);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 2500;
+        li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1;
+    });
+    client.execute_transaction(&tx_hash);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = TimelockContractClient::new(&env, &contract_id);
+
+    let target = Address::generate(&env);
+    let action = String::from_str(&env, "transfer");
+    client.queue_transaction(&target, &action, &2000u64);
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.queue_transaction(&target, &action, &3000u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.queue_transaction(&target, &action, &4000u64);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_revoke_transaction_extends_instance_ttl() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = TimelockContractClient::new(&env, &contract_id);
+
+    let target = Address::generate(&env);
+    let action = String::from_str(&env, "transfer");
+    let tx_hash = client.queue_transaction(&target, &action, &2000u64);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.revoke_transaction(&tx_hash);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }

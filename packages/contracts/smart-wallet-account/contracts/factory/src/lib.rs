@@ -3,8 +3,15 @@ use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, 
 
 use smart_wallet_account_common::FactoryDataKey;
 
+// A deployed wallet's mapping should outlive long gaps between logins,
+// so it renews on both `deploy` and `get_wallet` lookups.
 const DEPLOYED_TTL_THRESHOLD: u32 = 60_480;
 const DEPLOYED_TTL_EXTEND: u32 = 120_960;
+
+/// Instance TTL (WalletWasmHash config). Same horizon as the `Deployed`
+/// mapping — the factory is read on every `deploy()` call.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480;
+const INSTANCE_TTL_EXTEND: u32 = 120_960;
 
 #[contract]
 pub struct Factory;
@@ -22,6 +29,9 @@ impl Factory {
         env.storage()
             .instance()
             .set(&FactoryDataKey::WalletWasmHash, &wallet_wasm_hash);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn deploy(
@@ -37,6 +47,9 @@ impl Factory {
             .instance()
             .get(&FactoryDataKey::WalletWasmHash)
             .expect("factory not initialized");
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         // Deterministic salt from the credential ID.
         let salt = env.crypto().sha256(&credential_id);
@@ -66,6 +79,10 @@ impl Factory {
     }
 
     pub fn get_wallet(env: Env, credential_id: Bytes) -> Option<Address> {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let key = FactoryDataKey::Deployed(credential_id);
         let result: Option<Address> = env.storage().persistent().get(&key);
         if result.is_some() {
@@ -78,3 +95,6 @@ impl Factory {
         result
     }
 }
+
+#[cfg(test)]
+mod test;

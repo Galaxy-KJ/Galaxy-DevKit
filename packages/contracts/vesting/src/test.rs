@@ -1,6 +1,6 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{storage::Instance as _, Address as _, Ledger as _},
     Address, Env,
 };
 
@@ -197,4 +197,86 @@ fn test_claim_during_cliff_panics() {
     env.ledger().with_mut(|l| l.timestamp = 1800);
 
     client.claim_tokens(&beneficiary);
+}
+
+#[test]
+fn test_create_schedule_sets_instance_ttl() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    let beneficiary = Address::generate(&env);
+    client.create_schedule(&beneficiary, &100_000_000i128, &1000u64, &1000u64, &4000u64);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_get_vested_amount_keeps_schedule_alive_across_long_dormancy() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    let beneficiary = Address::generate(&env);
+    client.create_schedule(&beneficiary, &100_000_000i128, &1000u64, &1000u64, &4000u64);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    let vested = client.get_vested_amount(&beneficiary);
+    assert_eq!(vested, 0);
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "a read must keep a dormant schedule alive");
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    let beneficiary = Address::generate(&env);
+    client.create_schedule(&beneficiary, &100_000_000i128, &1000u64, &1000u64, &4000u64);
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.get_schedule(&beneficiary);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.get_schedule(&beneficiary);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_claim_tokens_and_get_claimed_amount_extend_instance_ttl() {
+    let (env, contract_id) = setup();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    let beneficiary = Address::generate(&env);
+    client.create_schedule(&beneficiary, &100_000_000i128, &1000u64, &1000u64, &4000u64);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 3500;
+        li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1;
+    });
+    client.claim_tokens(&beneficiary);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.get_claimed_amount(&beneficiary);
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }

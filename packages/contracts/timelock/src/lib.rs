@@ -8,6 +8,9 @@ use soroban_sdk::{
 const QUEUED_TXS: Symbol = symbol_short!("QUEUED");
 const EXECUTED: Symbol = symbol_short!("EXECUTD");
 
+const INSTANCE_TTL_THRESHOLD: u32 = 241_920; // ~14 days
+const INSTANCE_TTL_EXTEND: u32 = 483_840; // ~28 days
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueuedTransaction {
@@ -49,6 +52,9 @@ impl TimelockContract {
 
         queued_txs.set(tx_hash.clone(), queued);
         env.storage().instance().set(&QUEUED_TXS, &queued_txs);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         tx_hash
     }
@@ -75,6 +81,9 @@ impl TimelockContract {
 
         env.storage().instance().set(&QUEUED_TXS, &queued_txs);
         env.storage().instance().set(&EXECUTED, &executed);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn revoke_transaction(env: Env, tx_hash: BytesN<32>) {
@@ -89,17 +98,26 @@ impl TimelockContract {
 
         queued_txs.remove(tx_hash);
         env.storage().instance().set(&QUEUED_TXS, &queued_txs);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn get_queued_transaction(env: Env, tx_hash: BytesN<32>) -> Option<QueuedTransaction> {
         let queued_txs: Map<BytesN<32>, QueuedTransaction> =
             env.storage().instance().get(&QUEUED_TXS).unwrap_or(Map::new(&env));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         queued_txs.get(tx_hash)
     }
 
     pub fn is_executed(env: Env, tx_hash: BytesN<32>) -> bool {
         let executed: Map<BytesN<32>, bool> =
             env.storage().instance().get(&EXECUTED).unwrap_or(Map::new(&env));
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         executed.contains_key(tx_hash)
     }
 }
