@@ -27,6 +27,11 @@ const BALANCES: Symbol = symbol_short!("BALS");
 const STRATEGIES: Symbol = symbol_short!("STRATS");
 const LAST_HARVEST: Symbol = symbol_short!("LST_HRV");
 
+// A yield vault expects regular deposit/withdraw/harvest traffic, so a
+// week of slack is enough headroom between renewals.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+
 // ---------------------------------------------------------------------------
 // Contract types
 // ---------------------------------------------------------------------------
@@ -79,6 +84,7 @@ impl YieldVaultContract {
         storage.set(&TOTAL_SHARES, &0u64);
         storage.set(&TOTAL_ASSETS, &0u64);
         storage.set(&LAST_HARVEST, &env.ledger().timestamp());
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // -----------------------------------------------------------------------
@@ -123,6 +129,7 @@ impl YieldVaultContract {
         storage.set(&BALANCES, &balances);
         storage.set(&TOTAL_SHARES, &(total_shares + shares_to_mint));
         storage.set(&TOTAL_ASSETS, &(total_assets + amount));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         shares_to_mint
     }
@@ -162,6 +169,7 @@ impl YieldVaultContract {
         storage.set(&BALANCES, &balances);
         storage.set(&TOTAL_SHARES, &(total_shares - shares));
         storage.set(&TOTAL_ASSETS, &(total_assets - assets_to_return));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         WithdrawResult {
             shares_burned: shares,
@@ -181,6 +189,7 @@ impl YieldVaultContract {
         let total_assets: u64 = storage.get(&TOTAL_ASSETS).unwrap_or(0);
         storage.set(&TOTAL_ASSETS, &(total_assets + yield_amount));
         storage.set(&LAST_HARVEST, &env.ledger().timestamp());
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // -----------------------------------------------------------------------
@@ -207,14 +216,15 @@ impl YieldVaultContract {
         }
 
         storage.set(&STRATEGIES, &strategies);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Return the current strategy allocations.
     pub fn get_strategies(env: Env) -> Vec<StrategyAllocation> {
-        env.storage()
-            .instance()
-            .get(&STRATEGIES)
-            .unwrap_or(vec![&env])
+        let storage = env.storage().instance();
+        let strategies = storage.get(&STRATEGIES).unwrap_or(vec![&env]);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        strategies
     }
 
     // -----------------------------------------------------------------------
@@ -228,6 +238,7 @@ impl YieldVaultContract {
         let storage = env.storage().instance();
         let total_shares: u64 = storage.get(&TOTAL_SHARES).unwrap_or(0);
         let total_assets: u64 = storage.get(&TOTAL_ASSETS).unwrap_or(0);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         if total_shares == 0 {
             return 0;
@@ -242,29 +253,32 @@ impl YieldVaultContract {
 
     /// Total underlying assets managed by the vault.
     pub fn get_total_value_locked(env: Env) -> u64 {
-        env.storage().instance().get(&TOTAL_ASSETS).unwrap_or(0)
+        let storage = env.storage().instance();
+        let total_assets = storage.get(&TOTAL_ASSETS).unwrap_or(0);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        total_assets
     }
 
     /// Share balance of a specific user.
     pub fn get_balance(env: Env, user: Address) -> u64 {
-        let balances: Map<Address, u64> = env
-            .storage()
-            .instance()
-            .get(&BALANCES)
-            .unwrap_or(Map::new(&env));
+        let storage = env.storage().instance();
+        let balances: Map<Address, u64> = storage.get(&BALANCES).unwrap_or(Map::new(&env));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         balances.get(user).unwrap_or(0)
     }
 
     /// Full vault state snapshot.
     pub fn get_vault_info(env: Env) -> VaultInfo {
         let storage = env.storage().instance();
-        VaultInfo {
+        let info = VaultInfo {
             admin: storage.get(&ADMIN).unwrap(),
             asset: storage.get(&ASSET).unwrap(),
             total_shares: storage.get(&TOTAL_SHARES).unwrap_or(0),
             total_assets: storage.get(&TOTAL_ASSETS).unwrap_or(0),
             last_harvest: storage.get(&LAST_HARVEST).unwrap_or(0),
-        }
+        };
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        info
     }
 }
 

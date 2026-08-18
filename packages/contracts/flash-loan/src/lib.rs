@@ -16,7 +16,7 @@
 //!
 //! ### Receiver interface
 //! The receiver contract must expose:
-//! ```
+//! ```text
 //! fn execute(env: Env, token: Address, amount: i128, fee: i128, data: Bytes);
 //! ```
 //! Inside `execute` the receiver must ensure that `amount + fee` tokens are
@@ -35,6 +35,15 @@ use soroban_sdk::{
 
 /// Default loan fee in basis points (9 bps = 0.09 %).
 pub const DEFAULT_FEE_BPS: i128 = 9;
+
+// ---------------------------------------------------------------------------
+// TTL constants. ~1 ledger ≈ 5 seconds.
+// ---------------------------------------------------------------------------
+
+/// Instance TTL: pool config (ADMIN/TOKEN/FEE_BPS) is read on every call,
+/// so a pool in active use renews well within a week.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -83,6 +92,7 @@ impl FlashLoanContract {
         storage.set(&ADMIN, &admin);
         storage.set(&TOKEN, &token);
         storage.set(&FEE_BPS, &DEFAULT_FEE_BPS);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // -----------------------------------------------------------------------
@@ -115,6 +125,7 @@ impl FlashLoanContract {
         }
 
         let fee_bps: i128 = storage.get(&FEE_BPS).unwrap_or(DEFAULT_FEE_BPS);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         // fee = ceil(amount * fee_bps / 10_000)
         let fee = Self::compute_fee(amount, fee_bps);
@@ -162,6 +173,7 @@ impl FlashLoanContract {
 
         let storage = env.storage().instance();
         let token: Address = storage.get(&TOKEN).unwrap();
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         let contract_address = env.current_contract_address();
 
         token::Client::new(&env, &token).transfer(&depositor, &contract_address, &amount);
@@ -178,6 +190,7 @@ impl FlashLoanContract {
         admin.require_auth();
 
         let token: Address = storage.get(&TOKEN).unwrap();
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         let contract_address = env.current_contract_address();
 
         token::Client::new(&env, &token).transfer(&contract_address, &admin, &amount);
@@ -200,6 +213,7 @@ impl FlashLoanContract {
         admin.require_auth();
 
         storage.set(&FEE_BPS, &fee_bps);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     // -----------------------------------------------------------------------
@@ -209,20 +223,20 @@ impl FlashLoanContract {
     /// Return pool configuration.
     pub fn get_pool_info(env: Env) -> PoolInfo {
         let storage = env.storage().instance();
-        PoolInfo {
+        let info = PoolInfo {
             admin: storage.get(&ADMIN).unwrap(),
             token: storage.get(&TOKEN).unwrap(),
             fee_bps: storage.get(&FEE_BPS).unwrap_or(DEFAULT_FEE_BPS),
-        }
+        };
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        info
     }
 
     /// Compute the fee that would be charged for borrowing `amount` tokens.
     pub fn get_fee(env: Env, amount: i128) -> i128 {
-        let fee_bps: i128 = env
-            .storage()
-            .instance()
-            .get(&FEE_BPS)
-            .unwrap_or(DEFAULT_FEE_BPS);
+        let storage = env.storage().instance();
+        let fee_bps: i128 = storage.get(&FEE_BPS).unwrap_or(DEFAULT_FEE_BPS);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         Self::compute_fee(amount, fee_bps)
     }
 

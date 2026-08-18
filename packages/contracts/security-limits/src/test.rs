@@ -1,7 +1,10 @@
 //! Tests for Security Limits Contract
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, BytesN};
+use soroban_sdk::{
+    testutils::{storage::Instance as _, Address as _, Ledger},
+    Address, BytesN, Env, Symbol,
+};
 
 #[test]
 fn test_initialize() {
@@ -152,5 +155,113 @@ fn test_is_asset_allowed() {
     // Test blacklisted asset
     let allowed = client.is_asset_allowed(&owner, &blacklisted_asset);
     assert!(!allowed);
+}
+
+// ---------------------------------------------------------------------------
+// TTL — instance storage survivability and exact boundary behavior
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_initialize_extends_instance_ttl() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let contract_id = env.register_contract(None, SecurityLimitsContract);
+    let client = SecurityLimitsContractClient::new(&env, &contract_id);
+
+    client.initialize();
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_create_security_limit_survives_past_initial_threshold() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let contract_id = env.register_contract(None, SecurityLimitsContract);
+    let client = SecurityLimitsContractClient::new(&env, &contract_id);
+    client.initialize();
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    let owner = Address::generate(&env);
+    client.create_security_limit(
+        &owner,
+        &LimitType::Daily,
+        &Symbol::short("XLM"),
+        &10_000,
+        &86_400,
+    );
+
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_instance_ttl_boundary_behavior() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let contract_id = env.register_contract(None, SecurityLimitsContract);
+    let client = SecurityLimitsContractClient::new(&env, &contract_id);
+    client.initialize();
+    let owner = Address::generate(&env);
+
+    let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold);
+    client.create_security_limit(
+        &owner,
+        &LimitType::Daily,
+        &Symbol::short("XLM"),
+        &10_000,
+        &86_400,
+    );
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(
+        ttl,
+        INSTANCE_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = just_before_threshold + 1);
+    client.create_security_limit(
+        &owner,
+        &LimitType::Weekly,
+        &Symbol::short("USDC"),
+        &50_000,
+        &604_800,
+    );
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
+}
+
+#[test]
+fn test_record_transaction_and_set_risk_profile_extend_instance_ttl() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let contract_id = env.register_contract(None, SecurityLimitsContract);
+    let client = SecurityLimitsContractClient::new(&env, &contract_id);
+    client.initialize();
+    let owner = Address::generate(&env);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
+    client.record_transaction(&owner, &Symbol::short("XLM"), &100, &BytesN::from_array(&env, &[0u8; 32]));
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
+    client.set_risk_profile(
+        &owner,
+        &RiskLevel::Low,
+        &10_000,
+        &1_000,
+        &soroban_sdk::vec![&env],
+        &soroban_sdk::vec![&env],
+    );
+    let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }
 

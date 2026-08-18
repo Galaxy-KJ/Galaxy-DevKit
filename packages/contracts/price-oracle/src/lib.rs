@@ -69,6 +69,12 @@ pub const WINDOW_5M: u64 = 300;
 pub const WINDOW_15M: u64 = 900;
 pub const WINDOW_1H: u64 = 3600;
 
+/// Instance TTL. ADMIN/PUSHERS/PRICES are read on every call, including by
+/// consumers who never push — reads extend the TTL too so a feed doesn't
+/// archive just because the pusher bot went quiet.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+
 // ---------------------------------------------------------------------------
 // Event topic symbols  (≤ 9 ASCII chars for symbol_short!)
 // ---------------------------------------------------------------------------
@@ -105,13 +111,17 @@ impl PriceOracleContract {
         storage.set(&KEY_PUSHERS, &empty_pushers);
         let empty_prices: Map<(Symbol, Symbol), PriceRingBuffer> = Map::new(env);
         storage.set(&KEY_PRICES, &empty_prices);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_INIT,), admin);
     }
 
     /// Return the current admin address.
     pub fn get_admin(env: &Env) -> Address {
-        env.storage().instance().get(&KEY_ADMIN).unwrap()
+        let storage = env.storage().instance();
+        let admin = storage.get(&KEY_ADMIN).unwrap();
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        admin
     }
 
     /// Transfer admin rights to `new_admin`.  Only the current admin may call.
@@ -122,6 +132,7 @@ impl PriceOracleContract {
         let admin: Address = storage.get(&KEY_ADMIN).unwrap();
         admin.require_auth();
         storage.set(&KEY_ADMIN, &new_admin);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_ADMIN,), new_admin);
     }
@@ -151,6 +162,7 @@ impl PriceOracleContract {
         }
         pushers.push_back(pusher.clone());
         storage.set(&KEY_PUSHERS, &pushers);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_P_ADD,), pusher);
     }
@@ -184,16 +196,17 @@ impl PriceOracleContract {
             panic_with_error!(env, OracleError::PusherNotFound);
         }
         storage.set(&KEY_PUSHERS, &new_pushers);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_P_REM,), pusher);
     }
 
     /// Return all registered pusher addresses.
     pub fn get_pushers(env: &Env) -> Vec<Address> {
-        env.storage()
-            .instance()
-            .get(&KEY_PUSHERS)
-            .unwrap_or(Vec::new(env))
+        let storage = env.storage().instance();
+        let pushers = storage.get(&KEY_PUSHERS).unwrap_or(Vec::new(env));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        pushers
     }
 
     // =======================================================================
@@ -238,6 +251,7 @@ impl PriceOracleContract {
 
         prices.set(key, buffer);
         storage.set(&KEY_PRICES, &prices);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_PRICE,), (base, quote, price));
     }
@@ -263,6 +277,7 @@ impl PriceOracleContract {
         let storage = env.storage().instance();
         let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         let key = (base, quote);
         match prices.get(key) {
             Some(buffer) => buffer.chronological(env, TWAP_WINDOW_SIZE),
@@ -391,6 +406,7 @@ impl PriceOracleContract {
         let storage = env.storage().instance();
         let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
             storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         let mut latest: Map<(Symbol, Symbol), PriceEntry> = Map::new(env);
         for (key, buffer) in prices.iter() {

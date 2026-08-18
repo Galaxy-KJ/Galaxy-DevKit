@@ -71,11 +71,16 @@ pub enum RiskLevel {
 }
 
 /// Contract storage keys
-const SECURITY_LIMITS: Symbol = symbol_short!("SEC_LIMITS");
-const TRANSACTION_RECORDS: Symbol = symbol_short!("TX_RECORDS");
-const RISK_PROFILES: Symbol = symbol_short!("RISK_PROFILES");
-const NEXT_LIMIT_ID: Symbol = symbol_short!("NEXT_LIMIT_ID");
-const NEXT_TX_ID: Symbol = symbol_short!("NEXT_TX_ID");
+const SECURITY_LIMITS: Symbol = symbol_short!("SECLIMITS");
+const TRANSACTION_RECORDS: Symbol = symbol_short!("TXRECORDS");
+const RISK_PROFILES: Symbol = symbol_short!("RISKPROFS");
+const NEXT_LIMIT_ID: Symbol = symbol_short!("NEXTLIMIT");
+const NEXT_TX_ID: Symbol = symbol_short!("NEXTTXID");
+
+// Daily/weekly limits get checked on every guarded transaction, so a
+// week of slack comfortably covers even low-traffic accounts.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
 
 /// Security Limits Contract
 #[contract]
@@ -89,6 +94,7 @@ impl SecurityLimitsContract {
         let storage = env.storage().instance();
         storage.set(&NEXT_LIMIT_ID, &1u64);
         storage.set(&NEXT_TX_ID, &1u64);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Create a new security limit
@@ -124,6 +130,7 @@ impl SecurityLimitsContract {
         // Increment next ID
         next_id += 1;
         storage.set(&NEXT_LIMIT_ID, &next_id);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         next_id - 1
     }
@@ -137,9 +144,10 @@ impl SecurityLimitsContract {
     ) -> bool {
         let storage = env.storage().instance();
         let limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let current_time = env.ledger().timestamp();
-        
+
         for (_, limit) in limits.iter() {
             if limit.owner == owner && limit.asset == asset && limit.is_active {
                 // Check if limit applies to this time window
@@ -176,7 +184,7 @@ impl SecurityLimitsContract {
         let record = TransactionRecord {
             id: next_tx_id,
             owner: owner.clone(),
-            asset,
+            asset: asset.clone(),
             amount,
             timestamp: env.ledger().timestamp(),
             transaction_hash,
@@ -193,6 +201,7 @@ impl SecurityLimitsContract {
         // Increment next ID
         next_tx_id += 1;
         storage.set(&NEXT_TX_ID, &next_tx_id);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         next_tx_id - 1
     }
@@ -201,7 +210,8 @@ impl SecurityLimitsContract {
     pub fn get_security_limits(env: &Env, owner: Address) -> Vec<SecurityLimit> {
         let storage = env.storage().instance();
         let limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let mut owner_limits = Vec::new(&env);
         
         for (_, limit) in limits.iter() {
@@ -239,6 +249,7 @@ impl SecurityLimitsContract {
         
         limits.set(limit_id, limit);
         storage.set(&SECURITY_LIMITS, &limits);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Delete a security limit
@@ -256,6 +267,7 @@ impl SecurityLimitsContract {
         // Remove limit
         limits.remove(limit_id);
         storage.set(&SECURITY_LIMITS, &limits);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Create or update risk profile
@@ -284,12 +296,14 @@ impl SecurityLimitsContract {
         
         profiles.set(owner, profile);
         storage.set(&RISK_PROFILES, &profiles);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Get risk profile for an owner
     pub fn get_risk_profile(env: &Env, owner: Address) -> Option<RiskProfile> {
         let storage = env.storage().instance();
         let profiles: Map<Address, RiskProfile> = storage.get(&RISK_PROFILES).unwrap_or(Map::new(&env));
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         profiles.get(owner)
     }
 
@@ -298,7 +312,7 @@ impl SecurityLimitsContract {
         if let Some(profile) = Self::get_risk_profile(env, owner) {
             // Check if asset is blacklisted
             for blacklisted_asset in profile.blacklisted_assets.iter() {
-                if *blacklisted_asset == asset {
+                if blacklisted_asset == asset {
                     return false;
                 }
             }
@@ -306,7 +320,7 @@ impl SecurityLimitsContract {
             // Check if asset is in allowed list (if allowed list is not empty)
             if profile.allowed_assets.len() > 0 {
                 for allowed_asset in profile.allowed_assets.iter() {
-                    if *allowed_asset == asset {
+                    if allowed_asset == asset {
                         return true;
                     }
                 }

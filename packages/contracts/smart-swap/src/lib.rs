@@ -61,7 +61,12 @@ pub struct SwapExecution {
 const SWAP_CONDITIONS: Symbol = symbol_short!("SWAP_COND");
 const SWAP_EXECUTIONS: Symbol = symbol_short!("SWAP_EXEC");
 const NEXT_CONDITION_ID: Symbol = symbol_short!("NEXT_ID");
-const PRICE_ORACLE: Symbol = symbol_short!("PRICE_ORACLE");
+const PRICE_ORACLE: Symbol = symbol_short!("PRC_ORCL");
+
+// Swap conditions are meant to trigger within days, not months, so a
+// week of slack matches how long a condition realistically stays open.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
 
 /// Smart Swap Contract
 #[contract]
@@ -75,6 +80,7 @@ impl SmartSwapContract {
         let storage = env.storage().instance();
         storage.set(&PRICE_ORACLE, &price_oracle);
         storage.set(&NEXT_CONDITION_ID, &1u64);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Create a new swap condition
@@ -115,6 +121,7 @@ impl SmartSwapContract {
         // Increment next ID
         next_id += 1;
         storage.set(&NEXT_CONDITION_ID, &next_id);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         next_id - 1
     }
@@ -171,12 +178,13 @@ impl SmartSwapContract {
             executed_at: env.ledger().timestamp(),
             actual_amount_out,
             price_at_execution: current_price,
-            transaction_hash: env.current_contract_address().to_array(),
+            transaction_hash: BytesN::from_array(env, &[0u8; 32]),
         };
 
         let mut executions: Vec<SwapExecution> = storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(&env));
         executions.push_back(execution.clone());
         storage.set(&SWAP_EXECUTIONS, &executions);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         execution
     }
@@ -185,7 +193,8 @@ impl SmartSwapContract {
     pub fn get_active_conditions(env: &Env, owner: Address) -> Vec<SwapCondition> {
         let storage = env.storage().instance();
         let conditions: Map<u64, SwapCondition> = storage.get(&SWAP_CONDITIONS).unwrap_or(Map::new(&env));
-        
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let mut active_conditions = Vec::new(&env);
         
         for (_, condition) in conditions.iter() {
@@ -218,13 +227,15 @@ impl SmartSwapContract {
         condition.status = SwapStatus::Cancelled;
         conditions.set(condition_id, condition);
         storage.set(&SWAP_CONDITIONS, &conditions);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     /// Get swap execution history
     pub fn get_execution_history(env: &Env, condition_id: u64) -> Vec<SwapExecution> {
         let storage = env.storage().instance();
         let executions: Vec<SwapExecution> = storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(&env));
-        
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+
         let mut filtered_executions = Vec::new(&env);
         
         for execution in executions.iter() {

@@ -1,6 +1,14 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
 
+const ENTRY_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const ENTRY_TTL_EXTEND: u32 = 120_960; // ~7 days
+
+/// The contract instance itself is a ledger entry with its own TTL; if it
+/// archives, the contract is uncallable regardless of listing/bid freshness.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
+const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+
 #[contract]
 pub struct NftMarketplaceContract;
 
@@ -34,16 +42,25 @@ impl NftMarketplaceContract {
         }
         let key = DataKey::Listing(nft, token_id);
         env.storage().persistent().set(&key, &Listing { seller, price });
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, ENTRY_TTL_THRESHOLD, ENTRY_TTL_EXTEND);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn buy_nft(env: Env, buyer: Address, nft: Address, token_id: u32) {
         buyer.require_auth();
         let key = DataKey::Listing(nft.clone(), token_id);
         let _listing: Listing = env.storage().persistent().get(&key).expect("NFT not listed");
-        
+
         // Note: Atomic transfer of payment and NFT ownership happens here.
-        
+
         env.storage().persistent().remove(&key);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn cancel_listing(env: Env, seller: Address, nft: Address, token_id: u32) {
@@ -54,6 +71,9 @@ impl NftMarketplaceContract {
             panic!("Not the seller");
         }
         env.storage().persistent().remove(&key);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn place_bid(env: Env, bidder: Address, nft: Address, token_id: u32, price: i128) {
@@ -63,6 +83,12 @@ impl NftMarketplaceContract {
         }
         let key = DataKey::Bid(nft, token_id, bidder.clone());
         env.storage().persistent().set(&key, &Bid { bidder, price });
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, ENTRY_TTL_THRESHOLD, ENTRY_TTL_EXTEND);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
     pub fn accept_bid(env: Env, seller: Address, nft: Address, token_id: u32, bidder: Address) {
@@ -80,6 +106,9 @@ impl NftMarketplaceContract {
 
         env.storage().persistent().remove(&listing_key);
         env.storage().persistent().remove(&bid_key);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 }
 
