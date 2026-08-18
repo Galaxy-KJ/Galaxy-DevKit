@@ -36,6 +36,13 @@ export interface WebSocketConfig {
     /** Stellar Horizon URL */
     horizonUrl: string;
   };
+
+  market: {
+    maxStalenessMs: number;
+    pricePollIntervalMs: number;
+    orderbookPollIntervalMs: number;
+    tradePollIntervalMs: number;
+  };
   
   /** CORS configuration */
   cors: {
@@ -124,6 +131,12 @@ function loadConfig(): WebSocketConfig {
     stellar: {
       network: (process.env.STELLAR_NETWORK || 'testnet') as 'testnet' | 'mainnet',
       horizonUrl: process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org'
+    },
+    market: {
+      maxStalenessMs: parseInt(process.env.MARKET_STALENESS_MS || '60000', 10),
+      pricePollIntervalMs: parseInt(process.env.MARKET_PRICE_POLL_MS || '5000', 10),
+      orderbookPollIntervalMs: parseInt(process.env.MARKET_ORDERBOOK_POLL_MS || '2000', 10),
+      tradePollIntervalMs: parseInt(process.env.MARKET_TRADE_POLL_MS || '3000', 10)
     },
     cors: {
       allowedOrigins,

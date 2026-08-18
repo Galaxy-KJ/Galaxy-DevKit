@@ -8,6 +8,12 @@
 import { Server, Socket } from 'socket.io';
 import { WebSocketEvent, BroadcastOptions, BroadcastError, ExtendedSocket } from '../types/websocket-types';
 
+export type SubscriberCountChangeHandler = (
+  roomName: string,
+  subscriberCount: number,
+  previousCount: number
+) => void;
+
 /**
  * Broadcast Queue Item
  */
@@ -33,18 +39,41 @@ export class EventBroadcaster {
   private isProcessingQueue = false;
   private maxQueueSize = 1000;
   private queueProcessingInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly roomSubscriberCounts = new Map<string, number>();
+  private readonly subscriberCountHandlers = new Set<SubscriberCountChangeHandler>();
+  private readonly adapterListeners: Array<[string, (...args: unknown[]) => void]> = [];
 
   constructor(server: Server) {
     this.server = server;
-    this.startQueueProcessing();
+    this.setupSubscriberTracking();
+  }
+
+  public onSubscriberCountChange(handler: SubscriberCountChangeHandler): () => void {
+    this.subscriberCountHandlers.add(handler);
+    return () => {
+      this.subscriberCountHandlers.delete(handler);
+    };
+  }
+
+  public getRoomsWithSubscribers(prefix?: string): string[] {
+    const rooms: string[] = [];
+    for (const [name, count] of this.roomSubscriberCounts) {
+      if (count > 0 && (!prefix || name.startsWith(prefix))) {
+        rooms.push(name);
+      }
+    }
+    return rooms;
   }
 
   /**
    * Start queue processing
    */
   private startQueueProcessing(): void {
+    if (this.queueProcessingInterval) {
+      return;
+    }
     this.queueProcessingInterval = setInterval(() => {
-      this.processQueue();
+      void this.processQueue();
     }, 100); // Process queue every 100ms
   }
 
@@ -237,16 +266,82 @@ export class EventBroadcaster {
     const preparedEvent = { ...event };
 
     // Add timestamp if requested
-    if (options.includeTimestamp !== false) {
+    if (options.includeTimestamp !== false && (preparedEvent.timestamp === undefined || preparedEvent.timestamp === null)) {
       preparedEvent.timestamp = Date.now();
     }
 
     // Add source if requested
-    if (options.includeSource !== false) {
+    if (options.includeSource !== false && !preparedEvent.source) {
       preparedEvent.source = 'galaxy-websocket';
     }
 
     return preparedEvent;
+  }
+
+  private setupSubscriberTracking(): void {
+    const adapter = this.getAdapter();
+    if (!adapter || typeof adapter.on !== 'function') {
+      return;
+    }
+
+    const onJoin = (...args: unknown[]) => {
+      if (typeof args[0] === 'string') {
+        this.refreshRoomSubscriberCount(args[0]);
+      }
+    };
+    const onLeave = (...args: unknown[]) => {
+      if (typeof args[0] === 'string') {
+        this.refreshRoomSubscriberCount(args[0]);
+      }
+    };
+    const onDelete = (...args: unknown[]) => {
+      if (typeof args[0] === 'string') {
+        this.refreshRoomSubscriberCount(args[0]);
+      }
+    };
+
+    adapter.on('join-room', onJoin);
+    adapter.on('leave-room', onLeave);
+    adapter.on('delete-room', onDelete);
+    this.adapterListeners.push(['join-room', onJoin], ['leave-room', onLeave], ['delete-room', onDelete]);
+  }
+
+  private getAdapter(): {
+    on?: (event: string, listener: (...args: unknown[]) => void) => void;
+    off?: (event: string, listener: (...args: unknown[]) => void) => void;
+    removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+  } | undefined {
+    const server = this.server as Server & { of?: (nsp: string) => { adapter?: unknown } };
+    if (typeof server.of === 'function') {
+      return server.of('/').adapter as ReturnType<EventBroadcaster['getAdapter']>;
+    }
+    return this.server.sockets?.adapter as ReturnType<EventBroadcaster['getAdapter']>;
+  }
+
+  private isSocketIdRoom(roomName: string): boolean {
+    return this.server.sockets?.sockets?.has(roomName) === true;
+  }
+
+  public refreshRoomSubscriberCount(roomName: string): void {
+    if (this.isSocketIdRoom(roomName)) {
+      return;
+    }
+
+    const count = this.getRoomConnectionCount(roomName);
+    const previous = this.roomSubscriberCounts.get(roomName) ?? 0;
+    if (count === previous) {
+      return;
+    }
+
+    if (count === 0) {
+      this.roomSubscriberCounts.delete(roomName);
+    } else {
+      this.roomSubscriberCounts.set(roomName, count);
+    }
+
+    for (const handler of this.subscriberCountHandlers) {
+      handler(roomName, count, previous);
+    }
   }
 
   /**
@@ -278,6 +373,7 @@ export class EventBroadcaster {
     };
 
     this.broadcastQueue.push(queueItem);
+    this.startQueueProcessing();
     console.log(`Queued ${event.type} for ${type} ${target}`);
   }
 
@@ -331,6 +427,9 @@ export class EventBroadcaster {
       }
     } finally {
       this.isProcessingQueue = false;
+      if (this.broadcastQueue.length === 0) {
+        this.stopQueueProcessing();
+      }
     }
   }
 
@@ -416,5 +515,17 @@ export class EventBroadcaster {
   public destroy(): void {
     this.stopQueueProcessing();
     this.broadcastQueue = [];
+    this.subscriberCountHandlers.clear();
+    this.roomSubscriberCounts.clear();
+
+    const adapter = this.getAdapter();
+    for (const [event, listener] of this.adapterListeners) {
+      if (adapter?.off) {
+        adapter.off(event, listener);
+      } else if (adapter?.removeListener) {
+        adapter.removeListener(event, listener);
+      }
+    }
+    this.adapterListeners.length = 0;
   }
 }

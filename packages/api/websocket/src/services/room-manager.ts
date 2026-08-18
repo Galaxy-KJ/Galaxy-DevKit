@@ -347,7 +347,7 @@ export class RoomManager {
    */
   private isValidRoomName(roomName: string): boolean {
     // Room names should follow pattern: type:identifier
-    const roomNamePattern = /^[a-zA-Z0-9_]+:[a-zA-Z0-9_-]+$/;
+    const roomNamePattern = /^[a-zA-Z0-9_]+(?::[a-zA-Z0-9_-]+)+$/;
     return roomNamePattern.test(roomName) && roomName.length <= 100;
   }
 
