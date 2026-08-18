@@ -1,10 +1,9 @@
-// @ts-nocheck
-
 import { createClient } from '@supabase/supabase-js';
+import { Database } from '../types/database.types.js';
 
-let client: ReturnType<typeof createClient> | undefined;
+let client: ReturnType<typeof createClient<Database>> | undefined;
 
-function getSupabaseClient(): ReturnType<typeof createClient> {
+function getSupabaseClient(): ReturnType<typeof createClient<Database>> {
   if (client) return client;
 
   const supabaseURL = process.env.SUPABASE_URL;
@@ -22,7 +21,7 @@ function getSupabaseClient(): ReturnType<typeof createClient> {
 
 // Preserve the object-shaped API without requiring Supabase configuration for
 // unrelated local features such as wallet generation.
-export const supabaseClient = new Proxy({} as ReturnType<typeof createClient>, {
+export const supabaseClient = new Proxy({} as ReturnType<typeof createClient<Database>>, {
   get(_target, property) {
     const resolvedClient = getSupabaseClient();
     const value = Reflect.get(resolvedClient, property, resolvedClient);

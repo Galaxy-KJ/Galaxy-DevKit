@@ -27,7 +27,16 @@ jest.mock('@blend-capital/blend-sdk', () => ({
   },
   Positions: {
     load: jest.fn(),
+    fromScVal: jest.fn(),
   },
+  PoolUser: jest.fn().mockImplementation(() => ({
+    getCollateralBTokens: jest.fn().mockReturnValue(0n),
+    getSupplyBTokens: jest.fn().mockReturnValue(0n),
+    getLiabilityDTokens: jest.fn().mockReturnValue(0n),
+    getCollateralFloat: jest.fn().mockReturnValue(0),
+    getSupplyFloat: jest.fn().mockReturnValue(0),
+    getLiabilitiesFloat: jest.fn().mockReturnValue(0),
+  })),
   RequestType: {
     SupplyCollateral: 0,
     WithdrawCollateral: 1,
@@ -146,6 +155,7 @@ describe('BlendProtocol', () => {
       simulateTransaction: jest.fn().mockResolvedValue({
         id: 'sim-id',
         events: [],
+        result: { retval: { _switch: 0 } },
         results: [
           {
             auth: [],
@@ -543,17 +553,20 @@ describe('BlendProtocol', () => {
 
     it('should use blendPool.loadUser when blendPool is available', async () => {
       const mockPoolUser = {
+        getCollateralBTokens: jest.fn().mockReturnValue(100n),
+        getSupplyBTokens: jest.fn().mockReturnValue(100n),
+        getLiabilityDTokens: jest.fn().mockReturnValue(50n),
         getCollateralFloat: jest.fn().mockReturnValue(100),
-        getSupplyFloat: jest.fn().mockReturnValue(50),
-        getLiabilitiesFloat: jest.fn().mockReturnValue(25),
+        getSupplyFloat: jest.fn().mockReturnValue(100),
+        getLiabilitiesFloat: jest.fn().mockReturnValue(50),
       };
 
-      const mockReserve = { id: 'reserve1' };
+      const mockReserve = { id: 'reserve1', config: { decimals: 7 }, toAssetFromBToken: jest.fn().mockReturnValue(100n), toEffectiveAssetFromBToken: jest.fn().mockReturnValue(80n), toAssetFromDToken: jest.fn().mockReturnValue(50n), toEffectiveAssetFromDToken: jest.fn().mockReturnValue(60n) };
       const mockReservesMap = new Map([
         ['CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', mockReserve],
       ]);
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         loadUser: jest.fn().mockResolvedValue(mockPoolUser),
         reserves: mockReservesMap,
       };
@@ -563,13 +576,13 @@ describe('BlendProtocol', () => {
       expect(position.address).toBe(testAddress);
       expect(position.supplied.length).toBe(2); // collateral + supply
       expect(position.borrowed.length).toBe(1); // liability
-      expect(mockPoolUser.getCollateralFloat).toHaveBeenCalledWith(mockReserve);
-      expect(mockPoolUser.getSupplyFloat).toHaveBeenCalledWith(mockReserve);
-      expect(mockPoolUser.getLiabilitiesFloat).toHaveBeenCalledWith(mockReserve);
+      expect(mockPoolUser.getCollateralBTokens).toHaveBeenCalledWith(mockReserve);
+      expect(mockPoolUser.getSupplyBTokens).toHaveBeenCalledWith(mockReserve);
+      expect(mockPoolUser.getLiabilityDTokens).toHaveBeenCalledWith(mockReserve);
     });
 
     it('should fall back to Positions.load when blendPool.loadUser fails', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         loadUser: jest.fn().mockRejectedValue(new Error('loadUser failed')),
         reserves: new Map(),
       };
@@ -590,11 +603,12 @@ describe('BlendProtocol', () => {
     });
 
     it('should fall back to contract simulation when both SDK methods fail', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         loadUser: jest.fn().mockRejectedValue(new Error('loadUser failed')),
         reserves: new Map(),
       };
       (Positions.load as jest.Mock).mockRejectedValue(new Error('Positions.load failed'));
+      (Positions.fromScVal as jest.Mock).mockReturnValue({ collateral: new Map(), supply: new Map(), liabilities: new Map() });
 
       const position = await blendProtocol.getPosition(testAddress);
 
@@ -604,16 +618,19 @@ describe('BlendProtocol', () => {
 
     it('should handle zero amounts in convertPoolUserToPosition', async () => {
       const mockPoolUser = {
+        getCollateralBTokens: jest.fn().mockReturnValue(0n),
+        getSupplyBTokens: jest.fn().mockReturnValue(0n),
+        getLiabilityDTokens: jest.fn().mockReturnValue(0n),
         getCollateralFloat: jest.fn().mockReturnValue(0),
         getSupplyFloat: jest.fn().mockReturnValue(0),
         getLiabilitiesFloat: jest.fn().mockReturnValue(0),
       };
 
       const mockReservesMap = new Map([
-        ['ASSET1', { id: 'reserve1' }],
+          ['ASSET1', { id: 'reserve1', config: { decimals: 7 }, toAssetFromBToken: jest.fn().mockReturnValue(0n), toEffectiveAssetFromBToken: jest.fn().mockReturnValue(0n), toAssetFromDToken: jest.fn().mockReturnValue(0n), toEffectiveAssetFromDToken: jest.fn().mockReturnValue(0n) }],
       ]);
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         loadUser: jest.fn().mockResolvedValue(mockPoolUser),
         reserves: mockReservesMap,
       };
@@ -626,7 +643,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should handle zero amounts in convertPositionsToPosition', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         loadUser: jest.fn().mockRejectedValue(new Error('fail')),
         reserves: new Map(),
       };
@@ -654,7 +671,7 @@ describe('BlendProtocol', () => {
         getUtilizationFloat: jest.fn().mockReturnValue(0.4),
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['ASSET1', mockReserve],
         ]),
@@ -676,7 +693,7 @@ describe('BlendProtocol', () => {
         estBorrowApy: 0.08,
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
         ]),
@@ -696,7 +713,7 @@ describe('BlendProtocol', () => {
         estBorrowApy: 0.12,
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
         ]),
@@ -715,7 +732,7 @@ describe('BlendProtocol', () => {
         totalSupplyFloat: jest.fn().mockReturnValue(5000.1234567),
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
         ]),
@@ -733,7 +750,7 @@ describe('BlendProtocol', () => {
         totalLiabilitiesFloat: jest.fn().mockReturnValue(2000.7654321),
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
         ]),
@@ -756,7 +773,7 @@ describe('BlendProtocol', () => {
         data: { lastTime: 1700000000 },
       };
 
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([
           ['CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', mockReserve],
         ]),
@@ -775,7 +792,7 @@ describe('BlendProtocol', () => {
     // --- blendPool with no matching reserve falls back ---
 
     it('should fall back when blendPool has no matching reserve for getSupplyAPY', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([['NOMATCH', {}]]),
       };
 
@@ -784,7 +801,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should fall back when blendPool has no matching reserve for getBorrowAPY', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([['NOMATCH', {}]]),
       };
 
@@ -793,7 +810,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should fall back when blendPool has no matching reserve for getTotalSupply', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([['NOMATCH', {}]]),
       };
 
@@ -802,7 +819,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should fall back when blendPool has no matching reserve for getTotalBorrow', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([['NOMATCH', {}]]),
       };
 
@@ -811,7 +828,7 @@ describe('BlendProtocol', () => {
     });
 
     it('should fall back when blendPool has no matching reserve for getReserveData', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map([['NOMATCH', {}]]),
       };
 
@@ -822,7 +839,7 @@ describe('BlendProtocol', () => {
     // --- getStats with empty reserves ---
 
     it('should handle blendPool with empty reserves in getStats', async () => {
-      (blendProtocol as any).blendPool = {
+      (blendProtocol as any).blendPool = { loadOracle: jest.fn().mockResolvedValue({ getPrice: () => 10000000n, decimals: 7 }),
         reserves: new Map(),
       };
 
