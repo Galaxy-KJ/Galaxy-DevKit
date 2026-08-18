@@ -5,7 +5,7 @@
  * for WebSocket connections using Supabase.
  */
 
-import { Socket } from 'socket.io';
+import { createHash } from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
 import { AuthenticationResult, AuthenticationError, ExtendedSocket } from '../types/websocket-types';
@@ -89,9 +89,14 @@ const rateLimitStore = new RateLimitStore({
 });
 
 /**
- * Supabase client instance
+ * Supabase client instance (anon key, JWT verification)
  */
 let supabaseClient: SupabaseClient | null = null;
+
+/**
+ * Supabase admin client (service role, API key lookup)
+ */
+let supabaseAdminClient: SupabaseClient | null = null;
 
 /**
  * Initialize Supabase client
@@ -101,6 +106,20 @@ function initializeSupabaseClient(): SupabaseClient {
     supabaseClient = createClient(config.supabase.url, config.supabase.anonKey);
   }
   return supabaseClient;
+}
+
+/**
+ * Initialize Supabase service-role client for privileged lookups
+ */
+function initializeSupabaseAdminClient(): SupabaseClient {
+  if (!supabaseAdminClient) {
+    supabaseAdminClient = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+  }
+  return supabaseAdminClient;
+}
+
+function looksLikeJwt(token: string): boolean {
+  return token.split('.').length === 3;
 }
 
 /**
@@ -153,6 +172,95 @@ export async function validateToken(token: string): Promise<AuthenticationResult
       error: `Authentication error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
+}
+
+/**
+ * Validate an API key against the same api_keys table used by REST.
+ * Hashing matches packages/api/rest/src/utils/password-utils.ts (sha256 hex).
+ */
+export async function validateApiKey(apiKey: string): Promise<AuthenticationResult> {
+  try {
+    if (!apiKey) {
+      return { success: false, error: 'API key is required' };
+    }
+
+    const keyHash = createHash('sha256').update(apiKey).digest('hex');
+    const supabase = initializeSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('user_id, expires_at, is_active, scopes')
+      .eq('key_hash', keyHash)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      return { success: false, error: 'Invalid API key' };
+    }
+
+    if (data.expires_at && new Date(data.expires_at) < new Date()) {
+      return { success: false, error: 'API key expired' };
+    }
+
+    const userId = data.user_id as string | undefined;
+    if (!userId) {
+      return { success: false, error: 'Invalid API key' };
+    }
+
+    return {
+      success: true,
+      userId,
+      permissions: (data.scopes as string[]) || ['user']
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Authentication error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+/**
+ * Verify a websocket credential: Supabase JWT or REST API key.
+ */
+export async function validateCredential(token: string): Promise<AuthenticationResult> {
+  if (!token) {
+    return { success: false, error: 'missing token' };
+  }
+
+  if (looksLikeJwt(token)) {
+    return validateToken(token);
+  }
+
+  return validateApiKey(token);
+}
+
+/**
+ * Emit auth_error, drop the socket from every room, and disconnect.
+ * Leaves the socket unauthenticated.
+ */
+export async function failAuthentication(socket: ExtendedSocket, reason: string): Promise<void> {
+  socket.emit('auth_error', {
+    error: reason,
+    timestamp: Date.now()
+  });
+
+  socket.isAuthenticated = false;
+  socket.userId = undefined;
+
+  if (socket.connectionState) {
+    socket.connectionState.isAuthenticated = false;
+    socket.connectionState.userId = undefined;
+    socket.connectionState.rooms.clear();
+  }
+
+  const rooms = Array.from(socket.rooms ?? []);
+  for (const room of rooms) {
+    if (room !== socket.id) {
+      await socket.leave(room);
+    }
+  }
+
+  socket.disconnect(true);
 }
 
 /**
@@ -238,45 +346,8 @@ export function authMiddleware(socket: ExtendedSocket, next: (err?: Error) => vo
     }
   };
 
-  // Set up authentication handler
-  socket.on('authenticate', async (data: { token: string }) => {
-    try {
-      // Validate token
-      const authResult = await validateToken(data.token);
-      
-      if (!authResult.success) {
-        socket.emit('auth_error', { error: authResult.error });
-        return;
-      }
-
-      // Update connection state
-      socket.userId = authResult.userId;
-      socket.isAuthenticated = true;
-      socket.connectionState!.isAuthenticated = true;
-      socket.connectionState!.lastActivity = Date.now();
-
-      // Join user-specific room
-      if (authResult.userId) {
-        await socket.join(`user:${authResult.userId}`);
-        socket.connectionState!.rooms.add(`user:${authResult.userId}`);
-      }
-
-      // Emit authentication success
-      socket.emit('authenticated', {
-        userId: authResult.userId,
-        userEmail: authResult.userEmail,
-        permissions: authResult.permissions
-      });
-
-      // Log successful authentication
-      console.log(`User ${authResult.userId} authenticated successfully`);
-    } catch (error) {
-      console.error('Authentication error:', error);
-      socket.emit('auth_error', { 
-        error: 'Authentication failed. Please try again.' 
-      });
-    }
-  });
+  // authenticate is owned by ConnectionHandler so rooms and userId stay
+  // on a single path. This middleware only rate-limits and seeds state.
 
   // Set up activity tracking
   socket.onAny(() => {

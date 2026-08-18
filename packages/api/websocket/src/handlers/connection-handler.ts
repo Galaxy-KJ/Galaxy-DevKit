@@ -6,11 +6,14 @@
  */
 
 import { Server, Socket } from 'socket.io';
-import { ExtendedSocket, ConnectionState, WebSocketError } from '../types/websocket-types';
+import { ExtendedSocket, ConnectionState } from '../types/websocket-types';
 import { RoomManager } from '../services/room-manager';
 import { EventBroadcaster } from '../services/event-broadcaster';
-import { getAuthStatus, cleanupRateLimit } from '../middleware/auth';
+import { cleanupRateLimit, failAuthentication, validateCredential } from '../middleware/auth';
+import { isJwtExpired } from '../middleware/token-expiry';
 import { config } from '../config';
+
+const TOKEN_REVALIDATION_EVERY_N_TICKS = 10;
 
 /**
  * Connection Handler Class
@@ -21,6 +24,9 @@ export class ConnectionHandler {
   private eventBroadcaster: EventBroadcaster;
   private connectionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
+  private tokenRevalidationIntervals = new Map<string, ReturnType<typeof setInterval>>();
+  private tokenRevalidationTicks = new Map<string, number>();
+  private socketTokens = new Map<string, string>();
 
   constructor(server: Server, roomManager: RoomManager, eventBroadcaster: EventBroadcaster) {
     this.server = server;
@@ -178,43 +184,137 @@ export class ConnectionHandler {
 
   /**
    * Handle authentication
-   * 
+   *
    * @param socket - Socket instance
    * @param data - Authentication data
    */
-  private async handleAuthentication(socket: ExtendedSocket, data: { token: string }): Promise<void> {
+  private async handleAuthentication(
+    socket: ExtendedSocket,
+    data?: { token?: string }
+  ): Promise<void> {
     try {
-      // Clear connection timeout
+      if (socket.isAuthenticated) {
+        socket.emit('auth_error', {
+          error: 'already authenticated',
+          timestamp: Date.now()
+        });
+        return;
+      }
+
+      const token = typeof data?.token === 'string' ? data.token.trim() : '';
+      if (!token) {
+        await this.rejectAuthentication(socket, 'missing token');
+        return;
+      }
+
+      const authResult = await validateCredential(token);
+      if (!authResult.success || !authResult.userId) {
+        await this.rejectAuthentication(socket, authResult.error ?? 'invalid token');
+        return;
+      }
+
+      if (isJwtExpired(token)) {
+        await this.rejectAuthentication(socket, 'token expired');
+        return;
+      }
+
       this.clearConnectionTimeout(socket.id);
 
-      // Validate token (this would typically call the auth middleware)
-      // For now, we'll simulate successful authentication
       socket.isAuthenticated = true;
-      socket.userId = 'user-' + Math.random().toString(36).substr(2, 9);
-      
+      socket.userId = authResult.userId;
+
       if (socket.connectionState) {
         socket.connectionState.isAuthenticated = true;
+        socket.connectionState.userId = authResult.userId;
         socket.connectionState.lastActivity = Date.now();
       }
 
-      // Join user-specific room
-      await this.roomManager.joinRoom(socket, `user:${socket.userId}`);
+      await this.roomManager.joinRoom(socket, `user:${authResult.userId}`);
+      this.startTokenRevalidation(socket, token);
 
-      // Emit authentication success
       socket.emit('authenticated', {
-        userId: socket.userId,
+        userId: authResult.userId,
         timestamp: Date.now()
       });
 
-      console.log(`User ${socket.userId} authenticated successfully`);
-
+      console.log(`User ${authResult.userId} authenticated successfully`);
     } catch (error) {
       console.error(`Authentication failed for ${socket.id}:`, error);
-      socket.emit('auth_error', {
-        error: 'Authentication failed',
-        timestamp: Date.now()
-      });
+      await this.rejectAuthentication(socket, 'Authentication failed');
     }
+  }
+
+  /**
+   * Reject authentication: emit auth_error, leave every room, disconnect.
+   */
+  private async rejectAuthentication(socket: ExtendedSocket, reason: string): Promise<void> {
+    const rooms = Array.from(socket.connectionState?.rooms ?? []);
+    for (const room of rooms) {
+      try {
+        await this.roomManager.leaveRoom(socket, room);
+      } catch (error) {
+        console.error(`Failed to leave room ${room} during auth rejection:`, error);
+      }
+    }
+
+    this.clearTokenRevalidation(socket.id);
+    await failAuthentication(socket, reason);
+  }
+
+  /**
+   * Re-check token expiry on long-lived sockets.
+   * Local JWT exp on every tick; full verifier every N ticks.
+   */
+  private startTokenRevalidation(socket: ExtendedSocket, token: string): void {
+    this.clearTokenRevalidation(socket.id);
+    this.socketTokens.set(socket.id, token);
+    this.tokenRevalidationTicks.set(socket.id, 0);
+
+    const interval = setInterval(() => {
+      void this.revalidateSocketToken(socket);
+    }, config.connection.heartbeatInterval);
+
+    this.tokenRevalidationIntervals.set(socket.id, interval);
+  }
+
+  private async revalidateSocketToken(socket: ExtendedSocket): Promise<void> {
+    if (!socket.connected) {
+      this.clearTokenRevalidation(socket.id);
+      return;
+    }
+
+    const token = this.socketTokens.get(socket.id);
+    if (!token) {
+      await this.rejectAuthentication(socket, 'token expired');
+      return;
+    }
+
+    if (isJwtExpired(token)) {
+      await this.rejectAuthentication(socket, 'token expired');
+      return;
+    }
+
+    const ticks = (this.tokenRevalidationTicks.get(socket.id) ?? 0) + 1;
+    this.tokenRevalidationTicks.set(socket.id, ticks);
+
+    if (ticks % TOKEN_REVALIDATION_EVERY_N_TICKS !== 0) {
+      return;
+    }
+
+    const result = await validateCredential(token);
+    if (!result.success || result.userId !== socket.userId) {
+      await this.rejectAuthentication(socket, result.error ?? 'token revalidation failed');
+    }
+  }
+
+  private clearTokenRevalidation(socketId: string): void {
+    const interval = this.tokenRevalidationIntervals.get(socketId);
+    if (interval) {
+      clearInterval(interval);
+      this.tokenRevalidationIntervals.delete(socketId);
+    }
+    this.tokenRevalidationTicks.delete(socketId);
+    this.socketTokens.delete(socketId);
   }
 
   /**
@@ -295,6 +395,9 @@ export class ConnectionHandler {
 
       // Cleanup heartbeat
       this.cleanupHeartbeat(socket.id);
+
+      // Cleanup token revalidation
+      this.clearTokenRevalidation(socket.id);
 
       // Cleanup user rooms if authenticated
       if (socket.isAuthenticated && socket.userId) {
@@ -421,5 +524,12 @@ export class ConnectionHandler {
       clearInterval(heartbeat);
     }
     this.heartbeatIntervals.clear();
+
+    for (const interval of this.tokenRevalidationIntervals.values()) {
+      clearInterval(interval);
+    }
+    this.tokenRevalidationIntervals.clear();
+    this.tokenRevalidationTicks.clear();
+    this.socketTokens.clear();
   }
 }
