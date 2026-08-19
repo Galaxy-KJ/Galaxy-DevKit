@@ -127,12 +127,19 @@ export const userSubmitTxLimiter =
         standardHeaders: true,
         store: submitTxUserStore,
         handler: rateLimitHandler,
+const walletLookupMisses = new LRUCache<string, true>({
+  max: rateLimitStoreConfig.walletCacheMaxEntries,
+  ttl: 30 * 1000,
+});
+
         keyGenerator: async (req: Request): Promise<string> => {
           const walletId = req.body?.walletId;
           let key: string;
 
           if (!walletId || typeof walletId !== 'string') {
             key = req.ip || 'unknown';
+          } else if (walletLookupMisses.has(walletId)) {
+            key = `submit-tx:wallet:${walletId}`;
           } else {
             let userId = walletIdToUserIdCache.get(walletId);
             if (userId) {
@@ -153,6 +160,7 @@ export const userSubmitTxLimiter =
                   (req as any)._rateLimitUserId = userId;
                   key = `submit-tx:user:${userId}`;
                 } else {
+                  walletLookupMisses.set(walletId, true);
                   key = `submit-tx:wallet:${walletId}`;
                 }
               } catch {
