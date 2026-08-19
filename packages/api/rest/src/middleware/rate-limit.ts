@@ -1,23 +1,48 @@
+/**
+ * @fileoverview Rate limiting for the fee-sponsored submit-tx endpoint.
+ * @description Backed by a shared Redis store (fail-closed by default —
+ *              see rate-limit-store-config.ts). The wallet->user cache is
+ *              now a bounded, TTL'd LRU instead of an unbounded Map, and
+ *              breach audit logs are deduped per key per window.
+ * @author Galaxy DevKit Team
+ * @version 2.0.0
+ */
+
 import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import { LRUCache } from 'lru-cache';
 import { Request, Response } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AuditLogger } from '../services/audit-logger';
+import { getRedisClient } from '../lib/redis-client';
+import { rateLimitStoreConfig } from '../config/rate-limit-store-config';
 
 const auditLogger = new AuditLogger();
 
-// Cache for walletId -> user_id to avoid redundant DB queries on rate-limited requests
-const walletIdToUserIdCache = new Map<string, string>();
+// Bounded, TTL'd cache for walletId -> user_id. Replaces the unbounded Map.
+// Entries also expire on their own via TTL, so a wallet ownership change is
+// reflected within walletCacheTtlMs even without an explicit invalidation.
+const walletIdToUserIdCache = new LRUCache<string, string>({
+  max: rateLimitStoreConfig.walletCacheMaxEntries,
+  ttl: rateLimitStoreConfig.walletCacheTtlMs,
+});
+
+/**
+ * Call this from wherever wallet ownership transfer is handled so the
+ * cache doesn't serve a stale user_id until the TTL expires.
+ */
+export function invalidateWalletUserCache(walletId: string): void {
+  walletIdToUserIdCache.delete(walletId);
+}
 
 let supabaseClient: SupabaseClient | null = null;
-
 function getSupabaseClient(): SupabaseClient {
   if (!supabaseClient) {
     const supabaseURL = process.env.SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
     if (!supabaseURL || !supabaseServiceRoleKey) {
       throw new Error(
-        "Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set"
+        'Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set'
       );
     }
     supabaseClient = createClient(supabaseURL, supabaseServiceRoleKey);
@@ -25,93 +50,138 @@ function getSupabaseClient(): SupabaseClient {
   return supabaseClient;
 }
 
-/**
- * Custom response handler for rate limit breach
- */
-const rateLimitHandler = (req: Request, res: Response) => {
-  const retryAfter = 60; // 1 minute window
-  const userId = (req as any)._rateLimitUserId || null;
+function buildStore(prefix: string) {
+  const redis = getRedisClient();
+  if (!redis) return undefined;
+  return new RedisStore({
+    sendCommand: (...args: string[]) => redis.call(...args) as any,
+    prefix,
+  });
+}
 
-  // Log to AuditLogger
-  void auditLogger.log({
-    user_id: userId,
-    action: "rate_limit_exceeded",
-    resource: req.originalUrl,
-    ip_address: req.ip || null,
-    success: false,
-    metadata: {
-      retryAfter,
-      endpoint: req.originalUrl,
-    },
+// Best-effort per-process dedupe used only when Redis is unavailable and
+// policy is 'open'. When Redis is available, dedupe is done via SET NX so
+// it's correct across instances, not just within one process.
+const localBreachFallback = new Map<string, number>();
+
+async function shouldLogBreach(key: string, windowMs: number): Promise<boolean> {
+  const redis = getRedisClient();
+  const breachKey = `rl:breach-logged:${key}`;
+  if (redis) {
+    const result = await redis.set(breachKey, '1', 'PX', windowMs, 'NX');
+    return result === 'OK';
+  }
+  const now = Date.now();
+  const last = localBreachFallback.get(breachKey);
+  if (last && now - last < windowMs) return false;
+  localBreachFallback.set(breachKey, now);
+  return true;
+}
+
+const rateLimitHandler = (req: Request, res: Response) => {
+  const retryAfter = 60;
+  const userId = (req as any)._rateLimitUserId || null;
+  const limitKey = (req as any)._rateLimitKey || req.ip || 'unknown';
+
+  // Emit exactly once per breach window per key, not once per retry.
+  void shouldLogBreach(limitKey, retryAfter * 1000).then((shouldLog) => {
+    if (!shouldLog) return;
+    void auditLogger.log({
+      user_id: userId,
+      action: 'rate_limit_exceeded',
+      resource: req.originalUrl,
+      ip_address: req.ip || null,
+      success: false,
+      metadata: { retryAfter, endpoint: req.originalUrl },
+    });
   });
 
-  // Add Retry-After header
   res.set('Retry-After', String(retryAfter));
-
   res.status(429).json({
-    error: "Too many transactions. Try again in 60 seconds.",
+    error: 'Too many transactions. Try again in 60 seconds.',
     retryAfter,
   });
 };
 
+function denyStoreUnavailable(_req: Request, res: Response) {
+  res.status(503).json({
+    error: 'Rate limiting temporarily unavailable. Please retry shortly.',
+  });
+}
 
-/**
- * User-based rate limiter: 10 requests per minute per user ID
- */
-export const userSubmitTxLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 10,
-  legacyHeaders: false,
-  standardHeaders: true,
-  handler: rateLimitHandler,
-  keyGenerator: async (req: Request): Promise<string> => {
-    const walletId = req.body?.walletId;
-    if (!walletId || typeof walletId !== "string") {
-      return req.ip || "unknown"; // Fallback to IP if body invalid
-    }
+const submitTxUserStore = buildStore('rl:submit-tx:user:');
+const submitTxGlobalStore = buildStore('rl:submit-tx:global:');
+const storeUnavailable = !submitTxUserStore;
 
-    // Check cache first
-    let userId = walletIdToUserIdCache.get(walletId);
-    if (userId) {
-      // Attach to req for handler logging
-      (req as any)._rateLimitUserId = userId;
-      return `submit-tx:user:${userId}`;
-    }
+if (storeUnavailable) {
+  const msg =
+    rateLimitStoreConfig.submitTxFailBehavior === 'closed'
+      ? '[rate-limit] Redis unavailable, RATE_LIMIT_FAIL_BEHAVIOR_SUBMIT_TX=closed — ' +
+        'submit-tx requests will be denied until the store recovers.'
+      : '[rate-limit] Redis unavailable, RATE_LIMIT_FAIL_BEHAVIOR_SUBMIT_TX=open — ' +
+        'falling back to per-process MemoryStore. Fee-sponsor spend is NOT protected ' +
+        'across instances while in this state.';
+  console.error(msg);
+}
 
-    // Query DB
-    try {
-      const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from("smart_wallets")
-        .select("user_id")
-        .eq("id", walletId)
-        .single();
+export const userSubmitTxLimiter =
+  storeUnavailable && rateLimitStoreConfig.submitTxFailBehavior === 'closed'
+    ? denyStoreUnavailable
+    : rateLimit({
+        windowMs: 1 * 60 * 1000,
+        max: 10,
+        legacyHeaders: false,
+        standardHeaders: true,
+        store: submitTxUserStore,
+        handler: rateLimitHandler,
+        keyGenerator: async (req: Request): Promise<string> => {
+          const walletId = req.body?.walletId;
+          let key: string;
 
-      if (!error && data?.user_id) {
-        userId = data.user_id;
-        walletIdToUserIdCache.set(walletId, userId!);
-        (req as any)._rateLimitUserId = userId;
-        return `submit-tx:user:${userId}`;
-      }
-    } catch (err) {
-      // Ignore errors, fallback to walletId
-    }
+          if (!walletId || typeof walletId !== 'string') {
+            key = req.ip || 'unknown';
+          } else {
+            let userId = walletIdToUserIdCache.get(walletId);
+            if (userId) {
+              (req as any)._rateLimitUserId = userId;
+              key = `submit-tx:user:${userId}`;
+            } else {
+              try {
+                const supabase = getSupabaseClient();
+                const { data, error } = await supabase
+                  .from('smart_wallets')
+                  .select('user_id')
+                  .eq('id', walletId)
+                  .single();
 
-    // Fallback to walletId
-    return `submit-tx:wallet:${walletId}`;
-  },
-});
+                if (!error && data?.user_id) {
+                  userId = data.user_id;
+                  walletIdToUserIdCache.set(walletId, userId!);
+                  (req as any)._rateLimitUserId = userId;
+                  key = `submit-tx:user:${userId}`;
+                } else {
+                  key = `submit-tx:wallet:${walletId}`;
+                }
+              } catch {
+                key = `submit-tx:wallet:${walletId}`;
+              }
+            }
+          }
 
-/**
- * Global rate limiter: 100 total requests per minute
- */
-export const globalSubmitTxLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100,
-  legacyHeaders: false,
-  standardHeaders: true,
-  handler: rateLimitHandler,
-  keyGenerator: (): string => {
-    return "submit-tx:global";
-  },
-});
+          (req as any)._rateLimitKey = key;
+          return key;
+        },
+      });
+
+export const globalSubmitTxLimiter =
+  storeUnavailable && rateLimitStoreConfig.submitTxFailBehavior === 'closed'
+    ? denyStoreUnavailable
+    : rateLimit({
+        windowMs: 1 * 60 * 1000,
+        max: 100,
+        legacyHeaders: false,
+        standardHeaders: true,
+        store: submitTxGlobalStore,
+        handler: rateLimitHandler,
+        keyGenerator: (): string => 'submit-tx:global',
+      });

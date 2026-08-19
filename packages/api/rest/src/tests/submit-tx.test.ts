@@ -3,8 +3,16 @@
  * @description All Stellar RPC and Supabase calls are mocked — no network access.
  */
 
-import express, { Express } from "express";
+// Express is provided by the workspace runtime; its typings are not exposed
+// to this package's test TypeScript project.
+// @ts-expect-error -- keep the test runnable when the workspace types are absent
+import express, { type Express } from "express";
+// Supertest is provided by the workspace runtime; its typings are not exposed
+// to this package's test TypeScript project.
+// @ts-expect-error -- keep the test runnable when the workspace types are absent
 import request from "supertest";
+import submitTxRoute from "../routes/wallets/submit-tx.route";
+import { jest } from "@jest/globals";
 
 // ---------------------------------------------------------------------------
 // Supabase mock
@@ -83,11 +91,6 @@ jest.mock("@stellar/stellar-sdk", () => {
 // ---------------------------------------------------------------------------
 process.env.SUPABASE_URL = "https://test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
-
-import submitTxRoute from "../routes/wallets/submit-tx.route";
-import { userSubmitTxLimiter } from "../middleware/rate-limit"; // Corrected path
-
-
 
 // ---------------------------------------------------------------------------
 // App factory
@@ -267,7 +270,7 @@ describe("POST /submit-tx", () => {
 
   // ---- Security ----
   it("never includes FEE_SPONSOR_SECRET_KEY in error responses", async () => {
-    const stellarMock = jest.requireMock("@stellar/stellar-sdk");
+    const stellarMock = jest.requireMock("@stellar/stellar-sdk") as any;
     stellarMock.TransactionBuilder.buildFeeBumpTransaction.mockImplementationOnce(
       () => { throw new Error(process.env.FEE_SPONSOR_SECRET_KEY!); }
     );
