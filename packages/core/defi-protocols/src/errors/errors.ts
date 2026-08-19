@@ -208,6 +208,47 @@ export class InvalidOperationError extends ProtocolError {
 }
 
 /**
+ * Error thrown when an operation is conceptually valid but its data cannot be produced
+ * @class UnsupportedOperationError
+ * @extends ProtocolError
+ * @description Thrown when an operation cannot return real data because the underlying
+ * information is not obtainable from the available data sources (e.g. it requires an
+ * off-chain price oracle or event indexer that is not wired in). Distinct from
+ * {@link InvalidOperationError}, which is for operations that are simply not applicable
+ * to a given protocol.
+ */
+export class UnsupportedOperationError extends ProtocolError {
+    /** The operation type that was attempted */
+    public readonly operationType?: string;
+    /** Reason why the data is not obtainable */
+    public readonly reason?: string;
+
+    constructor(
+        message: string,
+        options?: {
+            protocolId?: string;
+            cause?: Error;
+            context?: Record<string, unknown>;
+            operationType?: string;
+            reason?: string;
+        }
+    ) {
+        super(message, ProtocolErrorCode.OPERATION_NOT_SUPPORTED, {
+            protocolId: options?.protocolId,
+            cause: options?.cause,
+            context: {
+                ...options?.context,
+                operationType: options?.operationType,
+                reason: options?.reason
+            }
+        });
+        this.name = 'UnsupportedOperationError';
+        this.operationType = options?.operationType;
+        this.reason = options?.reason;
+    }
+}
+
+/**
  * Error thrown when a smart contract call fails
  * @class ContractError
  * @extends ProtocolError
