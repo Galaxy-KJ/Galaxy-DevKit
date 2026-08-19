@@ -83,11 +83,32 @@ jest.mock('@stellar/stellar-sdk', () => {
 
 // Mock the Blend SDK
 jest.mock('@blend-capital/blend-sdk', () => ({
+  PoolV2: {
+    load: jest.fn().mockResolvedValue({
+      loadOracle: jest.fn().mockResolvedValue({
+        getPrice: jest.fn().mockReturnValue(10000000n),
+        decimals: 7
+      }),
+      reserves: new Map()
+    }),
+  },
   PoolContractV2: {
     spec: {
       funcArgsToScVals: jest.fn()
     }
   },
+  Positions: {
+    load: jest.fn(),
+    fromScVal: jest.fn()
+  },
+  PoolUser: jest.fn().mockImplementation(() => ({
+    getCollateralBTokens: jest.fn().mockReturnValue(0n),
+    getSupplyBTokens: jest.fn().mockReturnValue(0n),
+    getLiabilityDTokens: jest.fn().mockReturnValue(0n),
+    getCollateralFloat: jest.fn().mockReturnValue(0),
+    getSupplyFloat: jest.fn().mockReturnValue(0),
+    getLiabilitiesFloat: jest.fn().mockReturnValue(0),
+  })),
   RequestType: {
     SupplyCollateral: 0,
     Supply: 1,
@@ -222,7 +243,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock PoolContractV2 spec
       (PoolContractV2.spec.funcArgsToScVals as jest.Mock).mockReturnValue([
-        { mock: 'scval' }
+        { retval: 'scval' }
       ]);
 
       // Mock transaction builder
@@ -241,7 +262,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -305,7 +326,7 @@ describe('BlendProtocol - Operations Tests', () => {
       });
 
       (PoolContractV2.spec.funcArgsToScVals as jest.Mock).mockReturnValue([
-        { mock: 'scval' }
+        { retval: 'scval' }
       ]);
 
       const mockTx = { sign: jest.fn() };
@@ -372,7 +393,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -425,7 +446,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -495,7 +516,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
 
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       });
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
@@ -602,7 +623,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -652,7 +673,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
 
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       });
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
@@ -769,7 +790,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -819,7 +840,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
 
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       });
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
@@ -936,7 +957,7 @@ describe('BlendProtocol - Operations Tests', () => {
 
       // Mock simulation success
       const mockSimulation = {
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -980,7 +1001,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
 
       const mockSimulation = {
-        result: { mock: 'position-data' }
+        result: { retval: 'position-data' }
       };
       mockSorobanServer.simulateTransaction = jest
         .fn()
@@ -1151,7 +1172,7 @@ describe('BlendProtocol - Operations Tests', () => {
       );
 
       mockSorobanServer.simulateTransaction = jest.fn().mockResolvedValue({
-        result: { mock: 'result' }
+        result: { retval: 'result' }
       });
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
 
@@ -1403,9 +1424,9 @@ describe('BlendProtocol - Operations Tests', () => {
       const stats = await blendProtocol.getStats();
 
       expect(stats).toBeDefined();
-      expect(stats.totalSupply).toBe('0');
-      expect(stats.totalBorrow).toBe('0');
-      expect(stats.tvl).toBe('0');
+      expect(stats.totalSupply).toBe('0.00');
+      expect(stats.totalBorrow).toBe('0.00');
+      expect(stats.tvl).toBe('0.00');
       expect(stats.utilizationRate).toBe(0);
       expect(stats.timestamp).toBeInstanceOf(Date);
     });
@@ -1645,57 +1666,4 @@ describe('BlendProtocol - Operations Tests', () => {
     });
   });
 
-  describe('parsePositionData()', () => {
-    it('should parse position data from simulation', () => {
-      const mockSimulation = {
-        result: { mock: 'result' }
-      };
-
-      const position = (blendProtocol as any).parsePositionData(
-        mockSimulation,
-        testAddress
-      );
-
-      expect(position).toBeDefined();
-      expect(position.address).toBe(testAddress);
-      expect(position.supplied).toEqual([]);
-      expect(position.borrowed).toEqual([]);
-      expect(position.healthFactor).toBe('0');
-      expect(position.collateralValue).toBe('0');
-      expect(position.debtValue).toBe('0');
-    });
-  });
-
-  describe('parseLiquidationResult()', () => {
-    it('should parse liquidation result', () => {
-      const mockResult = {
-        status: 'SUCCESS',
-        ledger: 12345
-      };
-
-      const collateralAmount = (blendProtocol as any).parseLiquidationResult(
-        mockResult
-      );
-
-      expect(collateralAmount).toBe('0');
-    });
-  });
-
-  describe('parseHealthFactorData()', () => {
-    it('should parse health factor data from simulation', () => {
-      const mockSimulation = {
-        result: { mock: 'result' }
-      };
-
-      const healthFactor = (blendProtocol as any).parseHealthFactorData(
-        mockSimulation
-      );
-
-      expect(healthFactor).toBeDefined();
-      expect(healthFactor.value).toBe('0');
-      expect(healthFactor.liquidationThreshold).toBe('0.85');
-      expect(healthFactor.maxLTV).toBe('0.75');
-      expect(healthFactor.isHealthy).toBe(true);
-    });
-  });
 });

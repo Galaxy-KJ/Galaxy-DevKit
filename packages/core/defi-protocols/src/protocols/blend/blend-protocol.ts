@@ -20,12 +20,13 @@ import {
 import {
   PoolContractV2,
   PoolV2,
-  Positions,
+
   Request,
   RequestType,
   Network
 } from '@blend-capital/blend-sdk';
-import type { Pool, PoolUser, Reserve } from '@blend-capital/blend-sdk';
+import { Pool, PoolUser, Reserve, Positions } from '@blend-capital/blend-sdk';
+import BigNumber from 'bignumber.js';
 
 import { BaseProtocol } from '../base-protocol.js';
 import {
@@ -539,6 +540,7 @@ export class BlendProtocol extends BaseProtocol {
         .build();
 
       const simulatedTx = await this.sorobanServer.simulateTransaction(tx);
+      console.log('isSimulationError:', rpc.Api.isSimulationError(simulatedTx), simulatedTx);
       if (rpc.Api.isSimulationError(simulatedTx)) {
         // If simulation fails, user likely has no position
         return {
@@ -552,7 +554,7 @@ export class BlendProtocol extends BaseProtocol {
       }
 
       // Parse position data from simulation result
-      const position = this.parsePositionData(simulatedTx, address);
+      const position = await this.parsePositionData(simulatedTx, address);
 
       return position;
     } catch (error) {
@@ -710,10 +712,39 @@ export class BlendProtocol extends BaseProtocol {
         throw new Error('Pool contract not initialized');
       }
 
-      // In a real implementation, this would query the contract or indexer
-      // for positions with health factor below threshold
-      // For now, return empty array as placeholder
       const opportunities: LiquidationOpportunity[] = [];
+
+      // Query indexer for users if provided
+      if (this.poolConfig?.indexerUrl) {
+        try {
+          const response = await fetch(`${this.poolConfig.indexerUrl}/pools/${this.poolConfig.poolAddress}/positions`);
+          if (response.ok) {
+            const data = await response.json();
+            const users = data.users || [];
+            for (const address of users) {
+              try {
+                const position = await this.getPosition(address);
+                if (position && position.healthFactor !== '∞' && parseFloat(position.healthFactor) < minHealthFactor) {
+                  opportunities.push({
+                    userAddress: position.address,
+                    healthFactor: position.healthFactor,
+                    collateralValueUSD: position.collateralValue,
+                    debtValueUSD: position.debtValue,
+                    collateralAssets: position.supplied as any,
+                    debtAssets: position.borrowed as any,
+                    estimatedProfitUSD: '0'
+                  });
+                }
+              } catch (err) {
+                // Continue checking other users if one fails
+                console.warn(`Failed to process position for ${address}`, err);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to query indexer for liquidation opportunities', error);
+        }
+      }
 
       return opportunities;
     } catch (error) {
@@ -1020,87 +1051,122 @@ export class BlendProtocol extends BaseProtocol {
    * @private
    * @param {rpc.Api.SimulateTransactionResponse} simulatedTx - Simulation result
    * @param {string} address - User address
-   * @returns {Position}
+   * @returns {Promise<Position>}
    */
-  private parsePositionData(
+  private async parsePositionData(
     simulatedTx: rpc.Api.SimulateTransactionResponse,
     address: string
-  ): Position {
-    // In a real implementation, parse actual data from simulation result
-    // For now, return placeholder
-    return {
-      address,
-      supplied: [],
-      borrowed: [],
-      healthFactor: '0',
-      collateralValue: '0',
-      debtValue: '0'
-    };
+  ): Promise<Position> {
+    if (
+      !simulatedTx ||
+      rpc.Api.isSimulationError(simulatedTx) ||
+      !simulatedTx.result ||
+      !simulatedTx.result.retval
+    ) {
+      throw new Error('Simulation failed or returned no result');
+    }
+
+    const positions = Positions.fromScVal(simulatedTx.result.retval);
+    const poolUser = new PoolUser(address, positions, new Map());
+
+    return this.convertPoolUserToPosition(poolUser, address);
   }
-
-
 
   /**
    * Convert PoolUser from Blend SDK to Position
    * @private
    * @param {PoolUser} poolUser - Pool user from SDK
    * @param {string} address - User address
-   * @returns {Position}
+   * @returns {Promise<Position>}
    */
-  private convertPoolUserToPosition(poolUser: PoolUser, address: string): Position {
+  private async convertPoolUserToPosition(poolUser: PoolUser, address: string): Promise<Position> {
+    if (!this.blendPool) {
+      throw new Error('Blend pool not initialized');
+    }
+
     const supplied: PositionBalance[] = [];
     const borrowed: PositionBalance[] = [];
-    let totalCollateralValue = 0;
-    let totalDebtValue = 0;
+    let totalEffectiveCollateral = new BigNumber(0);
+    let totalEffectiveLiability = new BigNumber(0);
+    let totalCollateralValueUSD = new BigNumber(0);
+    let totalDebtValueUSD = new BigNumber(0);
 
-    if (this.blendPool) {
-      // Iterate through reserves to get user positions
-      for (const [assetId, reserve] of this.blendPool.reserves) {
-        // Get collateral (supply used as collateral)
-        const collateralAmount = poolUser.getCollateralFloat(reserve);
-        if (collateralAmount > 0) {
-          supplied.push({
-            asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
-            amount: collateralAmount.toString(),
-            valueUSD: '0' // Would need oracle for USD value
-          });
-          totalCollateralValue += collateralAmount;
-        }
+    const poolOracle = await this.blendPool.loadOracle();
 
-        // Get non-collateral supply
-        const supplyAmount = poolUser.getSupplyFloat(reserve);
-        if (supplyAmount > 0) {
-          supplied.push({
-            asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
-            amount: supplyAmount.toString(),
-            valueUSD: '0'
-          });
-        }
+    for (const [assetId, reserve] of this.blendPool.reserves) {
+      const priceBigInt = poolOracle.getPrice(assetId);
+      if (!priceBigInt) continue;
 
-        // Get liabilities (borrowed)
-        const liabilityAmount = poolUser.getLiabilitiesFloat(reserve);
-        if (liabilityAmount > 0) {
-          borrowed.push({
-            asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
-            amount: liabilityAmount.toString(),
-            valueUSD: '0'
-          });
-          totalDebtValue += liabilityAmount;
-        }
+      const price = new BigNumber(priceBigInt.toString()).dividedBy(10 ** poolOracle.decimals);
+
+      // Get collateral (supply used as collateral)
+      const bTokensCol = poolUser.getCollateralBTokens(reserve);
+      if (bTokensCol > 0n) {
+        const assetAmount = reserve.toAssetFromBToken(bTokensCol);
+        const effectiveAsset = reserve.toEffectiveAssetFromBToken(bTokensCol);
+
+        const assetAmountStr = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).toString();
+        const valueUSD = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).multipliedBy(price);
+
+        supplied.push({
+          asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
+          amount: assetAmountStr,
+          valueUSD: valueUSD.toFixed(4)
+        });
+
+        totalCollateralValueUSD = totalCollateralValueUSD.plus(valueUSD);
+
+        const effectiveAssetValue = new BigNumber(effectiveAsset.toString()).dividedBy(10 ** reserve.config.decimals).multipliedBy(price);
+        totalEffectiveCollateral = totalEffectiveCollateral.plus(effectiveAssetValue);
+      }
+
+      // Get non-collateral supply
+      const bTokensSup = poolUser.getSupplyBTokens(reserve);
+      if (bTokensSup > 0n) {
+        const assetAmount = reserve.toAssetFromBToken(bTokensSup);
+        const assetAmountStr = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).toString();
+        const valueUSD = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).multipliedBy(price);
+
+        supplied.push({
+          asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
+          amount: assetAmountStr,
+          valueUSD: valueUSD.toFixed(4)
+        });
+      }
+
+      // Get liabilities (borrowed)
+      const dTokens = poolUser.getLiabilityDTokens(reserve);
+      if (dTokens > 0n) {
+        const assetAmount = reserve.toAssetFromDToken(dTokens);
+        const effectiveAsset = reserve.toEffectiveAssetFromDToken(dTokens);
+
+        const assetAmountStr = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).toString();
+        const valueUSD = new BigNumber(assetAmount.toString()).dividedBy(10 ** reserve.config.decimals).multipliedBy(price);
+
+        borrowed.push({
+          asset: { type: 'credit_alphanum4', code: assetId.substring(0, 4), issuer: assetId },
+          amount: assetAmountStr,
+          valueUSD: valueUSD.toFixed(4)
+        });
+
+        totalDebtValueUSD = totalDebtValueUSD.plus(valueUSD);
+
+        const effectiveAssetValue = new BigNumber(effectiveAsset.toString()).dividedBy(10 ** reserve.config.decimals).multipliedBy(price);
+        totalEffectiveLiability = totalEffectiveLiability.plus(effectiveAssetValue);
       }
     }
 
-    const healthFactor = totalDebtValue > 0
-      ? (totalCollateralValue / totalDebtValue).toFixed(4)
-      : '∞';
+    const healthFactor = totalEffectiveLiability.isZero()
+      ? '∞'
+      : totalEffectiveCollateral.dividedBy(totalEffectiveLiability).toFixed(4);
 
     return {
       address,
       supplied,
       borrowed,
       healthFactor,
-      collateralValue: totalCollateralValue.toString(),
-      debtValue: totalDebtValue.toString()
+      collateralValue: totalCollateralValueUSD.toFixed(4),
+      debtValue: totalDebtValueUSD.toFixed(4)
     };
   }
 
