@@ -73,17 +73,21 @@ const rateLimitHandler = (req: Request, res: Response) => {
   const limitKey = (req as any)._rateLimitKey || req.ip || 'unknown';
 
   // Emit exactly once per breach window per key, not once per retry.
-  void shouldLogBreach(limitKey, retryAfter * 1000).then((shouldLog) => {
-    if (!shouldLog) return;
-    void auditLogger.log({
-      user_id: userId,
-      action: 'rate_limit_exceeded',
-      resource: req.originalUrl,
-      ip_address: req.ip || null,
-      success: false,
-      metadata: { retryAfter, endpoint: req.originalUrl },
+  void shouldLogBreach(limitKey, retryAfter * 1000)
+    .then((shouldLog) => {
+      if (!shouldLog) return;
+      return auditLogger.log({
+        user_id: userId,
+        action: 'rate_limit_exceeded',
+        resource: req.originalUrl,
+        ip_address: req.ip || null,
+        success: false,
+        metadata: { retryAfter, endpoint: req.originalUrl },
+      });
+    })
+    .catch((err) => {
+      console.warn('[rate-limit] breach audit logging failed:', err);
     });
-  });
 
   res.set('Retry-After', String(retryAfter));
   res.status(429).json({
