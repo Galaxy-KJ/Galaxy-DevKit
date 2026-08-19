@@ -62,21 +62,10 @@ function buildStore(prefix: string) {
 // Best-effort per-process dedupe used only when Redis is unavailable and
 // policy is 'open'. When Redis is available, dedupe is done via SET NX so
 // it's correct across instances, not just within one process.
-const localBreachFallback = new Map<string, number>();
-
-async function shouldLogBreach(key: string, windowMs: number): Promise<boolean> {
-  const redis = getRedisClient();
-  const breachKey = `rl:breach-logged:${key}`;
-  if (redis) {
-    const result = await redis.set(breachKey, '1', 'PX', windowMs, 'NX');
-    return result === 'OK';
-  }
-  const now = Date.now();
-  const last = localBreachFallback.get(breachKey);
-  if (last && now - last < windowMs) return false;
-  localBreachFallback.set(breachKey, now);
-  return true;
-}
+const localBreachFallback = new LRUCache<string, number>({
+  max: rateLimitStoreConfig.walletCacheMaxEntries,
+  ttl: 5 * 60 * 1000,
+});
 
 const rateLimitHandler = (req: Request, res: Response) => {
   const retryAfter = 60;
