@@ -32,7 +32,7 @@ import {
   LiquidityPool
 } from '../../types/defi-types.js';
 import { PoolAnalytics } from '../../types/protocol-interface.js';
-import { InvalidOperationError } from '../../errors/index.js';
+import { InvalidOperationError, UnsupportedOperationError, ContractError } from '../../errors/index.js';
 
 import { SoroswapPairInfo } from './soroswap-types.js';
 import {
@@ -57,6 +57,15 @@ export class SoroswapProtocol extends BaseProtocol {
   private sorobanServer: rpc.Server;
   private routerContract: Contract | null = null;
   private factoryContract: Contract | null = null;
+
+  /** How long cached factory/pair reads stay fresh before being re-fetched on-chain */
+  private static readonly CACHE_TTL_MS = 30_000;
+
+  /** Max concurrent simulateTransaction calls when scanning pairs */
+  private static readonly PAIR_READ_CONCURRENCY = 5;
+
+  private allPairsCache: { value: string[]; expiresAt: number } | null = null;
+  private readonly pairInfoCache = new Map<string, { value: SoroswapPairInfo; expiresAt: number }>();
 
   /**
    * Constructor
@@ -106,19 +115,17 @@ export class SoroswapProtocol extends BaseProtocol {
   public async getStats(): Promise<ProtocolStats> {
     this.ensureInitialized();
 
-    try {
-      // In a real implementation, aggregate stats from factory/pairs
-      // For now, return placeholder data
-      return {
-        totalSupply: '0',
-        totalBorrow: '0',
-        tvl: '0',
-        utilizationRate: 0,
-        timestamp: new Date()
-      };
-    } catch (error) {
-      this.handleError(error, 'getStats');
-    }
+    throw new UnsupportedOperationError(
+      'getStats is not supported by Soroswap: protocol-wide TVL and volume require off-chain ' +
+        'USD pricing that cannot be derived from on-chain contract reads alone. Use ' +
+        'getPoolAnalytics()/getAllPoolsAnalytics() with token price options for per-pool TVL, ' +
+        'or getAllPairs() to enumerate pools.',
+      {
+        protocolId: this.protocolId,
+        operationType: 'getStats',
+        reason: 'TVL/volume aggregation requires an external price oracle not available on-chain'
+      }
+    );
   }
 
   // ========================================
@@ -308,7 +315,118 @@ export class SoroswapProtocol extends BaseProtocol {
   // ========================================
 
   /**
+   * Load (or synthesize) a source account usable purely for read-only simulation.
+   * No signing ever happens against this account — it only anchors the transaction envelope.
+   */
+  private async loadSimulationAccount(): Promise<any> {
+    return this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
+      accountId: () => SIMULATION_PLACEHOLDER,
+      sequenceNumber: () => '0',
+      incrementSequenceNumber: () => {},
+      sequence: '0',
+    } as any));
+  }
+
+  /** Simulate a single read-only contract call and return the raw simulation result. */
+  private async simulateCall(
+    sourceAccount: any,
+    contract: Contract,
+    method: string,
+    ...args: ReturnType<typeof nativeToScVal>[]
+  ): Promise<rpc.Api.SimulateTransactionResponse> {
+    const op = contract.call(method, ...args);
+    const tx = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(op)
+      .setTimeout(30)
+      .build();
+    return this.sorobanServer.simulateTransaction(tx);
+  }
+
+  /**
+   * Extract the return value from a simulation, throwing a {@link ContractError} if the
+   * simulation failed or produced no result. This is the boundary that turns a failed
+   * on-chain read into a real error instead of a silently-substituted zero.
+   */
+  private extractRetval(
+    simulation: rpc.Api.SimulateTransactionResponse,
+    method: string,
+    contractAddress?: string
+  ): NonNullable<rpc.Api.SimulateTransactionSuccessResponse['result']>['retval'] {
+    if (!simulation || rpc.Api.isSimulationError(simulation)) {
+      const reason = simulation && 'error' in simulation ? simulation.error : 'no simulation response';
+      throw new ContractError(`Soroswap ${method} simulation failed: ${reason}`, {
+        protocolId: this.protocolId,
+        contractAddress,
+        method,
+      });
+    }
+    if (!('result' in simulation) || !simulation.result?.retval) {
+      throw new ContractError(`Soroswap ${method} returned no result`, {
+        protocolId: this.protocolId,
+        contractAddress,
+        method,
+      });
+    }
+    return simulation.result.retval;
+  }
+
+  /**
+   * Resolve one side of a pair contract (token_0/token_1) to a Galaxy Asset.
+   * A failed simulation propagates as a {@link ContractError} — callers must not
+   * receive a plausible-looking 'UNKN' placeholder in place of a real failure.
+   */
+  private async resolveTokenFromPair(
+    sourceAccount: any,
+    pairContract: Contract,
+    method: 'token_0' | 'token_1'
+  ): Promise<Asset> {
+    const sim = await this.simulateCall(sourceAccount, pairContract, method);
+    const addr = Address.fromScVal(this.extractRetval(sim, method)).toString();
+    const nativeContractId = StellarAsset.native().contractId(this.networkPassphrase);
+    if (addr === nativeContractId) {
+      return { code: 'XLM', type: 'native' };
+    }
+    return {
+      code: addr.slice(-4).toUpperCase(),
+      issuer: addr,
+      type: 'credit_alphanum4',
+    };
+  }
+
+  /** Run `fn` over `items` with at most `concurrency` in flight at once. */
+  private static async mapWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T, index: number) => Promise<R>
+  ): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let cursor = 0;
+    const workerCount = Math.max(1, Math.min(concurrency, items.length));
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (cursor < items.length) {
+        const current = cursor++;
+        results[current] = await fn(items[current], current);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  /** Order-independent cache key for a token pair. */
+  private static pairCacheKey(tokenA: string, tokenB: string): string {
+    return [tokenA, tokenB].sort().join(':');
+  }
+
+  /**
    * Get pair information for a token pair
+   *
+   * Resolves the pair address via the factory's `get_pair`, then reads reserves,
+   * token addresses and LP supply directly from the pair contract. Results are cached
+   * for {@link SoroswapProtocol.CACHE_TTL_MS} to avoid re-scanning on every call.
+   *
    * @param {string} tokenA - First token contract address
    * @param {string} tokenB - Second token contract address
    * @returns {Promise<SoroswapPairInfo>} Pair information
@@ -320,19 +438,66 @@ export class SoroswapProtocol extends BaseProtocol {
       if (!this.factoryContract) {
         throw new Error('Factory contract not initialized');
       }
+      if (!tokenA || !tokenB) {
+        throw new Error('Both tokenA and tokenB addresses are required');
+      }
 
-      // In a real implementation, query the factory contract for pair address
-      // then query the pair contract for reserves and supply
-      // For now, return placeholder data
-      return {
-        pairAddress: '',
-        token0: { code: tokenA, type: 'credit_alphanum4' },
-        token1: { code: tokenB, type: 'credit_alphanum4' },
-        reserve0: '0',
-        reserve1: '0',
-        totalSupply: '0',
-        fee: SOROSWAP_DEFAULT_FEE
+      const cacheKey = SoroswapProtocol.pairCacheKey(tokenA, tokenB);
+      const cached = this.pairInfoCache.get(cacheKey);
+      if (cached && Date.now() < cached.expiresAt) {
+        return cached.value;
+      }
+
+      const sourceAccount = await this.loadSimulationAccount();
+
+      const pairSim = await this.simulateCall(
+        sourceAccount,
+        this.factoryContract,
+        'get_pair',
+        new Address(tokenA).toScVal(),
+        new Address(tokenB).toScVal()
+      );
+      const pairAddress = Address.fromScVal(this.extractRetval(pairSim, 'get_pair')).toString();
+
+      const pairContract = new Contract(pairAddress);
+
+      const [reservesSim, totalSupplySim, token0, token1] = await Promise.all([
+        this.simulateCall(sourceAccount, pairContract, 'get_reserves'),
+        this.simulateCall(sourceAccount, pairContract, 'total_supply'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_0'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_1'),
+      ]);
+
+      const reserves = scValToNative(
+        this.extractRetval(reservesSim, 'get_reserves', pairAddress)
+      ) as bigint[];
+      if (!Array.isArray(reserves) || reserves.length < 2) {
+        throw new Error('Unexpected return value from get_reserves');
+      }
+
+      const totalSupply = scValToNative(
+        this.extractRetval(totalSupplySim, 'total_supply', pairAddress)
+      ) as bigint;
+
+      // Soroswap pairs charge a fixed protocol-wide swap fee (no per-pair override is
+      // exposed on-chain), so SOROSWAP_DEFAULT_FEE reflects the real applied fee rather
+      // than a stand-in.
+      const pairInfo: SoroswapPairInfo = {
+        pairAddress,
+        token0,
+        token1,
+        reserve0: reserves[0].toString(),
+        reserve1: reserves[1].toString(),
+        totalSupply: totalSupply.toString(),
+        fee: SOROSWAP_DEFAULT_FEE,
       };
+
+      this.pairInfoCache.set(cacheKey, {
+        value: pairInfo,
+        expiresAt: Date.now() + SoroswapProtocol.CACHE_TTL_MS,
+      });
+
+      return pairInfo;
     } catch (error) {
       this.handleError(error, 'getPairInfo');
     }
@@ -340,6 +505,11 @@ export class SoroswapProtocol extends BaseProtocol {
 
   /**
    * Get all registered pairs from the factory
+   *
+   * Reads `all_pairs_length` then fetches every `all_pairs(index)` in parallel
+   * (bounded by {@link SoroswapProtocol.PAIR_READ_CONCURRENCY}). Results are cached for
+   * {@link SoroswapProtocol.CACHE_TTL_MS} so repeated calls don't re-scan the factory.
+   *
    * @returns {Promise<string[]>} Array of pair contract addresses
    */
   public async getAllPairs(): Promise<string[]> {
@@ -350,9 +520,36 @@ export class SoroswapProtocol extends BaseProtocol {
         throw new Error('Factory contract not initialized');
       }
 
-      // In a real implementation, query the factory for all pairs
-      // For now, return empty array as placeholder
-      return [];
+      if (this.allPairsCache && Date.now() < this.allPairsCache.expiresAt) {
+        return this.allPairsCache.value;
+      }
+
+      const sourceAccount = await this.loadSimulationAccount();
+
+      const lengthSim = await this.simulateCall(sourceAccount, this.factoryContract, 'all_pairs_length');
+      const length = Number(scValToNative(this.extractRetval(lengthSim, 'all_pairs_length')));
+
+      const indices = Array.from({ length: Math.max(0, length) }, (_, i) => i);
+      const pairs = await SoroswapProtocol.mapWithConcurrency(
+        indices,
+        SoroswapProtocol.PAIR_READ_CONCURRENCY,
+        async (index) => {
+          const sim = await this.simulateCall(
+            sourceAccount,
+            this.factoryContract!,
+            'all_pairs',
+            nativeToScVal(index, { type: 'u32' })
+          );
+          return Address.fromScVal(this.extractRetval(sim, 'all_pairs')).toString();
+        }
+      );
+
+      this.allPairsCache = {
+        value: pairs,
+        expiresAt: Date.now() + SoroswapProtocol.CACHE_TTL_MS,
+      };
+
+      return pairs;
     } catch (error) {
       this.handleError(error, 'getAllPairs');
     }
@@ -795,97 +992,33 @@ export class SoroswapProtocol extends BaseProtocol {
       const tokenAAddress = this.resolveTokenAddress(tokenA);
       const tokenBAddress = this.resolveTokenAddress(tokenB);
 
-      // Build the get_pair call on the factory contract
-      const getPairOp = this.factoryContract.call(
+      const sourceAccount = await this.loadSimulationAccount();
+
+      const pairSim = await this.simulateCall(
+        sourceAccount,
+        this.factoryContract,
         'get_pair',
         new Address(tokenAAddress).toScVal(),
         new Address(tokenBAddress).toScVal()
       );
+      const pairAddress = Address.fromScVal(this.extractRetval(pairSim, 'get_pair')).toString();
 
-      // Use a fixed placeholder address for simulation — no signing is needed
-      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => {
-        // If account not found on network, create a minimal object for simulation
-        return {
-          accountId: () => SIMULATION_PLACEHOLDER,
-          sequenceNumber: () => '0',
-          incrementSequenceNumber: () => {},
-          sequence: '0',
-        } as any;
-      });
-
-      const tx = new TransactionBuilder(sourceAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: this.networkPassphrase,
-      })
-        .addOperation(getPairOp)
-        .setTimeout(30)
-        .build();
-
-      // Simulate to retrieve the pair address
-      const simulation = await this.sorobanServer.simulateTransaction(tx);
-
-      let pairAddress = '';
-      if (
-        simulation &&
-        !rpc.Api.isSimulationError(simulation) &&
-        'result' in simulation &&
-        simulation.result?.retval
-      ) {
-        try {
-          // Use Address.fromScVal() — the correct SDK API for ScVal address extraction
-          pairAddress = Address.fromScVal(simulation.result.retval).toString();
-        } catch {
-          // retval was not an address ScVal — pair may not exist yet
-          pairAddress = '';
-        }
-      }
-
-      // Query reserves from the pair contract if we have a valid address
-      let reserveA = '0';
-      let reserveB = '0';
-      let totalLiquidity = '0';
-
-      if (pairAddress) {
-        const pairContract = new Contract(pairAddress);
-        const getReservesOp = pairContract.call('get_reserves');
-
-        const reserveTx = new TransactionBuilder(sourceAccount, {
-          fee: BASE_FEE,
-          networkPassphrase: this.networkPassphrase,
-        })
-          .addOperation(getReservesOp)
-          .setTimeout(30)
-          .build();
-
-        const reserveSim = await this.sorobanServer.simulateTransaction(reserveTx);
-
-        if (
-          reserveSim &&
-          !rpc.Api.isSimulationError(reserveSim) &&
-          'result' in reserveSim &&
-          reserveSim.result?.retval
-        ) {
-          try {
-            // scValToNative converts i128 ScVal → bigint; stringify for the interface
-            const native = scValToNative(reserveSim.result.retval) as bigint[];
-            if (Array.isArray(native) && native.length >= 3) {
-              reserveA = native[0]?.toString() ?? '0';
-              reserveB = native[1]?.toString() ?? '0';
-              totalLiquidity = native[2]?.toString() ?? '0';
-            }
-          } catch {
-            // Unexpected ScVal shape — keep defaults
-          }
-        }
+      const pairContract = new Contract(pairAddress);
+      const reserveSim = await this.simulateCall(sourceAccount, pairContract, 'get_reserves');
+      const native = scValToNative(
+        this.extractRetval(reserveSim, 'get_reserves', pairAddress)
+      ) as bigint[];
+      if (!Array.isArray(native) || native.length < 3) {
+        throw new Error('Unexpected return value from get_reserves');
       }
 
       return {
         address: pairAddress,
         tokenA,
         tokenB,
-        reserveA,
-        reserveB,
-        totalLiquidity,
+        reserveA: native[0].toString(),
+        reserveB: native[1].toString(),
+        totalLiquidity: native[2].toString(),
         fee: SOROSWAP_DEFAULT_FEE,
       };
     } catch (error) {
@@ -919,83 +1052,25 @@ export class SoroswapProtocol extends BaseProtocol {
     }
 
     try {
-      const sourceAccount = await this.horizonServer.loadAccount(SIMULATION_PLACEHOLDER).catch(() => ({
-        accountId: () => SIMULATION_PLACEHOLDER,
-        sequenceNumber: () => '0',
-        incrementSequenceNumber: () => {},
-        sequence: '0',
-      } as any));
-
+      const sourceAccount = await this.loadSimulationAccount();
       const pairContract = new Contract(poolAddress);
 
-      /** Simulate a single read-only call and return the raw simulation result. */
-      const simulate = async (op: ReturnType<Contract['call']>) => {
-        const tx = new TransactionBuilder(sourceAccount, {
-          fee: BASE_FEE,
-          networkPassphrase: this.networkPassphrase,
-        })
-          .addOperation(op)
-          .setTimeout(30)
-          .build();
-        return this.sorobanServer.simulateTransaction(tx);
-      };
-
       // ---- Reserves -------------------------------------------------------
-      let reserve0 = 0n;
-      let reserve1 = 0n;
-      let totalSupply = 0n;
-
-      const reserveSim = await simulate(pairContract.call('get_reserves'));
-      if (
-        reserveSim &&
-        !rpc.Api.isSimulationError(reserveSim) &&
-        'result' in reserveSim &&
-        reserveSim.result?.retval
-      ) {
-        try {
-          const native = scValToNative(reserveSim.result.retval) as bigint[];
-          if (Array.isArray(native) && native.length >= 2) {
-            reserve0 = native[0] ?? 0n;
-            reserve1 = native[1] ?? 0n;
-            totalSupply = native[2] ?? 0n;
-          }
-        } catch {
-          // Unexpected ScVal shape — keep defaults
-        }
+      const reserveSim = await this.simulateCall(sourceAccount, pairContract, 'get_reserves');
+      const native = scValToNative(
+        this.extractRetval(reserveSim, 'get_reserves', poolAddress)
+      ) as bigint[];
+      if (!Array.isArray(native) || native.length < 2) {
+        throw new Error('Unexpected return value from get_reserves');
       }
+      const reserve0 = native[0] ?? 0n;
+      const reserve1 = native[1] ?? 0n;
+      const totalSupply = native[2] ?? 0n;
 
-      // ---- Token addresses ------------------------------------------------
-      const nativeContractId = StellarAsset.native().contractId(this.networkPassphrase);
-
-      const resolveToken = async (method: string): Promise<Asset> => {
-        try {
-          const sim = await simulate(pairContract.call(method));
-          if (
-            sim &&
-            !rpc.Api.isSimulationError(sim) &&
-            'result' in sim &&
-            sim.result?.retval
-          ) {
-            const addr = Address.fromScVal(sim.result.retval).toString();
-            if (addr === nativeContractId) {
-              return { code: 'XLM', type: 'native' };
-            }
-            // Use the last 4 chars of the contract address as a short code
-            return {
-              code: addr.slice(-4).toUpperCase(),
-              issuer: addr,
-              type: 'credit_alphanum4',
-            };
-          }
-        } catch {
-          // Resolution failed — return an unknown placeholder
-        }
-        return { code: 'UNKN', type: 'credit_alphanum4' };
-      };
-
+      // ---- Token addresses --------------------------------------------------
       const [token0, token1] = await Promise.all([
-        resolveToken('token_0'),
-        resolveToken('token_1'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_0'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_1'),
       ]);
 
       return calculateSoroswapPoolAnalytics({
