@@ -274,6 +274,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
   // ── 4. Full lifecycle: register → deploy → sign → submit ─────────────────
 
   test('full lifecycle: transaction is confirmed on testnet', async () => {
+    test.setTimeout(60_000);
     const cfg = env.testnetConfig;
 
     test.skip(
@@ -281,8 +282,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'FEE_SPONSOR_SECRET_KEY not set — skipping full lifecycle test'
     );
     test.skip(
-      !cfg.submitTxUrl || cfg.submitTxUrl.includes('localhost'),
-      'E2E_SUBMIT_TX_URL not pointing to a live server — skipping submission'
+      !cfg.submitTxUrl,
+      'E2E_SUBMIT_TX_URL not set — skipping submission'
     );
 
     const cred = await registerCredential(env.page, 'localhost');
@@ -372,7 +373,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     expect(result.transactionHash).toBeDefined();
     expect(typeof result.transactionHash).toBe('string');
     expect(result.transactionHash.length).toBeGreaterThan(0);
-  }, 60_000 /* generous timeout for testnet round-trips */);
+  });
 });
 
 // ---------------------------------------------------------------------------

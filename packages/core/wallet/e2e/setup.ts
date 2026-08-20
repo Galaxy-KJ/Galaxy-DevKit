@@ -122,8 +122,17 @@ export async function createE2EEnv(): Promise<E2EEnv> {
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  // Navigate to a blank page so the page's origin is predictable.
-  await page.goto('about:blank');
+  // Intercept requests to http://localhost so page.goto succeeds in secure context without an external server.
+  await page.route('http://localhost/**', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<!DOCTYPE html><html><head><title>E2E Test</title></head><body></body></html>',
+    })
+  );
+
+  // Navigate to localhost so the page is in a Secure Context for WebAuthn APIs.
+  await page.goto('http://localhost');
 
   const cdp = await context.newCDPSession(page);
 
@@ -152,8 +161,10 @@ export async function createE2EEnv(): Promise<E2EEnv> {
  * Close the Playwright browser and release all resources.
  * Always call this in `afterAll` / `afterEach` to prevent resource leaks.
  */
-export async function teardownE2EEnv(env: E2EEnv): Promise<void> {
-  await env.browser.close();
+export async function teardownE2EEnv(env?: E2EEnv): Promise<void> {
+  if (env?.browser) {
+    await env.browser.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
