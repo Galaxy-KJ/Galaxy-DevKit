@@ -708,7 +708,7 @@ export class AutomationService extends EventEmitter {
           ip_address: null,
           success: params.success,
           error_code: params.errorCode,
-          metadata,
+          metadata: metadata as any,
         },
       ]);
     } catch (error) {

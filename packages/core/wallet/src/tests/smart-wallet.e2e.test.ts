@@ -87,6 +87,21 @@ function ensureLocalStorage(): void {
   };
 }
 
+/**
+ * Ensures globalThis.crypto is populated (useful for Node.js environments
+ * where webcrypto is not on the global scope by default).
+ */
+function ensureCryptoSubtle(): void {
+  if (typeof globalThis.crypto === 'undefined') {
+    const { webcrypto } = require('node:crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      value: webcrypto,
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
 function createBrowserCredentialBackend(
   env: E2EEnv,
   credentialId: string,
@@ -196,11 +211,9 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'localhost'
     );
 
-    // Also mock crypto.subtle.digest (available in Node >= 16 via globalThis,
+    // Ensure crypto.subtle is available (available in Node >= 19 via globalThis,
     // but declare explicitly for environments where it isn't on global).
-    if (typeof (global as any).crypto === 'undefined') {
-      (global as any).crypto = require('crypto').webcrypto;
-    }
+    ensureCryptoSubtle();
 
     const rpcServer = new Server(cfg.rpcUrl);
     const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
@@ -295,9 +308,9 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'localhost'
     );
 
-    if (typeof (global as any).crypto === 'undefined') {
-      (global as any).crypto = require('crypto').webcrypto;
-    }
+    // Ensure crypto.subtle is available (available in Node >= 19 via globalThis,
+    // but declare explicitly for environments where it isn't on global).
+    ensureCryptoSubtle();
 
     const rpcServer = new Server(cfg.rpcUrl);
     const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
