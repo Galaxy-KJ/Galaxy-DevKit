@@ -88,17 +88,17 @@ export interface BrowserAssertion {
 export function getTestnetConfig(): TestnetConfig {
   return {
     rpcUrl:
-      process.env.STELLAR_RPC_URL ??
+      process.env.STELLAR_RPC_URL ||
       'https://soroban-testnet.stellar.org',
     networkPassphrase:
-      process.env.STELLAR_NETWORK_PASSPHRASE ??
+      process.env.STELLAR_NETWORK_PASSPHRASE ||
       'Test SDF Network ; September 2015',
     factoryContractId:
-      process.env.FACTORY_CONTRACT_ID ??
+      process.env.FACTORY_CONTRACT_ID ||
       'CAX5RLKVBMYLASX546TKXCZIQSROJGQ7DUIH3LUDG3PR4UB3RRW5O5PE',
-    feeSponsorSecretKey: process.env.FEE_SPONSOR_SECRET_KEY ?? '',
+    feeSponsorSecretKey: process.env.FEE_SPONSOR_SECRET_KEY || '',
     submitTxUrl:
-      process.env.E2E_SUBMIT_TX_URL ??
+      process.env.E2E_SUBMIT_TX_URL ||
       'http://localhost:3000/api/v1/wallets/submit-tx',
   };
 }
