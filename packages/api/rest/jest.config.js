@@ -9,7 +9,9 @@ module.exports = {
     '^@galaxy-kj/core-defi-protocols$': '<rootDir>/../../core/defi-protocols/src/index.ts',
     '^@galaxy-kj/core-wallet$': '<rootDir>/../../core/wallet/src/index.ts',
     '^(\\.\\.?/.*)\\.js$': '$1',
+    '^ioredis$': 'ioredis-mock',
   },
+  setupFiles: ['<rootDir>/src/tests/jest.setup.ts'],
 
   transform: {
     '^.+\\.tsx?$': [

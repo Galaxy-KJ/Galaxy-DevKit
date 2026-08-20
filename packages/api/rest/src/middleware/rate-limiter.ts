@@ -28,21 +28,21 @@ function buildStore() {
   return {
     async increment(key: string) {
       const redisKey = `rl:general:${key}`;
-      const totalHits = Number(await redis.call('INCR', redisKey));
+      const totalHits = Number(await redis.incr(redisKey));
       if (totalHits === 1) {
-        await redis.call('EXPIRE', redisKey, Math.ceil(authConfig.rateLimit.windowMs / 1000));
+        await redis.expire(redisKey, Math.ceil(authConfig.rateLimit.windowMs / 1000));
       }
-      const ttl = Number(await redis.call('TTL', redisKey));
+      const ttl = Number(await redis.ttl(redisKey));
       return {
         totalHits,
         resetTime: new Date(Date.now() + Math.max(ttl, 0) * 1000),
       };
     },
     async decrement(key: string) {
-      await redis.call('DECR', `rl:general:${key}`);
+      await redis.decr(`rl:general:${key}`);
     },
     async resetKey(key: string) {
-      await redis.call('DEL', `rl:general:${key}`);
+      await redis.del(`rl:general:${key}`);
     },
   } as any;
 }

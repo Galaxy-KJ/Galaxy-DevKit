@@ -3,23 +3,28 @@
  * @description All Stellar RPC and Supabase calls are mocked — no network access.
  */
 
-// Express is provided by the workspace runtime; its typings are not exposed
-// to this package's test TypeScript project.
-// @ts-expect-error -- keep the test runnable when the workspace types are absent
 import express, { type Express } from "express";
 // Supertest is provided by the workspace runtime; its typings are not exposed
 // to this package's test TypeScript project.
-// @ts-expect-error -- keep the test runnable when the workspace types are absent
 import request from "supertest";
 import submitTxRoute from "../routes/wallets/submit-tx.route";
-import { jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 // ---------------------------------------------------------------------------
 // Supabase mock
 // ---------------------------------------------------------------------------
-const mockInsert = jest.fn().mockResolvedValue({ error: null });
-const mockAuditInsert = jest.fn().mockResolvedValue({ error: null });
-const mockSingle = jest.fn();
+const mockInsert = jest
+  .fn<(payload: unknown) => Promise<{ error: null }>>()
+  .mockResolvedValue({ error: null });
+const mockAuditInsert = jest
+  .fn<(payload: unknown) => Promise<{ error: null }>>()
+  .mockResolvedValue({ error: null });
+const mockSingle = jest.fn<
+  () => Promise<{
+    data: { id: string; user_id: string } | null;
+    error: { code: string; message: string } | null;
+  }>
+>();
 const mockEq = jest.fn().mockReturnValue({ single: mockSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
 const mockFrom = jest.fn((table: string) => {
@@ -41,12 +46,20 @@ jest.mock("@supabase/supabase-js", () => ({
 // ---------------------------------------------------------------------------
 const FAKE_HASH = "abc123def456";
 
-const mockSendTransaction = jest.fn().mockResolvedValue({
+const mockSendTransaction = jest
+  .fn<() => Promise<{
+    status: string;
+    hash?: string;
+    errorResult?: { toXDR: () => string };
+  }>>()
+  .mockResolvedValue({
   status: "PENDING",
   hash: FAKE_HASH,
-});
+  });
 
-const mockGetTransaction = jest.fn().mockResolvedValue({
+const mockGetTransaction = jest
+  .fn<() => Promise<{ status: string; ledger: number }>>()
+  .mockResolvedValue({
   status: "SUCCESS",
   ledger: 42,
 });

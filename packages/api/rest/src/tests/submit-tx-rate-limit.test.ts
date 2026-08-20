@@ -1,10 +1,15 @@
 import express, { type Express } from "express";
 import request from "supertest";
-import { jest } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
+import submitTxRoute from "../routes/wallets/submit-tx.route";
+import { beforeEach } from "node:test";
 
 
 // Mock Supabase
-const mockSingle = jest.fn();
+const mockSingle = jest.fn<() => Promise<{
+  data: { user_id: string };
+  error: null;
+}>>();
 const mockEq = jest.fn().mockReturnValue({ single: mockSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
 const mockFrom = jest.fn().mockReturnValue({ select: mockSelect });
@@ -17,7 +22,7 @@ jest.mock("@supabase/supabase-js", () => ({
 jest.mock("../services/audit-logger", () => {
   return {
     AuditLogger: jest.fn().mockImplementation(() => ({
-      log: jest.fn().mockResolvedValue(null),
+      log: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
     })),
   };
 });
@@ -26,8 +31,6 @@ jest.mock("../services/audit-logger", () => {
 process.env.SUPABASE_URL = "https://test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
 
-import submitTxRoute from "../routes/wallets/submit-tx.route";
-import { it } from "node:test";
 
 // App factory
 function buildApp(): Express {

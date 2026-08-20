@@ -8,12 +8,32 @@
  * @author Galaxy DevKit Team
  */
 
-import Redis from 'ioredis';
+interface RedisClient {
+  incr(redisKey: string): any;
+  expire(redisKey: string, arg1: number): unknown;
+  ttl(redisKey: string): unknown;
+  decr(arg0: string): unknown;
+  del(arg0: string): unknown;
+  call(arg0: string): any;
+  set(breachKey: string, arg1: string, arg2: string, windowMs: number, arg4: string): unknown;
+  on(event: 'error' | 'ready' | 'close', listener: (...args: any[]) => void): this;
+}
 
-let client: Redis | null = null;
+interface RedisConstructor {
+  new (url: string, options: {
+    maxRetriesPerRequest: number;
+    retryStrategy: (times: number) => number | null;
+  }): RedisClient;
+}
+
+// Load lazily so this module can still be imported when Redis is not configured.
+const Redis = (eval('require') as (moduleName: string) => RedisConstructor)('ioredis');
+
+let client: RedisClient | null = null;
 let connectionFailed = false;
+let isReady = false;
 
-export function getRedisClient(): Redis | null {
+export function getRedisClient(): RedisClient | null {
   const url = process.env.REDIS_URL;
   if (!url || connectionFailed) return null;
 
@@ -26,22 +46,38 @@ export function getRedisClient(): Redis | null {
         // fail-closed policy.
         if (times > 3) {
           connectionFailed = true;
+           isReady = false;
           return null;
         }
         return Math.min(times * 100, 1000);
       },
     });
 
+
     client.on('error', (err) => {
       console.error('[redis-client] connection error:', err.message);
+      isReady = false;
     });
   }
 
+  client.on('ready', () => {
+      isReady = true;
+      connectionFailed = false; // recovery: allow future getRedisClient() calls again
+    });
+
+  client.on('close', () => {
+      isReady = false;
+    });
+
+
   return client;
-}
+  }
+
+
+
 
 export function isRedisHealthy(): boolean {
-  return client !== null && client.status === 'ready';
+  return isReady;
 }
 
 /** Test-only: reset singleton state between test suites. */
