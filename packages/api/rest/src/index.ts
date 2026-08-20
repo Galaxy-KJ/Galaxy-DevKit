@@ -76,8 +76,14 @@ class RestApiServer {
    * Setup middleware
    */
   private setupMiddleware(): void {
-    // Trust proxy for accurate IPs behind reverse proxies
-    this.app.set('trust proxy', true);
+  // Trust proxy for accurate IPs behind reverse proxies.
+    // `true` trusts every hop and makes req.ip spoofable via
+    // X-Forwarded-For (anyone can reset an IP-keyed limit). Set this to
+    // the exact number of proxy hops in front of this process — e.g. 1
+    // for a single load balancer, 2 if there's also a CDN in front of it.
+    const parsedHops = parseInt(process.env.TRUST_PROXY_HOPS ?? '', 10);
+    const trustProxyHops = Number.isInteger(parsedHops) && parsedHops >= 0 ? parsedHops : 1;
+    this.app.set('trust proxy', trustProxyHops);
 
     // Security middleware
     this.app.use(helmet());

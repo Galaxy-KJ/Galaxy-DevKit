@@ -1,8 +1,10 @@
 /**
  * @fileoverview Rate limiting middleware
- * @description Implements rate limiting per user, API key, and IP address
+ * @description Implements rate limiting per user, API key, and IP address,
+ *              backed by a shared Redis store so limits are enforced across
+ *              all instances rather than per-process.
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 2.0.0
  * @since 2024-12-01
  */
 
@@ -10,34 +12,83 @@ import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 import { RateLimitOptions, AuthErrorCode } from '../types/auth-types';
 import { authConfig } from '../config/auth-config';
+import { getRedisClient } from '../lib/redis-client';
+import { rateLimitStoreConfig } from '../config/rate-limit-store-config';
 
-/**
- * Get client IP address from request
- * @param req - Express request object
- * @returns string - Client IP address or 'unknown' if not available
- */
 function getClientIP(req: Request): string {
   return req.ip || (req.socket.remoteAddress as string) || 'unknown';
 }
 
+function buildStore() {
+  const redis = getRedisClient();
+  if (!redis) return undefined;
+
+  // Keep the store local to this package so it does not depend on the
+  // optional rate-limit-redis package or its version-specific typings.
+  return {
+    async increment(key: string) {
+      const redisKey = `rl:general:${key}`;
+      const totalHits = Number(await redis.incr(redisKey));
+      if (totalHits === 1) {
+        await redis.expire(redisKey, Math.ceil(authConfig.rateLimit.windowMs / 1000));
+      }
+      const ttl = Number(await redis.ttl(redisKey));
+      return {
+        totalHits,
+        resetTime: new Date(Date.now() + Math.max(ttl, 0) * 1000),
+      };
+    },
+    async decrement(key: string) {
+      await redis.decr(`rl:general:${key}`);
+    },
+    async resetKey(key: string) {
+      await redis.del(`rl:general:${key}`);
+    },
+  } as any;
+}
+
 /**
- * Create a rate limiter with custom options
- * @param options - Rate limit options
- * @returns Express rate limit middleware
+ * Create a rate limiter with custom options, backed by the shared Redis
+ * store. If Redis is unavailable, behavior is governed by
+ * rateLimitStoreConfig.generalFailBehavior — never a silent in-memory
+ * fallback.
  */
 export function createRateLimiter(options: RateLimitOptions) {
+  const store = buildStore();
+
+  if (!store) {
+    if (rateLimitStoreConfig.generalFailBehavior === 'closed') {
+      console.error(
+        '[rate-limiter] Redis unavailable and RATE_LIMIT_FAIL_BEHAVIOR_GENERAL=closed — ' +
+        'denying all requests until the store recovers.'
+      );
+      return (req: Request, res: Response) => {
+        res.status(503).json({
+          error: {
+            code: AuthErrorCode.RATE_LIMIT_EXCEEDED,
+            message: 'Rate limiting store unavailable; requests are temporarily blocked.',
+            details: {},
+          },
+        });
+      };
+    }
+    console.warn(
+      '[rate-limiter] REDIS_URL not configured or Redis unreachable — falling back to ' +
+      'per-process MemoryStore (RATE_LIMIT_FAIL_BEHAVIOR_GENERAL=open). Limits will NOT ' +
+      'be shared across instances. This should only happen in local development.'
+    );
+  }
+
   return rateLimit({
     windowMs: options.windowMs,
     max: options.maxRequests,
     message: options.message || 'Too many requests, please try again later.',
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    standardHeaders: true,
+    legacyHeaders: false,
     skipSuccessfulRequests: options.skipSuccessfulRequests || false,
     skipFailedRequests: options.skipFailedRequests || false,
-    keyGenerator: (options.keyGenerator as any) || ((req: Request): string => {
-      // Default: use IP address
-      return getClientIP(req);
-    }),
+    store, // undefined only when explicitly failing open (see above)
+    keyGenerator: (options.keyGenerator as any) || ((req: Request): string => getClientIP(req)),
     handler: (req: Request, res: Response) => {
       res.status(429).json({
         error: {
@@ -52,20 +103,12 @@ export function createRateLimiter(options: RateLimitOptions) {
   });
 }
 
-/**
- * User-based rate limiter
- * Limits requests per authenticated user
- * @returns Express middleware
- */
 export function userRateLimiter() {
   const keyGen = (req: Request): string => {
-    if (req.user?.userId) {
-      return `user:${req.user.userId}`;
-    }
-    // Fallback to IP if user not authenticated
+    if (req.user?.userId) return `user:${req.user.userId}`;
     return getClientIP(req);
   };
-  
+
   return createRateLimiter({
     windowMs: authConfig.rateLimit.windowMs,
     maxRequests: authConfig.rateLimit.maxRequests,
@@ -74,41 +117,23 @@ export function userRateLimiter() {
   });
 }
 
-/**
- * Maximum number of cached rate limiter instances
- * When exceeded, oldest entries are evicted
- */
+// NOTE: this cache holds per-API-key *limiter instances*, one per
+// (apiKeyId, quota) pair. It's unrelated to the wallet->user identity
+// cache in rate-limit.ts (that one caches DB lookup results, not
+// middleware). Bounded eviction here was already correct; unchanged.
 const MAX_CACHE_SIZE = 1000;
-
-/**
- * Cache for per-API-key rate limiter instances in apiKeyRateLimiter
- * Keyed by composite key: `${apiKeyId}:${maxRequests}`
- */
 const apiKeyRateLimiterCache = new Map<string, ReturnType<typeof createRateLimiter>>();
 
-/**
- * API key-based rate limiter
- * Limits requests per API key (uses API key's custom rate limit if set)
- * @returns Express middleware
- */
 export function apiKeyRateLimiter() {
-  return async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      // If API key is present, use its custom rate limit
       if (req.apiKey && req.authMethod === 'api_key') {
         const windowMs = authConfig.rateLimit.windowMs;
         const maxRequests = req.apiKey.rateLimit ?? authConfig.rateLimit.apiKeyMaxRequests;
-        // Use composite cache key to handle quota changes
         const cacheKey = `${req.apiKey.id}:${maxRequests}`;
-        
-        // Get or create rate limiter for this API key and quota
+
         let rateLimiter = apiKeyRateLimiterCache.get(cacheKey);
         if (!rateLimiter) {
-          // Use request-bound keyGenerator to avoid closing over req
           rateLimiter = createRateLimiter({
             windowMs,
             maxRequests,
@@ -118,43 +143,28 @@ export function apiKeyRateLimiter() {
               return `api_key:${r.apiKey!.id}`;
             },
           });
-          
-          // Evict oldest entry if cache is full
+
           if (apiKeyRateLimiterCache.size >= MAX_CACHE_SIZE) {
             const firstKey = apiKeyRateLimiterCache.keys().next().value;
-            if (firstKey !== undefined) {
-              apiKeyRateLimiterCache.delete(firstKey);
-            }
+            if (firstKey !== undefined) apiKeyRateLimiterCache.delete(firstKey);
           }
-          
+
           apiKeyRateLimiterCache.set(cacheKey, rateLimiter);
         }
 
         rateLimiter(req, res, next);
         return;
       }
-
-      // If no API key, continue without rate limiting (will be handled by user or IP limiter)
       next();
     } catch (error) {
       console.error('API key rate limiter error:', error);
-      // Fail open: allow request to proceed if rate limiting encounters an error
-      // to prioritize availability over strict enforcement
       next();
     }
   };
 }
 
-/**
- * IP-based rate limiter
- * Limits requests per IP address (for unauthenticated requests)
- * @returns Express middleware
- */
 export function ipRateLimiter() {
-  const keyGen = (req: Request): string => {
-    return getClientIP(req);
-  };
-  
+  const keyGen = (req: Request): string => getClientIP(req);
   return createRateLimiter({
     windowMs: authConfig.rateLimit.windowMs,
     maxRequests: authConfig.rateLimit.ipMaxRequests,
@@ -163,24 +173,13 @@ export function ipRateLimiter() {
   });
 }
 
-/**
- * Endpoint-specific rate limiter
- * Creates a rate limiter for a specific endpoint
- * @param endpoint - Endpoint path (for identification)
- * @param limit - Maximum requests per window
- * @returns Express middleware
- */
 export function endpointRateLimiter(endpoint: string, limit: number) {
   const keyGen = (req: Request): string => {
-    if (req.user?.userId) {
-      return `endpoint:${endpoint}:user:${req.user.userId}`;
-    }
-    if (req.apiKey) {
-      return `endpoint:${endpoint}:api_key:${req.apiKey.id}`;
-    }
+    if (req.user?.userId) return `endpoint:${endpoint}:user:${req.user.userId}`;
+    if (req.apiKey) return `endpoint:${endpoint}:api_key:${req.apiKey.id}`;
     return `endpoint:${endpoint}:ip:${getClientIP(req)}`;
   };
-  
+
   return createRateLimiter({
     windowMs: authConfig.rateLimit.windowMs,
     maxRequests: limit,
@@ -189,66 +188,40 @@ export function endpointRateLimiter(endpoint: string, limit: number) {
   });
 }
 
-/**
- * General rate limiter middleware
- * Applies rate limiting based on authentication method
- * @returns Express middleware
- */
 export function rateLimiterMiddleware() {
-  // Create separate limiters for different scenarios
   const ipLimiter = ipRateLimiter();
   const userLimiter = userRateLimiter();
   const apiKeyLimiter = apiKeyRateLimiter();
 
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      // If user is authenticated, use user-based rate limiting
       if (req.user && req.authMethod === 'jwt') {
         userLimiter(req, res, next);
         return;
       }
-
-      // If API key is present, use API key rate limiting
       if (req.apiKey && req.authMethod === 'api_key') {
         apiKeyLimiter(req, res, next);
         return;
       }
-
-      // Otherwise, use IP-based rate limiting
       ipLimiter(req, res, next);
     } catch (error) {
       console.error('Rate limiter middleware error:', error);
-      // Fail open: allow request to proceed if rate limiting encounters an error
-      // to prioritize availability over strict enforcement
       next();
     }
   };
 }
 
-/**
- * Strict rate limiter
- * Applies the strictest rate limiting (lowest limit)
- * @returns Express middleware
- */
 export function strictRateLimiter() {
   const keyGen = (req: Request): string => {
-    if (req.user?.userId) {
-      return `strict:user:${req.user.userId}`;
-    }
-    if (req.apiKey) {
-      return `strict:api_key:${req.apiKey.id}`;
-    }
+    if (req.user?.userId) return `strict:user:${req.user.userId}`;
+    if (req.apiKey) return `strict:api_key:${req.apiKey.id}`;
     return `strict:ip:${getClientIP(req)}`;
   };
-  
+
   return createRateLimiter({
     windowMs: authConfig.rateLimit.windowMs,
-    maxRequests: Math.min(
-      authConfig.rateLimit.maxRequests,
-      authConfig.rateLimit.ipMaxRequests
-    ),
+    maxRequests: Math.min(authConfig.rateLimit.maxRequests, authConfig.rateLimit.ipMaxRequests),
     message: 'Rate limit exceeded, please try again later.',
     keyGenerator: keyGen as any,
   });
 }
-

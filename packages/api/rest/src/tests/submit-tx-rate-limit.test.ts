@@ -1,11 +1,18 @@
-import express, { Express } from "express";
+import express, { type Express } from "express";
 import request from "supertest";
+import { describe, expect, it, jest } from "@jest/globals";
+import submitTxRoute from "../routes/wallets/submit-tx.route";
+import { beforeEach } from "node:test";
+
 
 // Mock Supabase
-const mockSingle = jest.fn();
+const mockSingle = jest.fn<() => Promise<{
+  data: { user_id: string };
+  error: null;
+}>>();
 const mockEq = jest.fn().mockReturnValue({ single: mockSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
-const mockFrom = jest.fn(() => ({ select: mockSelect }));
+const mockFrom = jest.fn().mockReturnValue({ select: mockSelect });
 
 jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn(() => ({ from: mockFrom })),
@@ -15,7 +22,7 @@ jest.mock("@supabase/supabase-js", () => ({
 jest.mock("../services/audit-logger", () => {
   return {
     AuditLogger: jest.fn().mockImplementation(() => ({
-      log: jest.fn().mockResolvedValue(null),
+      log: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
     })),
   };
 });
@@ -24,7 +31,6 @@ jest.mock("../services/audit-logger", () => {
 process.env.SUPABASE_URL = "https://test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
 
-import submitTxRoute from "../routes/wallets/submit-tx.route";
 
 // App factory
 function buildApp(): Express {
@@ -45,7 +51,7 @@ describe("POST /submit-tx Rate Limiting", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     app = buildApp();
-    
+
     // Mock user identification via wallet query
     mockSingle.mockResolvedValue({
       data: { user_id: "user-123" },
@@ -56,7 +62,7 @@ describe("POST /submit-tx Rate Limiting", () => {
   it("blocks user after 10 requests within a minute", async () => {
     // Send 10 requests (Rate limiting runs before the endpoint logic, which may fail due to unmocked Stellar elements, but that doesn't matter for the 429 code check)
     for (let i = 0; i < 10; i++) {
-         await request(app).post("/submit-tx").send(VALID_BODY);
+      await request(app).post("/submit-tx").send(VALID_BODY);
     }
 
     // 11th request should exceed user rate limit
@@ -69,7 +75,7 @@ describe("POST /submit-tx Rate Limiting", () => {
       error: "Too many transactions. Try again in 60 seconds.",
       retryAfter: 60,
     });
-    
+
     expect(res.headers["retry-after"]).toBeDefined();
   });
 });

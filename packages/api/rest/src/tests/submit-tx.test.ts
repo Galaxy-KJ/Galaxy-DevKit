@@ -3,15 +3,28 @@
  * @description All Stellar RPC and Supabase calls are mocked — no network access.
  */
 
-import express, { Express } from "express";
+import express, { type Express } from "express";
+// Supertest is provided by the workspace runtime; its typings are not exposed
+// to this package's test TypeScript project.
 import request from "supertest";
+import submitTxRoute from "../routes/wallets/submit-tx.route";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 // ---------------------------------------------------------------------------
 // Supabase mock
 // ---------------------------------------------------------------------------
-const mockInsert = jest.fn().mockResolvedValue({ error: null });
-const mockAuditInsert = jest.fn().mockResolvedValue({ error: null });
-const mockSingle = jest.fn();
+const mockInsert = jest
+  .fn<(payload: unknown) => Promise<{ error: null }>>()
+  .mockResolvedValue({ error: null });
+const mockAuditInsert = jest
+  .fn<(payload: unknown) => Promise<{ error: null }>>()
+  .mockResolvedValue({ error: null });
+const mockSingle = jest.fn<
+  () => Promise<{
+    data: { id: string; user_id: string } | null;
+    error: { code: string; message: string } | null;
+  }>
+>();
 const mockEq = jest.fn().mockReturnValue({ single: mockSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
 const mockFrom = jest.fn((table: string) => {
@@ -33,12 +46,20 @@ jest.mock("@supabase/supabase-js", () => ({
 // ---------------------------------------------------------------------------
 const FAKE_HASH = "abc123def456";
 
-const mockSendTransaction = jest.fn().mockResolvedValue({
+const mockSendTransaction = jest
+  .fn<() => Promise<{
+    status: string;
+    hash?: string;
+    errorResult?: { toXDR: () => string };
+  }>>()
+  .mockResolvedValue({
   status: "PENDING",
   hash: FAKE_HASH,
-});
+  });
 
-const mockGetTransaction = jest.fn().mockResolvedValue({
+const mockGetTransaction = jest
+  .fn<() => Promise<{ status: string; ledger: number }>>()
+  .mockResolvedValue({
   status: "SUCCESS",
   ledger: 42,
 });
@@ -83,11 +104,6 @@ jest.mock("@stellar/stellar-sdk", () => {
 // ---------------------------------------------------------------------------
 process.env.SUPABASE_URL = "https://test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
-
-import submitTxRoute from "../routes/wallets/submit-tx.route";
-import { userSubmitTxLimiter } from "../middleware/rate-limit"; // Corrected path
-
-
 
 // ---------------------------------------------------------------------------
 // App factory
@@ -267,7 +283,7 @@ describe("POST /submit-tx", () => {
 
   // ---- Security ----
   it("never includes FEE_SPONSOR_SECRET_KEY in error responses", async () => {
-    const stellarMock = jest.requireMock("@stellar/stellar-sdk");
+    const stellarMock = jest.requireMock("@stellar/stellar-sdk") as any;
     stellarMock.TransactionBuilder.buildFeeBumpTransaction.mockImplementationOnce(
       () => { throw new Error(process.env.FEE_SPONSOR_SECRET_KEY!); }
     );
