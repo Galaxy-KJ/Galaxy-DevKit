@@ -22,6 +22,7 @@
     "test": "jest",
     "test:integration": "jest --config packages/integration-tests/jest.config.cjs",
     "test:e2e": "playwright test",
+    "test:check-orphans": "node scripts/check-orphaned-tests.mjs",
     "contracts:deploy": "bash scripts/deploy-contracts.sh",
     "contracts:init": "bash scripts/init-contracts.sh",
     "contracts:deploy-and-init": "npm run contracts:deploy && npm run contracts:init",

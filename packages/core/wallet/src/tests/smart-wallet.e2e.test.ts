@@ -87,6 +87,21 @@ function ensureLocalStorage(): void {
   };
 }
 
+/**
+ * Ensures globalThis.crypto is populated (useful for Node.js environments
+ * where webcrypto is not on the global scope by default).
+ */
+function ensureCryptoSubtle(): void {
+  if (typeof globalThis.crypto === 'undefined') {
+    const { webcrypto } = require('node:crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      value: webcrypto,
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
 function createBrowserCredentialBackend(
   env: E2EEnv,
   credentialId: string,
@@ -196,11 +211,9 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'localhost'
     );
 
-    // Also mock crypto.subtle.digest (available in Node >= 16 via globalThis,
+    // Ensure crypto.subtle is available (available in Node >= 19 via globalThis,
     // but declare explicitly for environments where it isn't on global).
-    if (typeof (global as any).crypto === 'undefined') {
-      (global as any).crypto = require('crypto').webcrypto;
-    }
+    ensureCryptoSubtle();
 
     const rpcServer = new Server(cfg.rpcUrl);
     const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
@@ -274,6 +287,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
   // ── 4. Full lifecycle: register → deploy → sign → submit ─────────────────
 
   test('full lifecycle: transaction is confirmed on testnet', async () => {
+    test.setTimeout(60_000);
     const cfg = env.testnetConfig;
 
     test.skip(
@@ -281,8 +295,8 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'FEE_SPONSOR_SECRET_KEY not set — skipping full lifecycle test'
     );
     test.skip(
-      !cfg.submitTxUrl || cfg.submitTxUrl.includes('localhost'),
-      'E2E_SUBMIT_TX_URL not pointing to a live server — skipping submission'
+      !cfg.submitTxUrl,
+      'E2E_SUBMIT_TX_URL not set — skipping submission'
     );
 
     const cred = await registerCredential(env.page, 'localhost');
@@ -294,9 +308,9 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
       'localhost'
     );
 
-    if (typeof (global as any).crypto === 'undefined') {
-      (global as any).crypto = require('crypto').webcrypto;
-    }
+    // Ensure crypto.subtle is available (available in Node >= 19 via globalThis,
+    // but declare explicitly for environments where it isn't on global).
+    ensureCryptoSubtle();
 
     const rpcServer = new Server(cfg.rpcUrl);
     const deployerKeypair = Keypair.fromSecret(cfg.feeSponsorSecretKey);
@@ -372,7 +386,7 @@ test.describe('SmartWallet E2E: passkey registration → deploy → sign → sub
     expect(result.transactionHash).toBeDefined();
     expect(typeof result.transactionHash).toBe('string');
     expect(result.transactionHash.length).toBeGreaterThan(0);
-  }, 60_000 /* generous timeout for testnet round-trips */);
+  });
 });
 
 // ---------------------------------------------------------------------------
