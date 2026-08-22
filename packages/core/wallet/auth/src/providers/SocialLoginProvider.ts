@@ -90,38 +90,27 @@ export class SocialLoginProvider {
   }
 
   /**
-   * Extract the public key bytes from a WebAuthn credential.
-   * The public key is encoded in the attestation object response.
-   * 
-   * IMPORTANT: This is a placeholder implementation.
-   * In production, you would:
-   * 1. Store the credential.response.getPublicKey() during registration
-   * 2. Or parse the attestationObject from credential.response.attestationObject
-   * 3. Extract the COSE public key and convert to raw 65-byte format (0x04 + x + y for ES256)
-   * 
+   * Extract the public key bytes for a WebAuthn credential.
+   *
+   * The real key is extracted and verified by `WebAuthNProvider.registerCredential()`
+   * at registration time (via `extractPublicKey()` + a signature self-check) and
+   * persisted alongside the credential id. This just reads it back from that shared
+   * storage so it never has to be re-derived.
+   *
    * @param credentialId - The credential ID to look up
    * @returns 65-byte public key in uncompressed format
    * @private
    */
   private async extractPublicKey(credentialId: string): Promise<Uint8Array> {
-    // PLACEHOLDER: Returns a mock 65-byte public key
-    // Real implementation would:
-    // 1. Parse attestationObject from the credential response
-    // 2. Extract authData and decode CBOR
-    // 3. Get credentialPublicKey from authData
-    // 4. Convert COSE key to raw format
-    
-    // For now, return a placeholder that follows the correct format:
-    // Byte 0: 0x04 (uncompressed point indicator for ES256)
-    // Bytes 1-32: x coordinate (32 bytes)
-    // Bytes 33-64: y coordinate (32 bytes)
-    const publicKey = new Uint8Array(65);
-    publicKey[0] = 0x04; // Uncompressed point indicator
-    
-    // Fill with deterministic but fake data for now
-    // In production, this must be the actual public key from WebAuthn
-    crypto.getRandomValues(publicKey.subarray(1));
-    
+    const publicKey = this.webAuthnProvider.getStoredPublicKey(credentialId);
+
+    if (!publicKey) {
+      throw new Error(
+        `SocialLoginProvider: no public key found for credential "${credentialId}". ` +
+        'The credential must be registered via WebAuthNProvider.registerCredential() first.'
+      );
+    }
+
     return publicKey;
   }
 

@@ -6,25 +6,47 @@ import {
   BiometricType,
 } from '../BiometricAuth';
 
+/** COSE Algorithm Identifier for ES256 (ECDSA w/ SHA-256 over P-256). */
+const COSE_ALG_ES256 = -7;
+
 export function extractPublicKey(credential: PublicKeyCredential): Uint8Array {
   const response = credential.response as AuthenticatorAttestationResponse;
 
-  if (typeof response.getPublicKey !== 'function') {
+  if (!('attestationObject' in response) || !response.attestationObject) {
     throw new Error(
       'extractPublicKey: credential.response is not an AuthenticatorAttestationResponse. ' +
       'Pass the credential returned by navigator.credentials.create(), not .get().'
     );
   }
 
-  // getPublicKey() returns the DER SubjectPublicKeyInfo blob directly (72 bytes for P-256).
-  const spki = response.getPublicKey();
-  if (!spki) {
-    throw new Error(
-      'extractPublicKey: getPublicKey() returned null. ' +
-      'The authenticator may not support P-256 or the attestation format is unsupported.'
-    );
+  // Reject non-ES256 credentials explicitly, up front, when the browser exposes the
+  // algorithm actually negotiated with the authenticator (WebAuthn Level 2+).
+  if (typeof response.getPublicKeyAlgorithm === 'function') {
+    const alg = response.getPublicKeyAlgorithm();
+    if (alg !== COSE_ALG_ES256) {
+      throw new Error(
+        `extractPublicKey: unsupported public key algorithm ${alg} — only ES256 (-7 / P-256) ` +
+        'is supported. Refusing to coerce a non-EC key into an EC point.'
+      );
+    }
   }
 
+  // Preferred path: getPublicKey() returns the DER SubjectPublicKeyInfo blob directly
+  // (72 bytes for P-256).
+  if (typeof response.getPublicKey === 'function') {
+    const spki = response.getPublicKey();
+    if (spki) {
+      return spkiToRawPoint(spki);
+    }
+  }
+
+  // Fallback: not every authenticator/browser implements getPublicKey() (notably some
+  // older Firefox releases). Parse the CBOR attestationObject ourselves.
+  return attestationObjectToRawPoint(response.attestationObject);
+}
+
+/** Convert a DER SubjectPublicKeyInfo blob for a P-256 key into a raw 65-byte point. */
+function spkiToRawPoint(spki: ArrayBuffer): Uint8Array {
   // P-256 SPKI is 72 bytes; the 65-byte uncompressed point starts at offset 27.
   const SPKI_HEADER_LENGTH = 26;
   const UNCOMPRESSED_POINT_LENGTH = 65;
@@ -49,6 +71,202 @@ export function extractPublicKey(credential: PublicKeyCredential): Uint8Array {
   // Return a copy — never return a view into the original ArrayBuffer since
   // the caller may hold a reference and the buffer could be GC'd or mutated.
   return point.slice();
+}
+
+/**
+ * Parse a WebAuthn `attestationObject` (CBOR-encoded) and extract the credential's
+ * public key as a raw 65-byte SEC-1 uncompressed P-256 point.
+ *
+ * Used as a fallback when `AuthenticatorAttestationResponse.getPublicKey()` is
+ * unavailable or returns null.
+ */
+function attestationObjectToRawPoint(attestationObject: ArrayBuffer): Uint8Array {
+  if (attestationObject.byteLength === 0) {
+    throw new Error(
+      'extractPublicKey: getPublicKey() is unavailable and attestationObject is empty — ' +
+      'cannot extract a public key.'
+    );
+  }
+
+  const { value: attObj } = decodeCBORValue(new Uint8Array(attestationObject), 0);
+  if (!(attObj instanceof Map)) {
+    throw new Error('extractPublicKey: attestationObject did not decode to a CBOR map.');
+  }
+
+  const authData = attObj.get('authData');
+  if (!(authData instanceof Uint8Array)) {
+    throw new Error('extractPublicKey: attestationObject is missing an authData byte string.');
+  }
+
+  return authDataToRawPoint(authData);
+}
+
+/** Parse WebAuthn `authData` bytes and extract the attested credential's public key. */
+function authDataToRawPoint(authData: Uint8Array): Uint8Array {
+  const RP_ID_HASH_LENGTH = 32;
+  const FLAGS_LENGTH = 1;
+  const SIGN_COUNT_LENGTH = 4;
+  const AAGUID_LENGTH = 16;
+  const CRED_ID_LEN_LENGTH = 2;
+  const ATTESTED_CREDENTIAL_DATA_FLAG = 0x40;
+
+  const FIXED_HEADER_LENGTH = RP_ID_HASH_LENGTH + FLAGS_LENGTH + SIGN_COUNT_LENGTH;
+  if (authData.length < FIXED_HEADER_LENGTH) {
+    throw new Error(
+      `extractPublicKey: authData is ${authData.length} bytes — too short to contain ` +
+      `rpIdHash, flags, and signCount.`
+    );
+  }
+
+  const flags = authData[RP_ID_HASH_LENGTH];
+  if ((flags & ATTESTED_CREDENTIAL_DATA_FLAG) === 0) {
+    throw new Error(
+      'extractPublicKey: authData does not have the attested-credential-data flag set — ' +
+      'this is not a registration ceremony response.'
+    );
+  }
+
+  let offset = FIXED_HEADER_LENGTH + AAGUID_LENGTH;
+  if (offset + CRED_ID_LEN_LENGTH > authData.length) {
+    throw new Error('extractPublicKey: authData is truncated before credentialIdLength.');
+  }
+
+  const credentialIdLength = (authData[offset] << 8) | authData[offset + 1];
+  offset += CRED_ID_LEN_LENGTH + credentialIdLength;
+
+  if (offset >= authData.length) {
+    throw new Error('extractPublicKey: authData is truncated before credentialPublicKey.');
+  }
+
+  const { value: coseKey } = decodeCBORValue(authData, offset);
+  if (!(coseKey instanceof Map)) {
+    throw new Error('extractPublicKey: credentialPublicKey did not decode to a CBOR map.');
+  }
+
+  return coseKeyToRawPoint(coseKey);
+}
+
+/** Convert a decoded COSE_Key map to a raw 65-byte SEC-1 uncompressed P-256 point. */
+function coseKeyToRawPoint(coseKey: Map<unknown, unknown>): Uint8Array {
+  const COSE_KTY_EC2 = 2;
+  const COSE_CRV_P256 = 1;
+
+  const kty = coseKey.get(1);
+  const alg = coseKey.get(3);
+  const crv = coseKey.get(-1);
+  const x = coseKey.get(-2);
+  const y = coseKey.get(-3);
+
+  if (alg !== COSE_ALG_ES256) {
+    throw new Error(
+      `extractPublicKey: unsupported COSE algorithm ${alg} — only ES256 (-7) is supported. ` +
+      'Refusing to coerce a non-EC key into an EC point.'
+    );
+  }
+  if (kty !== COSE_KTY_EC2) {
+    throw new Error(`extractPublicKey: unsupported COSE key type ${kty} — only EC2 (2) is supported.`);
+  }
+  if (crv !== COSE_CRV_P256) {
+    throw new Error(`extractPublicKey: unsupported COSE curve ${crv} — only P-256 (1) is supported.`);
+  }
+  if (!(x instanceof Uint8Array) || x.length !== 32 || !(y instanceof Uint8Array) || y.length !== 32) {
+    throw new Error('extractPublicKey: malformed COSE_Key — expected 32-byte x and y coordinates.');
+  }
+
+  const point = new Uint8Array(65);
+  point[0] = 0x04;
+  point.set(x, 1);
+  point.set(y, 33);
+  return point;
+}
+
+// ── Minimal CBOR decoder ──────────────────────────────────────────────────────
+// WebAuthn's attestationObject and COSE_Key structures use canonical, definite-length
+// CBOR (RFC 8949). We only need to decode the major types that actually appear there:
+// unsigned/negative integers, byte strings, text strings, arrays, and maps.
+
+interface CBORDecodeResult {
+  value: unknown;
+  offset: number;
+}
+
+function decodeCBORLength(
+  view: DataView,
+  offset: number,
+  additionalInfo: number
+): { length: number; offset: number } {
+  if (additionalInfo < 24) return { length: additionalInfo, offset };
+  if (additionalInfo === 24) return { length: view.getUint8(offset), offset: offset + 1 };
+  if (additionalInfo === 25) return { length: view.getUint16(offset), offset: offset + 2 };
+  if (additionalInfo === 26) return { length: view.getUint32(offset), offset: offset + 4 };
+  if (additionalInfo === 27) {
+    const high = view.getUint32(offset);
+    const low = view.getUint32(offset + 4);
+    return { length: high * 2 ** 32 + low, offset: offset + 8 };
+  }
+  throw new Error(
+    `decodeCBOR: unsupported additional info ${additionalInfo} — indefinite-length CBOR is not supported.`
+  );
+}
+
+function decodeCBORValue(bytes: Uint8Array, offset: number): CBORDecodeResult {
+  if (offset >= bytes.length) {
+    throw new Error('decodeCBOR: unexpected end of input.');
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const initialByte = bytes[offset];
+  const majorType = initialByte >> 5;
+  const additionalInfo = initialByte & 0x1f;
+  const { length, offset: dataStart } = decodeCBORLength(view, offset + 1, additionalInfo);
+
+  switch (majorType) {
+    case 0: // unsigned integer
+      return { value: length, offset: dataStart };
+    case 1: // negative integer
+      return { value: -1 - length, offset: dataStart };
+    case 2: // byte string
+      return { value: bytes.slice(dataStart, dataStart + length), offset: dataStart + length };
+    case 3: // text string
+      return {
+        value: new TextDecoder().decode(bytes.slice(dataStart, dataStart + length)),
+        offset: dataStart + length,
+      };
+    case 4: { // array
+      const arr: unknown[] = [];
+      let cur = dataStart;
+      for (let i = 0; i < length; i++) {
+        const item = decodeCBORValue(bytes, cur);
+        arr.push(item.value);
+        cur = item.offset;
+      }
+      return { value: arr, offset: cur };
+    }
+    case 5: { // map
+      const map = new Map<unknown, unknown>();
+      let cur = dataStart;
+      for (let i = 0; i < length; i++) {
+        const key = decodeCBORValue(bytes, cur);
+        const val = decodeCBORValue(bytes, key.offset);
+        map.set(key.value, val.value);
+        cur = val.offset;
+      }
+      return { value: map, offset: cur };
+    }
+    default:
+      throw new Error(`decodeCBOR: unsupported major type ${majorType} at offset ${offset}.`);
+  }
+}
+
+function concatUint8Arrays(...parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  return result;
 }
 
 
@@ -254,6 +472,9 @@ export class WebAuthNProvider extends BiometricAuthProvider {
       throw new Error('Failed to create credential');
     }
 
+    const publicKey = extractPublicKey(credential);
+    await this.verifyRegistrationSelfCheck(credential, publicKey);
+
     const credentialId = this.arrayBufferToBase64(credential.rawId);
 
     const biometricCredential: BiometricCredential = {
@@ -264,8 +485,93 @@ export class WebAuthNProvider extends BiometricAuthProvider {
     };
 
     this.storeCredentialId(credentialId);
+    this.storePublicKey(credentialId, publicKey);
 
     return biometricCredential;
+  }
+
+  /**
+   * Look up the public key persisted for a credential during `registerCredential()`.
+   * Shared storage format used by `SocialLoginProvider` so the key never has to be
+   * re-derived.
+   */
+  getStoredPublicKey(credentialId: string): Uint8Array | null {
+    const stored = localStorage.getItem(`webauthn_pubkey_${credentialId}`);
+    if (!stored) return null;
+    return new Uint8Array(this.base64ToArrayBuffer(stored));
+  }
+
+  /**
+   * Registration-time safety check: sign a fresh challenge with the just-created
+   * credential and verify the signature against the public key we extracted. This
+   * catches a mis-parsed or mismatched public key before the wallet is ever
+   * considered usable, rather than failing silently on the first real signature.
+   *
+   * @throws if the assertion ceremony is cancelled or the signature does not verify.
+   */
+  private async verifyRegistrationSelfCheck(
+    credential: PublicKeyCredential,
+    publicKey: Uint8Array
+  ): Promise<void> {
+    const challenge = this.generateChallenge();
+
+    const assertion = (await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        rpId: this.rpId,
+        allowCredentials: [{ type: 'public-key', id: credential.rawId }],
+        userVerification: 'required',
+        timeout: 60000,
+      },
+    })) as PublicKeyCredential | null;
+
+    if (!assertion) {
+      throw new Error(
+        'registerCredential: self-check assertion was cancelled — refusing to register a ' +
+        'credential whose public key has not been verified.'
+      );
+    }
+
+    const response = assertion.response as AuthenticatorAssertionResponse;
+    const signature = convertSignatureDERtoCompact(response.signature);
+    const clientDataHash = await crypto.subtle.digest('SHA-256', response.clientDataJSON);
+    const signedData = concatUint8Arrays(
+      new Uint8Array(response.authenticatorData),
+      new Uint8Array(clientDataHash)
+    );
+
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      publicKey.buffer as ArrayBuffer,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify']
+    );
+
+    const verified = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      cryptoKey,
+      signature.buffer as ArrayBuffer,
+      signedData.buffer as ArrayBuffer
+    );
+
+    if (!verified) {
+      throw new Error(
+        'registerCredential: self-check failed — the signature does not verify against the ' +
+        'extracted public key. Refusing to register an unusable wallet signer.'
+      );
+    }
+  }
+
+  /**
+   * Persist the public key alongside its credential id, using the same localStorage-based
+   * format that `getStoredPublicKey()` reads from.
+   */
+  private storePublicKey(credentialId: string, publicKey: Uint8Array): void {
+    localStorage.setItem(
+      `webauthn_pubkey_${credentialId}`,
+      this.arrayBufferToBase64(publicKey.buffer as ArrayBuffer)
+    );
   }
 
   async removeCredential(id: string): Promise<boolean> {
