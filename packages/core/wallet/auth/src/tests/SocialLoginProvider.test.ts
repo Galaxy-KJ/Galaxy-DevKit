@@ -47,6 +47,7 @@ if (typeof crypto === 'undefined') {
  */
 class MockWebAuthNProvider extends WebAuthNProvider {
   private mockCredentials: Map<string, BiometricCredential> = new Map();
+  private mockPublicKeys: Map<string, Uint8Array> = new Map();
   private shouldAuthSucceed = true;
   private mockCredentialId = 'mock-credential-id-123';
 
@@ -63,11 +64,23 @@ class MockWebAuthNProvider extends WebAuthNProvider {
     };
 
     this.mockCredentials.set(credential.id, credential);
-    
+
+    // A fixed, valid-shaped 65-byte uncompressed P-256 point — stands in for the real
+    // key that WebAuthNProvider.registerCredential() extracts and self-checks before
+    // persisting it via storePublicKey().
+    const publicKey = new Uint8Array(65);
+    publicKey[0] = 0x04;
+    publicKey.set(new Uint8Array(64).fill(0x11), 1);
+    this.mockPublicKeys.set(credential.id, publicKey);
+
     // Store in localStorage to simulate real behavior
     localStorage.setItem('webauthn_credentials', JSON.stringify([credential.id]));
 
     return credential;
+  }
+
+  getStoredPublicKey(credentialId: string): Uint8Array | null {
+    return this.mockPublicKeys.get(credentialId) ?? null;
   }
 
   async authenticate(prompt: string): Promise<BiometricAuthResult> {
@@ -101,6 +114,7 @@ class MockWebAuthNProvider extends WebAuthNProvider {
 
   clearCredentials(): void {
     this.mockCredentials.clear();
+    this.mockPublicKeys.clear();
     localStorage.removeItem('webauthn_credentials');
   }
 }
@@ -338,6 +352,14 @@ describe('SocialLoginProvider', () => {
 
       await expect(socialLogin.onboard('unsupported-user')).rejects.toThrow(
         'WebAuthn not supported'
+      );
+    });
+
+    it('should throw if the credential was registered but no public key was persisted', async () => {
+      jest.spyOn(mockWebAuthn, 'getStoredPublicKey').mockReturnValueOnce(null);
+
+      await expect(socialLogin.onboard('user-missing-key')).rejects.toThrow(
+        /no public key found for credential/
       );
     });
 
