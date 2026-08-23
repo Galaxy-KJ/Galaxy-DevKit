@@ -103,6 +103,35 @@ export function getTestnetConfig(): TestnetConfig {
   };
 }
 
+/**
+ * Validates the testnet configuration object.
+ * Checks for proper formats (such as key lengths, prefixes, and protocols)
+ * and logs warnings if the values do not match expected patterns.
+ *
+ * @param config The testnet configuration to validate.
+ */
+export function validateTestnetConfig(config: TestnetConfig): void {
+  const { factoryContractId, feeSponsorSecretKey, submitTxUrl } = config;
+
+  if (factoryContractId && (!factoryContractId.startsWith('C') || factoryContractId.length !== 56)) {
+    console.warn(
+      `[WARN] factoryContractId "${factoryContractId}" does not look like a valid Stellar contract ID (should start with C and be 56 characters).`
+    );
+  }
+
+  if (feeSponsorSecretKey && (!feeSponsorSecretKey.startsWith('S') || feeSponsorSecretKey.length !== 56)) {
+    console.warn(
+      `[WARN] feeSponsorSecretKey does not look like a valid Stellar secret key (should start with S and be 56 characters).`
+    );
+  }
+
+  if (submitTxUrl && !submitTxUrl.startsWith('http://') && !submitTxUrl.startsWith('https://')) {
+    console.warn(
+      `[WARN] submitTxUrl "${submitTxUrl}" does not start with http:// or https://`
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Browser / authenticator lifecycle
 // ---------------------------------------------------------------------------
@@ -153,6 +182,7 @@ export async function createE2EEnv(): Promise<E2EEnv> {
   })) as { authenticatorId: string };
 
   const testnetConfig = getTestnetConfig();
+  validateTestnetConfig(testnetConfig);
 
   return { browser, context, page, cdp, authenticatorId, testnetConfig };
 }

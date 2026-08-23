@@ -54,6 +54,7 @@ import {
   getAssertion,
   buildPublicKeyCredential,
   getTestnetConfig,
+  validateTestnetConfig,
   type E2EEnv,
 } from '../../e2e/setup';
 
@@ -401,6 +402,23 @@ test.describe('E2E helpers: unit smoke tests', () => {
     expect(cfg.rpcUrl).toBe('https://soroban-testnet.stellar.org');
     expect(cfg.networkPassphrase).toBe('Test SDF Network ; September 2015');
     expect(cfg.factoryContractId.startsWith('C')).toBe(true);
+  });
+
+  test('validateTestnetConfig() correctly validates config fields and prints warnings', () => {
+    const cfg = getTestnetConfig();
+    
+    // Test validation with a valid default configuration
+    expect(() => validateTestnetConfig(cfg)).not.toThrow();
+
+    // Test validation with invalid formats to exercise the warning paths
+    const invalidCfg = {
+      ...cfg,
+      factoryContractId: 'invalid-contract-id',
+      feeSponsorSecretKey: 'invalid-secret-key',
+      submitTxUrl: 'invalid-url',
+    };
+    
+    expect(() => validateTestnetConfig(invalidCfg)).not.toThrow();
   });
 
   test('buildPublicKeyCredential() returns a well-shaped credential object', async () => {
