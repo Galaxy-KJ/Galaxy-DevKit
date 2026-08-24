@@ -21,6 +21,7 @@ function getSupabaseClient(): SupabaseClient<Database> {
 
 // Preserve the object-shaped API without requiring Supabase configuration for
 // unrelated local features such as wallet generation.
+// This Proxy intercepts accesses and lazy-loads the client on demand.
 export const supabaseClient = new Proxy({} as SupabaseClient<Database>, {
   get(_target, property) {
     const resolvedClient = getSupabaseClient();

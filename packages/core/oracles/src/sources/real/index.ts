@@ -1,6 +1,6 @@
 /**
- * @fileoverview Real oracle sources (mainnet)
- * @description Live price feeds from external APIs
+ * @fileoverview Real oracle sources (mainnet and testnet price feeds)
+ * @description Live price feeds from external APIs and smart contracts
  */
 
 export { CoinGeckoSource } from './CoinGeckoSource.js';

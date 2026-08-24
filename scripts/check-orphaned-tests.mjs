@@ -19,7 +19,7 @@ const rootDir = path.resolve(__dirname, '..');
 const SEARCH_DIRS = ['packages', 'tools'];
 const TEST_FILE_REGEX = /\.(test|spec)\.[jt]sx?$/;
 
-// Patterns explicitly ignored by Jest (derived from jest.config.js)
+// Patterns explicitly ignored by Jest (derived from jest.config.js to prevent false positives)
 const JEST_IGNORE_PATTERNS = [
   /\/node_modules\//,
   /\/e2e\//,

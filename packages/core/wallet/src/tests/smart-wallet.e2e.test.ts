@@ -405,6 +405,7 @@ test.describe('E2E helpers: unit smoke tests', () => {
   });
 
   test('validateTestnetConfig() correctly validates config fields and prints warnings', () => {
+    // Retrieve configuration object to validate its fields
     const cfg = getTestnetConfig();
     
     // Test validation with a valid default configuration

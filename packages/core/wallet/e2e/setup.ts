@@ -111,6 +111,7 @@ export function getTestnetConfig(): TestnetConfig {
  * @param config The testnet configuration to validate.
  */
 export function validateTestnetConfig(config: TestnetConfig): void {
+  // Validate fields for proper Stellar formats to prevent runtime test failures
   const { factoryContractId, feeSponsorSecretKey, submitTxUrl } = config;
 
   if (factoryContractId && (!factoryContractId.startsWith('C') || factoryContractId.length !== 56)) {
