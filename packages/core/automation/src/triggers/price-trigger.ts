@@ -14,7 +14,7 @@ export interface PriceTriggerConfig {
 }
 
 export class PriceTrigger {
-  constructor(private readonly oracle: OracleAggregator) {}
+  constructor(private readonly oracle: Pick<OracleAggregator, 'getAggregatedPrices'>) {}
 
   /**
    * Query OracleAggregator for the asset pair rate and evaluate the condition.
