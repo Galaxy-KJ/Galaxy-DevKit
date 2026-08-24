@@ -205,7 +205,10 @@ temp/
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
-
 README_NEXT_STEPS.md
 packages/contracts/governance/test_snapshots/
+
+# Playwright
+test-results/
+playwright-report/
+playwright-results.json

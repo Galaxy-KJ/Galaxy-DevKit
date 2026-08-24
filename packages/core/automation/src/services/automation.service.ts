@@ -708,7 +708,9 @@ export class AutomationService extends EventEmitter {
           ip_address: null,
           success: params.success,
           error_code: params.errorCode,
-          metadata,
+          // Cast metadata to any to bypass strict JSON schema type restrictions
+          // imposed by the auto-generated Supabase database type definitions.
+          metadata: metadata as any,
         },
       ]);
     } catch (error) {

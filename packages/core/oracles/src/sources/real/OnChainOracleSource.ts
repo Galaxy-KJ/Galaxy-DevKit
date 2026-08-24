@@ -37,6 +37,13 @@ export class OnChainOracleSource implements IOracleSource {
   private readonly networkPassphrase: string;
   private readonly rpcServer: SorobanRpc.Server;
 
+  /**
+   * Creates an instance of OnChainOracleSource.
+   * 
+   * @param contractId Deployed price oracle contract ID.
+   * @param rpcUrl Stellar network RPC provider endpoint URL.
+   * @param networkPassphrase Stellar network passphrase (defaults to TESTNET).
+   */
   constructor(
     contractId: string,
     rpcUrl: string,

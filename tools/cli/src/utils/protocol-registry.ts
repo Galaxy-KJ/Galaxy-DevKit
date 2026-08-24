@@ -232,7 +232,8 @@ export async function getProtocolInstance(
 }
 
 /**
- * Clear the protocol cache (useful for testing)
+ * Clear the protocol cache (useful for testing or cache invalidation).
+ * Removes all instances from the in-memory map.
  */
 export function clearProtocolCache(): void {
   protocolCache.clear();

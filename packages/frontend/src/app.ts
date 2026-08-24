@@ -89,6 +89,10 @@ async function getCurrentLedger(): Promise<number> {
 
 // ─── Session storage (unchanged) ─────────────────────────────────────────────
 
+/**
+ * Retrieves the stored user session keys from localStorage.
+ * Returns an array of SessionEntry or an empty array if none exist or parsing fails.
+ */
 function getStoredSessions(): SessionEntry[] {
   try {
     const raw = localStorage.getItem('galaxy_sessions');

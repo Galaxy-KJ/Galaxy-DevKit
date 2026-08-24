@@ -88,19 +88,49 @@ export interface BrowserAssertion {
 export function getTestnetConfig(): TestnetConfig {
   return {
     rpcUrl:
-      process.env.STELLAR_RPC_URL ??
+      process.env.STELLAR_RPC_URL ||
       'https://soroban-testnet.stellar.org',
     networkPassphrase:
-      process.env.STELLAR_NETWORK_PASSPHRASE ??
+      process.env.STELLAR_NETWORK_PASSPHRASE ||
       'Test SDF Network ; September 2015',
     factoryContractId:
-      process.env.FACTORY_CONTRACT_ID ??
+      process.env.FACTORY_CONTRACT_ID ||
       'CAX5RLKVBMYLASX546TKXCZIQSROJGQ7DUIH3LUDG3PR4UB3RRW5O5PE',
-    feeSponsorSecretKey: process.env.FEE_SPONSOR_SECRET_KEY ?? '',
+    feeSponsorSecretKey: process.env.FEE_SPONSOR_SECRET_KEY || '',
     submitTxUrl:
-      process.env.E2E_SUBMIT_TX_URL ??
+      process.env.E2E_SUBMIT_TX_URL ||
       'http://localhost:3000/api/v1/wallets/submit-tx',
   };
+}
+
+/**
+ * Validates the testnet configuration object.
+ * Checks for proper formats (such as key lengths, prefixes, and protocols)
+ * and logs warnings if the values do not match expected patterns.
+ *
+ * @param config The testnet configuration to validate.
+ */
+export function validateTestnetConfig(config: TestnetConfig): void {
+  // Validate fields for proper Stellar formats to prevent runtime test failures
+  const { factoryContractId, feeSponsorSecretKey, submitTxUrl } = config;
+
+  if (factoryContractId && (!factoryContractId.startsWith('C') || factoryContractId.length !== 56)) {
+    console.warn(
+      `[WARN] factoryContractId "${factoryContractId}" does not look like a valid Stellar contract ID (should start with C and be 56 characters).`
+    );
+  }
+
+  if (feeSponsorSecretKey && (!feeSponsorSecretKey.startsWith('S') || feeSponsorSecretKey.length !== 56)) {
+    console.warn(
+      `[WARN] feeSponsorSecretKey does not look like a valid Stellar secret key (should start with S and be 56 characters).`
+    );
+  }
+
+  if (submitTxUrl && !submitTxUrl.startsWith('http://') && !submitTxUrl.startsWith('https://')) {
+    console.warn(
+      `[WARN] submitTxUrl "${submitTxUrl}" does not start with http:// or https://`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +152,17 @@ export async function createE2EEnv(): Promise<E2EEnv> {
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  // Navigate to a blank page so the page's origin is predictable.
-  await page.goto('about:blank');
+  // Intercept requests to http://localhost so page.goto succeeds in secure context without an external server.
+  await page.route('http://localhost/**', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<!DOCTYPE html><html><head><title>E2E Test</title></head><body></body></html>',
+    })
+  );
+
+  // Navigate to localhost so the page is in a Secure Context for WebAuthn APIs.
+  await page.goto('http://localhost');
 
   const cdp = await context.newCDPSession(page);
 
@@ -144,6 +183,7 @@ export async function createE2EEnv(): Promise<E2EEnv> {
   })) as { authenticatorId: string };
 
   const testnetConfig = getTestnetConfig();
+  validateTestnetConfig(testnetConfig);
 
   return { browser, context, page, cdp, authenticatorId, testnetConfig };
 }
@@ -152,8 +192,10 @@ export async function createE2EEnv(): Promise<E2EEnv> {
  * Close the Playwright browser and release all resources.
  * Always call this in `afterAll` / `afterEach` to prevent resource leaks.
  */
-export async function teardownE2EEnv(env: E2EEnv): Promise<void> {
-  await env.browser.close();
+export async function teardownE2EEnv(env?: E2EEnv): Promise<void> {
+  if (env?.browser) {
+    await env.browser.close();
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -16,10 +16,11 @@ export default defineConfig({
   testMatch: ['**/*.e2e.test.ts'],
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
-  workers: 1, // E2E tests share testnet state; run sequentially.
+  workers: 1, // E2E tests share testnet state; must run sequentially to avoid collisions.
 
   reporter: [
     ['list'],
+    ['json', { outputFile: 'playwright-results.json' }],
     ['html', { open: 'never', outputFolder: 'playwright-report' }],
   ],
 

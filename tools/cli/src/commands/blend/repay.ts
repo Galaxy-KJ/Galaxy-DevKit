@@ -6,6 +6,10 @@ import { BlendProtocol } from '../../../../../packages/core/defi-protocols/src/p
 import { walletStorage } from '../../utils/wallet-storage.js';
 import { getCliBlendConfig, amountToStroops } from './config.js';
 
+/**
+ * Repay command definition for the Galaxy CLI tool.
+ * Configures options for CLI interaction and executes repay operations on the Blend protocol.
+ */
 export const repayCommand = new Command('repay')
     .description('Repay borrowed assets to Blend Protocol')
     .option('-w, --wallet <name>', 'Wallet name to use')
