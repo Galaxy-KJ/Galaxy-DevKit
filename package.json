@@ -28,7 +28,9 @@
     "contracts:deploy-and-init": "npm run contracts:deploy && npm run contracts:init",
     "cli": "npm run start:ts --workspace=@galaxy-kj/cli",
     "gen:docs": "npx ts-node tools/docs/interactive-docs-generator.ts",
-    "serve:docs": "npx http-server docs -p 8080"
+    "serve:docs": "npx http-server docs -p 8080",
+    "bench": "npm run bench --workspace=@galaxy-kj/benchmarks",
+    "load:smoke": "npm run load:smoke --workspace=@galaxy-kj/benchmarks"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.0.0",

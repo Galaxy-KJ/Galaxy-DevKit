@@ -1087,6 +1087,11 @@ Usage notes:
 - `packages/contracts/smart-swap/src/lib.rs` - Smart swap contract
 - `packages/contracts/security-limits/src/lib.rs` - Security limits contract
 
+### Benchmarks
+
+- `packages/benchmarks/` - tinybench micro suites (encryption, cache, XDR, smart router, TWAP) and k6 load scripts under `load/`. Root commands: `npm run bench`, `npm run load:smoke`. CI: `.github/workflows/benchmarks.yml`. Guide: `docs/guides/performance-benchmarks.md`.
+- New hot-path changes should add a row to a suite in `packages/benchmarks/src/suites/` rather than a one-off script. k6 scripts read `BASE_URL` / `VUS` / `DURATION` from env; never hardcode hosts.
+
 ### CLI
 
 - `tools/cli/src/index.ts` - CLI entry point

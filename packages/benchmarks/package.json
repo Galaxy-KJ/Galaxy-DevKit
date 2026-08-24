@@ -1,0 +1,29 @@
+{
+  "name": "@galaxy-kj/benchmarks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Micro-benchmarks and k6 load scenarios for Galaxy DevKit",
+  "type": "module",
+  "scripts": {
+    "bench": "tsx src/index.ts",
+    "bench:compare": "tsx src/index.ts --compare",
+    "test": "tsx --test src/report.test.ts",
+    "load:smoke": "node load/run-smoke.mjs",
+    "load:average": "k6 run load/average.js",
+    "load:stress": "k6 run load/stress.js",
+    "load:spike": "k6 run load/spike.js",
+    "load:soak": "k6 run load/soak.js",
+    "load:websocket": "k6 run load/websocket.js",
+    "fixture": "node load/fixture-server.mjs"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.4.3",
+    "argon2": "^0.44.0",
+    "tinybench": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

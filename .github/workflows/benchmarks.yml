@@ -1,0 +1,115 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which load suite to run (nightly/manual)'
+        required: false
+        default: 'smoke'
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  micro-and-smoke:
+    name: Micro benches + k6 smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_ENV: development
+
+      - name: Comparator unit tests
+        run: npm run test --workspace=@galaxy-kj/benchmarks
+
+      - name: Micro benchmarks
+        run: npm run bench
+
+      - name: Compare against baseline
+        run: npm run bench:compare --workspace=@galaxy-kj/benchmarks
+        env:
+          BENCH_SLACK: '3'
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: k6 smoke
+        run: npm run load:smoke
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '## Benchmarks'
+            echo
+            if [ -f packages/benchmarks/results/micro-latest.json ]; then
+              echo '### Micro results'
+              echo
+              echo '```'
+              cat packages/benchmarks/results/micro-latest.json
+              echo '```'
+            else
+              echo 'No micro results file.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  full-load:
+    name: Full load suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: micro-and-smoke
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Start fixture
+        run: node packages/benchmarks/load/fixture-server.mjs &
+        env:
+          PORT: 3456
+
+      - name: Average load
+        run: k6 run packages/benchmarks/load/average.js
+        env:
+          BASE_URL: http://127.0.0.1:3456
+          VUS: 5
+          DURATION: 20s
+
+      - name: Spike
+        run: k6 run packages/benchmarks/load/spike.js
+        env:
+          BASE_URL: http://127.0.0.1:3456
+          VUS: 20
+          DURATION: 10s
