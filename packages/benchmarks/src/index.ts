@@ -6,6 +6,7 @@ import type { Bench } from 'tinybench';
 import {
   compareReports,
   formatFailures,
+  ratioFailures,
   type BenchReport,
   type BenchRow,
 } from './report.ts';
@@ -16,8 +17,15 @@ import { smartRouterBench } from './suites/smart-router.bench.ts';
 import { oracleTwapBench } from './suites/oracle-twap.bench.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const baselinePath = path.join(root, 'baselines', 'micro.json');
 const outDir = path.join(root, 'results');
+const outFile = path.join(outDir, 'micro-latest.json');
+
+function baselinePath(): string {
+  const override = process.env.BENCH_BASELINE;
+  if (override) return path.isAbsolute(override) ? override : path.join(root, override);
+  const file = process.env.CI === 'true' ? 'micro.ci.json' : 'micro.json';
+  return path.join(root, 'baselines', file);
+}
 
 function rowFromTask(task: {
   name: string;
@@ -51,8 +59,34 @@ async function runSuite(name: string, factory: () => Promise<Bench>): Promise<Be
   return bench.tasks.map(rowFromTask);
 }
 
+async function compare(report: BenchReport): Promise<void> {
+  const baseline = JSON.parse(await readFile(baselinePath(), 'utf8')) as BenchReport;
+  const failures = [...compareReports(baseline, report), ...ratioFailures(report)];
+  if (failures.length > 0) {
+    console.error('benchmark regression:\n' + formatFailures(failures));
+    process.exit(1);
+  }
+  console.log(`baseline comparison: ok (${path.basename(baselinePath())})`);
+}
+
 async function main(): Promise<void> {
-  const compare = process.argv.includes('--compare') || process.env.BENCH_COMPARE === '1';
+  const compareOnly =
+    process.argv.includes('--compare-only') || process.env.BENCH_COMPARE_ONLY === '1';
+  const compareAfterRun =
+    process.argv.includes('--compare') || process.env.BENCH_COMPARE === '1';
+
+  if (compareOnly) {
+    let report: BenchReport;
+    try {
+      report = JSON.parse(await readFile(outFile, 'utf8')) as BenchReport;
+    } catch {
+      console.error(`missing ${outFile}: run npm run bench first`);
+      process.exit(1);
+      return;
+    }
+    await compare(report);
+    return;
+  }
 
   const rows: BenchRow[] = [];
   rows.push(...(await runSuite('encryption', encryptionBench)));
@@ -68,18 +102,11 @@ async function main(): Promise<void> {
   };
 
   await mkdir(outDir, { recursive: true });
-  const outFile = path.join(outDir, 'micro-latest.json');
   await writeFile(outFile, JSON.stringify(report, null, 2));
   console.log(`\nwrote ${outFile}`);
 
-  if (compare) {
-    const baseline = JSON.parse(await readFile(baselinePath, 'utf8')) as BenchReport;
-    const failures = compareReports(baseline, report);
-    if (failures.length > 0) {
-      console.error('benchmark regression:\n' + formatFailures(failures));
-      process.exit(1);
-    }
-    console.log('baseline comparison: ok');
+  if (compareAfterRun) {
+    await compare(report);
   }
 }
 

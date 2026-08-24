@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "bench": "tsx src/index.ts",
-    "bench:compare": "tsx src/index.ts --compare",
+    "bench:compare": "tsx src/index.ts --compare-only",
     "test": "tsx --test src/report.test.ts",
     "load:smoke": "node load/run-smoke.mjs",
     "load:average": "k6 run load/average.js",

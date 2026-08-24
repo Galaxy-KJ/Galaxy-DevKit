@@ -21,15 +21,24 @@ Runs tinybench suites in `packages/benchmarks/src/suites/`:
 Output: `packages/benchmarks/results/micro-latest.json`.
 
 ```bash
+npm run bench
 npm run bench:compare --workspace=@galaxy-kj/benchmarks
 ```
 
-Fails the process if a suite's p95 is worse than baseline × 1.2 (× 3 for Argon2, which is hardware-sensitive) or throughput drops more than 20%.
+`bench:compare` reads `results/micro-latest.json` and does not re-run the suites. It fails if a suite's p95 is worse than baseline × 1.2 (× 3 for Argon2) or throughput drops more than 20%.
+
+There are two baselines:
+
+- `baselines/micro.json` — local laptop numbers (used when `CI` is unset)
+- `baselines/micro.ci.json` — `ubuntu-latest` numbers from GitHub Actions (used when `CI=true`)
+
+Do not compare a laptop run against the CI file. To refresh the CI baseline, copy `results/micro-latest.json` from a green Actions job (or an `ubuntu-latest` run) onto `baselines/micro.ci.json`.
 
 A deliberate cache regression is detected by:
 
 ```bash
-BENCH_INJECT_CACHE_MISS=1 npm run bench:compare --workspace=@galaxy-kj/benchmarks
+BENCH_INJECT_CACHE_MISS=1 npm run bench
+npm run bench:compare --workspace=@galaxy-kj/benchmarks
 ```
 
 The comparator itself is unit-tested with a fake +25% p95 (`npm run test --workspace=@galaxy-kj/benchmarks`).
@@ -65,7 +74,7 @@ Existing `ci.yml` / `quick-check.yml` are unchanged.
 
 ## Updating a baseline
 
-When a slowdown is intentional, copy `packages/benchmarks/results/micro-latest.json` to `packages/benchmarks/baselines/micro.json` and commit it with the reason.
+When a slowdown is intentional, copy `packages/benchmarks/results/micro-latest.json` over the matching baseline (`micro.json` locally, `micro.ci.json` from a GitHub `ubuntu-latest` run) and commit it with the reason.
 
 ## First measured numbers
 

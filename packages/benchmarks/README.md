@@ -14,7 +14,7 @@ npm run load:smoke     # k6 1 VU against a local REST API or the bundled fixture
 Inside this package:
 
 ```
-npm run bench:compare  # fail if p95 is 20% worse than baselines/micro.json (3x slack on Argon2)
+npm run bench:compare  # compare results/micro-latest.json to the baseline (no re-run)
 npm test               # comparator unit tests including a deliberate +25% p95 regression
 npm run load:average   # requires BASE_URL and k6
 npm run load:stress
@@ -31,9 +31,10 @@ npm run load:websocket
 | `VUS` | per-script | k6 |
 | `DURATION` | per-script | k6 |
 | `WS_URL` | derived from BASE_URL | websocket.js |
-| `PORT` | `3000` | fixture / smoke runner |
-| `BENCH_COMPARE` | unset | set to `1` to compare after `npm run bench` |
-| `BENCH_INJECT_CACHE_MISS` | unset | set to `1` to make the cache-hit path miss (deliberate regression) |
+| `PORT` | `3456` | fixture / smoke runner |
+| `CI` | unset | when `true` compare uses `baselines/micro.ci.json` |
+| `BENCH_BASELINE` | auto | override baseline path |
+| `BENCH_INJECT_CACHE_MISS` | unset | set to `1` on `npm run bench` to make the cache-hit path miss |
 
 Scripts refuse any URL containing `mainnet`.
 
@@ -46,5 +47,5 @@ There is no wallet-creation route under `packages/api/rest/src/routes/wallets/` 
 When a slowdown is intentional:
 
 1. Run `npm run bench`
-2. Copy `results/micro-latest.json` over `baselines/micro.json`
+2. Copy `results/micro-latest.json` over `baselines/micro.json` (local) or `baselines/micro.ci.json` (from a GitHub ubuntu-latest job)
 3. Commit the baseline with the reason in the commit body

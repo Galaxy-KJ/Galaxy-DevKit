@@ -42,17 +42,21 @@ jobs:
         run: npm run test --workspace=@galaxy-kj/benchmarks
 
       - name: Micro benchmarks
+        id: bench
         run: npm run bench
 
       - name: Compare against baseline
         run: npm run bench:compare --workspace=@galaxy-kj/benchmarks
-        env:
-          BENCH_SLACK: '3'
 
       - name: Install k6
-        uses: grafana/setup-k6-action@v1
+        if: always() && steps.bench.outcome == 'success'
+        run: |
+          curl -fsSL https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz | tar xz
+          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/k6
+          k6 version
 
       - name: k6 smoke
+        if: always() && steps.bench.outcome == 'success'
         run: npm run load:smoke
 
       - name: Job summary
@@ -93,7 +97,10 @@ jobs:
         run: npm ci
 
       - name: Install k6
-        uses: grafana/setup-k6-action@v1
+        run: |
+          curl -fsSL https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz | tar xz
+          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/k6
+          k6 version
 
       - name: Start fixture
         run: node packages/benchmarks/load/fixture-server.mjs &

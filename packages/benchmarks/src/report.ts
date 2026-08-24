@@ -93,3 +93,37 @@ export function formatFailures(failures: CompareFailure[]): string {
     )
     .join('\n');
 }
+
+function hzOf(report: BenchReport, name: string): number | undefined {
+  return report.rows.find((row) => row.name === name)?.hz;
+}
+
+/** Hardware-independent checks. Catch "cache disabled" without a laptop baseline. */
+export function ratioFailures(observed: BenchReport): CompareFailure[] {
+  const failures: CompareFailure[] = [];
+  const hit = hzOf(observed, 'cache hit');
+  const miss = hzOf(observed, 'cache miss');
+  if (hit !== undefined && miss !== undefined && hit <= miss) {
+    failures.push({
+      name: 'cache hit vs miss',
+      metric: 'hz',
+      baseline: miss,
+      observed: hit,
+      limit: miss,
+    });
+  }
+
+  const v2 = hzOf(observed, 'encrypt v2 argon2id');
+  const v1 = hzOf(observed, 'encrypt v1 pbkdf2');
+  if (v2 !== undefined && v1 !== undefined && v2 >= v1) {
+    failures.push({
+      name: 'encrypt v2 vs v1',
+      metric: 'hz',
+      baseline: v1,
+      observed: v2,
+      limit: v1,
+    });
+  }
+
+  return failures;
+}
