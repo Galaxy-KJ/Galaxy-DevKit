@@ -4,13 +4,15 @@ version = "1.0.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "21.0.0"
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+# soroban-env-host 21.2.1 does not compile against ed25519-dalek 3.x
+ed25519-dalek = "=2.2.0"
 
 [profile.release]
 overflow-checks = true

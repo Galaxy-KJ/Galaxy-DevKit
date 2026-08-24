@@ -126,7 +126,7 @@ gantt
 
 ### Risk Management (5 issues)
 
-- [ ] **#51** Enhance security limits contract
+- [x] **#51** Enhance security limits contract (Issue #400)
 - [ ] **#52** Add risk scoring system
 - [ ] **#53** Implement position monitoring alerts
 - [ ] **#54** Add impermanent loss calculator (Issue #284 🔄)
