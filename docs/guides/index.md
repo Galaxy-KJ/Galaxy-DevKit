@@ -7,6 +7,7 @@ Complete guides for using Galaxy DevKit to build Stellar applications.
 - [Getting Started](./getting-started.md) - Quick start guide
 - [User Guide](./user-guide.md) - Complete user documentation
 - [CLI Guide](./cli-guide.md) - Command line interface guide
+- [Performance Benchmarks](./performance-benchmarks.md) - Micro-benchmarks and k6 load suites
 
 ## 🚀 Quick Start
 

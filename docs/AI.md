@@ -1089,6 +1089,11 @@ Usage notes:
 
 **Pattern for new Soroban contracts:** put per-user state in persistent storage keyed by `Address`, never in a global instance `Map`. Call `require_auth` on the address that owns the state. Return `Result<T, #[contracterror]>` instead of `panic!("Not authorized")`. Extend TTL on every persistent read and write.
 
+### Benchmarks
+
+- `packages/benchmarks/` - tinybench micro suites (encryption, cache, XDR, smart router, TWAP) and k6 load scripts under `load/`. Root commands: `npm run bench`, `npm run load:smoke`. CI: `.github/workflows/benchmarks.yml`. Guide: `docs/guides/performance-benchmarks.md`.
+- New hot-path changes should add a row to a suite in `packages/benchmarks/src/suites/` rather than a one-off script. k6 scripts read `BASE_URL` / `VUS` / `DURATION` from env; never hardcode hosts.
+
 ### CLI
 
 - `tools/cli/src/index.ts` - CLI entry point

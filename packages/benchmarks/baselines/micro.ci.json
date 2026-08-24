@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-08-24T04:36:47.000Z",
+  "machine": "github-ubuntu-latest",
+  "rows": [
+    {
+      "name": "encrypt v2 argon2id",
+      "hz": 21,
+      "meanMs": 47.1236203,
+      "p95Ms": 55,
+      "samples": 10
+    },
+    {
+      "name": "decrypt v2 argon2id",
+      "hz": 21,
+      "meanMs": 45.6130114,
+      "p95Ms": 53,
+      "samples": 10
+    },
+    {
+      "name": "encrypt v1 pbkdf2",
+      "hz": 37,
+      "meanMs": 26.4971528,
+      "p95Ms": 32,
+      "samples": 16
+    },
+    {
+      "name": "decrypt v1 pbkdf2",
+      "hz": 37,
+      "meanMs": 26.8362415,
+      "p95Ms": 32,
+      "samples": 15
+    },
+    {
+      "name": "cache hit",
+      "hz": 862502.8417,
+      "meanMs": 0.001159416469888052,
+      "p95Ms": 0.0029,
+      "samples": 258751
+    },
+    {
+      "name": "cache miss",
+      "hz": 368106,
+      "meanMs": 0.002716607731454298,
+      "p95Ms": 0.0066,
+      "samples": 110432
+    },
+    {
+      "name": "cache eviction",
+      "hz": 139099,
+      "meanMs": 0.007189088856937235,
+      "p95Ms": 0.0263,
+      "samples": 41730
+    },
+    {
+      "name": "cache dedup",
+      "hz": 192,
+      "meanMs": 5.19689779310343,
+      "p95Ms": 6.5,
+      "samples": 58
+    },
+    {
+      "name": "tx build + toXDR",
+      "hz": 1069.5735,
+      "meanMs": 0.9349521526479658,
+      "p95Ms": 2.4901,
+      "samples": 321
+    },
+    {
+      "name": "smart router 3 pools",
+      "hz": 19217.7479,
+      "meanMs": 0.05203523361082068,
+      "p95Ms": 0.2545,
+      "samples": 5766
+    },
+    {
+      "name": "oracle twap 64 samples",
+      "hz": 425947,
+      "meanMs": 0.002347704597566638,
+      "p95Ms": 0.0046,
+      "samples": 127785
+    }
+  ]
+}
