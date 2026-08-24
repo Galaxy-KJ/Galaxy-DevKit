@@ -11,14 +11,24 @@ import {
   AutomationMetrics,
   PriceConditionContext,
   PriceTriggerCondition,
+  StoredAutomation,
+  TriggerEvaluationResult,
   TriggerType,
   StellarNetwork,
+  ExecutionAttempt,
 } from '../types/automation-types.js';
 import { CronManager } from '../utils/cron-manager.js';
 import { ConditionEvaluator } from '../utils/condition-evaluator.js';
 import { ExecutionEngine } from '../utils/execution-engine.js';
 import { OracleAggregator } from '@galaxy-kj/core-oracles';
 import { supabaseClient } from '@galaxy-kj/core-stellar-sdk';
+import { PriceTrigger } from '../triggers/price-trigger.js';
+import { VolumeTrigger } from '../triggers/volume-trigger.js';
+import {
+  TriggerEvaluator,
+  parseActionConfig,
+} from '../triggers/trigger-evaluator.js';
+import { ExecutionAttemptRegistry } from './execution-attempt-registry.js';
 
 export interface AutomationServiceConfig {
   network?: StellarNetwork;
@@ -26,14 +36,17 @@ export interface AutomationServiceConfig {
   maxConcurrentExecutions?: number;
   executionTimeout?: number;
   enableMetrics?: boolean;
-  oracle?: OracleAggregator;
+  oracle?: Pick<OracleAggregator, 'getAggregatedPrices'>;
+  triggerEvaluator?: TriggerEvaluator;
+  attemptRegistry?: ExecutionAttemptRegistry;
+  volumeTrigger?: VolumeTrigger;
 }
 
 export class AutomationService extends EventEmitter {
   private cronManager: CronManager;
   private conditionEvaluator: ConditionEvaluator;
   private executionEngine: ExecutionEngine;
-  private oracle?: OracleAggregator;
+  private oracle?: Pick<OracleAggregator, 'getAggregatedPrices'>;
   private rules: Map<string, AutomationRule> = new Map();
   private metrics: Map<string, AutomationMetrics> = new Map();
   private activeExecutions: Set<string> = new Set();
@@ -48,6 +61,8 @@ export class AutomationService extends EventEmitter {
   private activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private priceMonitorInterval?: NodeJS.Timeout;
   private supabase = supabaseClient;
+  private triggerEvaluator: TriggerEvaluator;
+  private attemptRegistry: ExecutionAttemptRegistry;
 
   constructor(config: AutomationServiceConfig = {}) {
     super();
@@ -73,6 +88,20 @@ export class AutomationService extends EventEmitter {
       this.network,
       this.config.sourceSecret
     );
+    this.attemptRegistry =
+      config.attemptRegistry ??
+      new ExecutionAttemptRegistry(this.supabase as never);
+    this.triggerEvaluator =
+      config.triggerEvaluator ??
+      new TriggerEvaluator({
+        priceTrigger: this.oracle
+          ? new PriceTrigger(this.oracle as OracleAggregator)
+          : undefined,
+        volumeTrigger:
+          config.volumeTrigger ??
+          new VolumeTrigger({ horizonUrl: this.network.horizonUrl }),
+        conditionEvaluator: this.conditionEvaluator,
+      });
 
     this.setupEventHandlers();
   }
@@ -487,6 +516,185 @@ export class AutomationService extends EventEmitter {
   }
 
   /**
+   * Evaluate persisted trigger_conditions using PriceTrigger / VolumeTrigger /
+   * ConditionEvaluator. Never uses randomness — unmet conditions return false.
+   */
+  async evaluatePersistedAutomation(
+    automation: StoredAutomation
+  ): Promise<TriggerEvaluationResult> {
+    const baseContext: ExecutionContext = {
+      ruleId: automation.id,
+      userId: automation.user_id,
+      timestamp: new Date(),
+      stellarData: {
+        networkPassphrase: this.network.networkPassphrase,
+      },
+      customData: isRecord(automation.metadata) ? automation.metadata : undefined,
+    };
+
+    const context = await this.attachLivePricesFromConditions(
+      automation.trigger_conditions,
+      baseContext
+    );
+
+    return this.triggerEvaluator.evaluateStored(automation, context);
+  }
+
+  isInFlight(automationId: string): boolean {
+    return this.attemptRegistry.isInFlight(automationId);
+  }
+
+  async tryBeginExecution(
+    automationId: string
+  ): Promise<ExecutionAttempt | null> {
+    return this.attemptRegistry.tryClaim(automationId);
+  }
+
+  completeExecution(automationId: string): void {
+    this.attemptRegistry.release(automationId);
+  }
+
+  async confirmExecution(
+    attemptId: string,
+    transactionHash?: string
+  ): Promise<void> {
+    const attempt = this.attemptRegistry.get(attemptId);
+    if (!attempt || attempt.status === 'failed' || attempt.status === 'resolved') {
+      return;
+    }
+
+    await this.attemptRegistry.markResolved(attemptId, transactionHash);
+  }
+
+  /**
+   * Build, sign, and submit the automation action via ExecutionEngine.
+   * Does not re-evaluate triggers — the caller must have already done that.
+   * Reuses a submitted transaction hash instead of sending a second tx.
+   */
+  async executePersistedAutomation(
+    automation: StoredAutomation,
+    attemptId?: string
+  ): Promise<ExecutionResult> {
+    const inFlight = attemptId
+      ? this.attemptRegistry.get(attemptId)
+      : this.attemptRegistry.getInFlightAttempt(automation.id);
+
+    if (inFlight?.transactionHash) {
+      console.info(
+        `[automation ${automation.id}] skipping submit; reuse hash ${inFlight.transactionHash}`
+      );
+      return {
+        ruleId: automation.id,
+        executionId: inFlight.id,
+        success: true,
+        timestamp: new Date(),
+        duration: 0,
+        transactionHash: inFlight.transactionHash,
+      };
+    }
+
+    const resolvedAttemptId = inFlight?.id ?? attemptId;
+    if (resolvedAttemptId) {
+      await this.attemptRegistry.markExecuting(resolvedAttemptId);
+    }
+
+    try {
+      const { executionType, executionConfig } = parseActionConfig(
+        automation.action_config
+      );
+
+      const context: ExecutionContext = {
+        ruleId: automation.id,
+        userId: automation.user_id,
+        timestamp: new Date(),
+        stellarData: {
+          networkPassphrase: this.network.networkPassphrase,
+        },
+        customData: {
+          walletId: automation.wallet_id,
+          attemptId: resolvedAttemptId,
+        },
+      };
+
+      const executionPromise = this.executionEngine.execute(
+        executionType,
+        executionConfig,
+        context
+      );
+
+      const timeoutPromise = new Promise<ExecutionResult>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Execution timeout'));
+        }, this.config.executionTimeout);
+      });
+
+      const result = await Promise.race([executionPromise, timeoutPromise]);
+      const transactionHash = result.transactionHash ?? extractHash(result.result);
+
+      if (resolvedAttemptId && transactionHash) {
+        await this.attemptRegistry.markSubmitted(resolvedAttemptId, transactionHash);
+      }
+
+      if (resolvedAttemptId && !result.success) {
+        await this.attemptRegistry.markFailed(
+          resolvedAttemptId,
+          result.error?.message ?? 'execution_failed'
+        );
+      } else if (resolvedAttemptId && result.success && !transactionHash) {
+        await this.attemptRegistry.markResolved(resolvedAttemptId);
+      }
+
+      return {
+        ...result,
+        ruleId: automation.id,
+        transactionHash,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'execution_error';
+      if (resolvedAttemptId) {
+        await this.attemptRegistry.markFailed(resolvedAttemptId, message);
+      }
+
+      return {
+        ruleId: automation.id,
+        executionId: resolvedAttemptId ?? `exec_${automation.id}_${Date.now()}`,
+        success: false,
+        timestamp: new Date(),
+        duration: 0,
+        error: error instanceof Error ? error : new Error(message),
+      };
+    }
+  }
+
+  private async attachLivePricesFromConditions(
+    triggerConditions: unknown,
+    context: ExecutionContext
+  ): Promise<ExecutionContext> {
+    if (!this.oracle || context.priceContext) {
+      return context;
+    }
+
+    const assets = collectAssetsFromUnknown(triggerConditions);
+    if (assets.length === 0) {
+      return context;
+    }
+
+    const aggregatedPrices = await this.oracle.getAggregatedPrices(assets);
+    return {
+      ...context,
+      priceContext: {
+        prices: Object.fromEntries(
+          aggregatedPrices.map((price: { symbol: string; price: number }) => [
+            price.symbol,
+            price.price,
+          ])
+        ),
+        timestamp: Date.now(),
+      },
+    };
+  }
+
+  /**
    * Get Stellar account info
    */
   async getAccountInfo(publicKey?: string): Promise<any> {
@@ -749,3 +957,46 @@ export class AutomationService extends EventEmitter {
 }
 
 export default AutomationService;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function extractHash(result: unknown): string | undefined {
+  if (!isRecord(result) || typeof result.hash !== 'string' || result.hash.length === 0) {
+    return undefined;
+  }
+  return result.hash;
+}
+
+function collectAssetsFromUnknown(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectAssetsFromUnknown);
+  }
+
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const assets: string[] = [];
+  if (typeof value.asset === 'string') {
+    assets.push(value.asset);
+  }
+  if (typeof value.assetIn === 'string') {
+    assets.push(value.assetIn);
+  }
+  if (typeof value.assetOut === 'string') {
+    assets.push(value.assetOut);
+  }
+  if (typeof value.quoteAsset === 'string') {
+    assets.push(value.quoteAsset);
+  }
+  if (Array.isArray(value.conditions)) {
+    assets.push(...value.conditions.flatMap(collectAssetsFromUnknown));
+  }
+  if (Array.isArray(value.groups)) {
+    assets.push(...value.groups.flatMap(collectAssetsFromUnknown));
+  }
+
+  return Array.from(new Set(assets));
+}

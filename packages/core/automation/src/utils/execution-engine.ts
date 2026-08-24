@@ -9,6 +9,19 @@ import {
   StellarNetwork,
 } from '../types/automation-types.js';
 
+function extractTransactionHash(result: unknown): string | undefined {
+  if (!result || typeof result !== 'object') {
+    return undefined;
+  }
+
+  if (!('hash' in result)) {
+    return undefined;
+  }
+
+  const hash = (result as { hash: unknown }).hash;
+  return typeof hash === 'string' && hash.length > 0 ? hash : undefined;
+}
+
 export class ExecutionEngine {
   private server: StellarSdk.Horizon.Server;
   private sourceKeypair?: StellarSdk.Keypair;
@@ -85,6 +98,7 @@ export class ExecutionEngine {
         }
 
         const duration = Date.now() - startTime;
+        const transactionHash = extractTransactionHash(result);
 
         return {
           ruleId: context.ruleId,
@@ -93,6 +107,7 @@ export class ExecutionEngine {
           timestamp: new Date(),
           duration,
           result,
+          transactionHash,
           retryCount,
         };
       } catch (error) {

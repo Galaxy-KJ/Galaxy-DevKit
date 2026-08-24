@@ -258,3 +258,45 @@ export interface StellarNetwork {
   horizonUrl: string;
   networkPassphrase: string;
 }
+
+/**
+ * Row shape persisted in `public.automations`.
+ * `trigger_conditions` and `action_config` are JSONB and therefore untyped at rest.
+ */
+export interface StoredAutomation {
+  id: string;
+  user_id: string;
+  wallet_id?: string | null;
+  name?: string | null;
+  description?: string | null;
+  status: string;
+  trigger_conditions: unknown;
+  action_config: unknown;
+  last_executed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface TriggerEvaluationResult {
+  met: boolean;
+  triggerType: string;
+  triggerData: Record<string, unknown>;
+}
+
+export type ExecutionAttemptStatus =
+  | 'pending'
+  | 'executing'
+  | 'submitted'
+  | 'resolved'
+  | 'failed';
+
+export interface ExecutionAttempt {
+  id: string;
+  automationId: string;
+  status: ExecutionAttemptStatus;
+  transactionHash?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,17 +1,93 @@
 /**
  * Automation Handler
- * 
- * This module handles automation rule events, triggers, executions,
- * and status updates for automated trading operations.
+ *
+ * Polls persisted automations, evaluates real trigger_conditions, and executes
+ * via AutomationService / ExecutionEngine (build → sign → submit).
+ *
+ * Idempotency:
+ * - `isPolling` plus schedule-next-after-complete prevent overlapping ticks.
+ * - Per-automation `pending → executing → submitted → resolved|failed` claims
+ *   (in memory + `automation_execution_attempts`) block duplicate submits.
+ * - A submitted row that already has `transaction_hash` is reused, never resent.
  */
 
+import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ExtendedSocket, AutomationTriggeredEvent, AutomationExecutedEvent, AutomationErrorEvent } from '../types/websocket-types';
+import {
+  ExtendedSocket,
+  AutomationTriggeredEvent,
+  AutomationExecutedEvent,
+} from '../types/websocket-types';
 import { RoomManager } from '../services/room-manager';
 import { EventBroadcaster } from '../services/event-broadcaster';
 import { requireAuth } from '../middleware/auth';
 import { config } from '../config';
+import { createDefaultPriceAggregator } from '../services/market-data-source';
+
+export interface StoredAutomation {
+  id: string;
+  user_id: string;
+  wallet_id?: string | null;
+  name?: string | null;
+  status: string;
+  trigger_conditions: unknown;
+  action_config: unknown;
+  last_executed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface TriggerEvaluationResult {
+  met: boolean;
+  triggerType: string;
+  triggerData: Record<string, unknown>;
+}
+
+export interface ExecutionAttempt {
+  id: string;
+  automationId: string;
+  status: 'pending' | 'executing' | 'submitted' | 'resolved' | 'failed';
+  transactionHash?: string;
+  error?: string;
+}
+
+export interface ExecutionResult {
+  ruleId: string;
+  executionId: string;
+  success: boolean;
+  timestamp: Date;
+  duration: number;
+  error?: Error;
+  transactionHash?: string;
+}
+
+/**
+ * Runtime used by the poll loop. Production wires AutomationService;
+ * tests inject a fake so evaluation/execution stay deterministic.
+ */
+export interface AutomationRuntime {
+  evaluatePersistedAutomation(
+    automation: StoredAutomation
+  ): Promise<TriggerEvaluationResult>;
+  executePersistedAutomation(
+    automation: StoredAutomation,
+    attemptId?: string
+  ): Promise<ExecutionResult>;
+  isInFlight(automationId: string): boolean;
+  tryBeginExecution(automationId: string): Promise<ExecutionAttempt | null>;
+  confirmExecution(attemptId: string, transactionHash?: string): Promise<void>;
+  completeExecution(automationId: string): void;
+}
+
+export interface AutomationHandlerOptions {
+  supabase?: SupabaseClient;
+  runtime?: AutomationRuntime;
+  pollIntervalMs?: number;
+  startMonitoring?: boolean;
+  setupRealtime?: boolean;
+}
+
+const DEFAULT_POLL_INTERVAL_MS = 30_000;
 
 /**
  * Automation Handler Class
@@ -21,17 +97,35 @@ export class AutomationHandler {
   private roomManager: RoomManager;
   private eventBroadcaster: EventBroadcaster;
   private supabase: SupabaseClient;
-  private automationSubscriptions = new Map<string, any>();
-  private activeAutomations = new Map<string, any>();
+  private automationSubscriptions = new Map<string, unknown>();
+  private activeAutomations = new Map<string, StoredAutomation & { lastActivity?: number }>();
+  private runtime?: AutomationRuntime;
+  private runtimePromise?: Promise<AutomationRuntime>;
+  private readonly pollIntervalMs: number;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private isPolling = false;
+  private stopped = false;
 
-  constructor(server: Server, roomManager: RoomManager, eventBroadcaster: EventBroadcaster) {
+  constructor(
+    server: Server,
+    roomManager: RoomManager,
+    eventBroadcaster: EventBroadcaster,
+    options: AutomationHandlerOptions = {}
+  ) {
     this.server = server;
     this.roomManager = roomManager;
     this.eventBroadcaster = eventBroadcaster;
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.supabase = options.supabase ?? createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.runtime = options.runtime;
+    this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.setupAutomationHandlers();
-    this.setupSupabaseRealtime();
-    this.startAutomationMonitoring();
+    if (options.setupRealtime !== false) {
+      this.setupSupabaseRealtime();
+    }
+    if (options.startMonitoring !== false) {
+      this.startAutomationMonitoring();
+    }
   }
 
   /**
@@ -111,18 +205,36 @@ export class AutomationHandler {
   }
 
   /**
-   * Start automation monitoring
+   * Start automation monitoring.
+   *
+   * Uses schedule-next-after-complete instead of a raw setInterval so a slow
+   * evaluation cycle cannot overlap the next tick. processActiveAutomations
+   * still has per-automation locks for the case of concurrent callers (tests).
    */
   private startAutomationMonitoring(): void {
-    // Monitor automation triggers every 30 seconds
-    setInterval(() => {
-      this.checkAutomationTriggers();
-    }, 30000);
+    this.schedulePoll();
 
-    // Clean up inactive automations every 5 minutes
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       this.cleanupInactiveAutomations();
     }, 300000);
+  }
+
+  private schedulePoll(): void {
+    if (this.stopped) {
+      return;
+    }
+
+    this.pollTimer = setTimeout(() => {
+      void this.runPollCycle();
+    }, this.pollIntervalMs);
+  }
+
+  private async runPollCycle(): Promise<void> {
+    try {
+      await this.checkAutomationTriggers();
+    } finally {
+      this.schedulePoll();
+    }
   }
 
   /**
@@ -437,57 +549,23 @@ export class AutomationHandler {
         return;
       }
 
-      const automation = newRecord || oldRecord;
-      const userId = automation.user_id;
+      const automation = (newRecord || oldRecord) as StoredAutomation;
       const automationId = automation.id;
 
-      // Create appropriate event based on change
-      let event: AutomationTriggeredEvent | AutomationExecutedEvent | AutomationErrorEvent | undefined;
-
       if (eventType === 'INSERT') {
-        // New automation created
-        return; // No event needed for creation
-      } else if (eventType === 'UPDATE') {
-        // Check if status changed
-        if (newRecord.status !== oldRecord.status) {
-          if (newRecord.status === 'active') {
-            // Automation activated
-            this.activeAutomations.set(automationId, automation);
-          } else if (newRecord.status === 'paused') {
-            // Automation paused
-            this.activeAutomations.delete(automationId);
-          }
-        }
+        return;
+      }
 
-        // Check if last_executed_at changed (execution occurred)
-        if (newRecord.last_executed_at !== oldRecord.last_executed_at) {
-          event = {
-            id: `automation-executed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            timestamp: Date.now(),
-            source: 'galaxy-websocket',
-            type: 'automation:executed',
-            data: {
-              automationId,
-              userId,
-              walletId: automation.wallet_id,
-              result: 'success', // TODO: Determine actual result
-              executedAt: Date.now()
-            }
-          };
+      if (eventType === 'UPDATE' && newRecord.status !== oldRecord.status) {
+        if (newRecord.status === 'active') {
+          this.activeAutomations.set(automationId, automation);
+        } else if (newRecord.status === 'paused') {
+          this.activeAutomations.delete(automationId);
         }
       }
 
-      if (event) {
-        // Broadcast to user-specific room
-        await this.eventBroadcaster.broadcastToUser(userId, event);
-
-        // Broadcast to automation-specific room
-        const automationRoomName = `automation:${automationId}`;
-        await this.eventBroadcaster.broadcastToRoom(automationRoomName, event);
-
-        console.log(`Broadcasted automation ${event.type} for ${automationId}`);
-      }
-
+      // Execution events are emitted by the poll loop after a real
+      // transaction result is known. Do not synthesize them here.
     } catch (error) {
       console.error('Failed to handle automation change:', error);
     }
@@ -496,125 +574,233 @@ export class AutomationHandler {
   /**
    * Check automation triggers
    */
-  private async checkAutomationTriggers(): Promise<void> {
+  async checkAutomationTriggers(): Promise<void> {
+    if (this.isPolling) {
+      console.warn('[automation-handler] skipping overlapping poll cycle');
+      return;
+    }
+
+    this.isPolling = true;
     try {
-      // Get all active automations
       const { data: automations, error } = await this.supabase
         .from('automations')
         .select('*')
         .eq('status', 'active');
 
       if (error || !automations) {
+        if (error) {
+          console.error('Failed to load active automations:', error);
+        }
         return;
       }
 
-      for (const automation of automations) {
-        try {
-          // Check if automation should trigger
-          const shouldTrigger = await this.evaluateTriggerConditions(automation);
-          
-          if (shouldTrigger) {
-            await this.triggerAutomation(automation);
-          }
-        } catch (error) {
-          console.error(`Failed to check triggers for automation ${automation.id}:`, error);
-        }
-      }
+      await this.processActiveAutomations(automations as StoredAutomation[]);
     } catch (error) {
       console.error('Failed to check automation triggers:', error);
+    } finally {
+      this.isPolling = false;
     }
   }
 
   /**
-   * Evaluate trigger conditions for an automation
-   * 
-   * @param automation - Automation object
-   * @returns Promise<boolean> - Whether automation should trigger
+   * Evaluate and execute a batch of automations. Safe to call concurrently:
+   * per-automation claim prevents duplicate submits.
    */
-  private async evaluateTriggerConditions(automation: any): Promise<boolean> {
-    // TODO: Implement actual trigger condition evaluation
-    // This is a placeholder that randomly triggers automations
-    return Math.random() < 0.1; // 10% chance to trigger
-  }
-
-  /**
-   * Trigger an automation
-   * 
-   * @param automation - Automation object
-   */
-  private async triggerAutomation(automation: any): Promise<void> {
-    try {
-      // Create trigger event
-      const event: AutomationTriggeredEvent = {
-        id: `automation-triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: Date.now(),
-        source: 'galaxy-websocket',
-        type: 'automation:triggered',
-        data: {
-          automationId: automation.id,
-          userId: automation.user_id,
-          walletId: automation.wallet_id,
-          triggerCondition: JSON.stringify(automation.trigger_conditions),
-          triggerData: {}
-        }
-      };
-
-      // Broadcast trigger event
-      await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
-      await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
-
-      // Simulate execution
-      setTimeout(async () => {
-        await this.simulateAutomationExecution(automation);
-      }, 1000);
-
-      console.log(`Triggered automation ${automation.id}`);
-
-    } catch (error) {
-      console.error(`Failed to trigger automation ${automation.id}:`, error);
+  async processActiveAutomations(automations: StoredAutomation[]): Promise<void> {
+    for (const automation of automations) {
+      try {
+        await this.processAutomation(automation);
+      } catch (error) {
+        console.error(`Failed to check triggers for automation ${automation.id}:`, error);
+      }
     }
   }
 
-  /**
-   * Simulate automation execution
-   * 
-   * @param automation - Automation object
-   */
-  private async simulateAutomationExecution(automation: any): Promise<void> {
+  private async processAutomation(automation: StoredAutomation): Promise<void> {
+    const runtime = await this.getRuntime();
+
+    if (runtime.isInFlight(automation.id)) {
+      console.info(
+        `[automation ${automation.id}] skip: previous execution still pending/executing`
+      );
+      return;
+    }
+
+    const evaluation = await runtime.evaluatePersistedAutomation(automation);
+    if (!evaluation.met) {
+      return;
+    }
+
+    const attempt = await runtime.tryBeginExecution(automation.id);
+    if (!attempt) {
+      console.warn(
+        `[automation ${automation.id}] skip: could not claim execution lock`
+      );
+      return;
+    }
+
     try {
-      const success = Math.random() > 0.2; // 80% success rate
+      if (attempt.transactionHash) {
+        console.info(
+          `[automation ${automation.id}] recovering submitted hash ${attempt.transactionHash}`
+        );
+        const result = await runtime.executePersistedAutomation(
+          automation,
+          attempt.id
+        );
+        await this.emitExecuted(automation, result);
+        await runtime.confirmExecution(attempt.id, result.transactionHash);
+        return;
+      }
 
-      const event: AutomationExecutedEvent = {
-        id: `automation-executed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: Date.now(),
-        source: 'galaxy-websocket',
-        type: 'automation:executed',
-        data: {
-          automationId: automation.id,
-          userId: automation.user_id,
-          walletId: automation.wallet_id,
-          result: success ? 'success' : 'failed',
-          executedAt: Date.now(),
-          transactionHash: success ? `tx_${Math.random().toString(36).substr(2, 9)}` : undefined,
-          error: success ? undefined : 'Simulated execution failure'
-        }
-      };
+      await this.emitTriggered(automation, evaluation);
 
-      // Broadcast execution event
-      await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
-      await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
+      const result = await runtime.executePersistedAutomation(automation, attempt.id);
+      await this.emitExecuted(automation, result);
+      await runtime.confirmExecution(attempt.id, result.transactionHash);
 
-      // Update last executed timestamp
       await this.supabase
         .from('automations')
         .update({ last_executed_at: new Date().toISOString() })
         .eq('id', automation.id);
-
-      console.log(`Executed automation ${automation.id} (${success ? 'success' : 'failed'})`);
-
-    } catch (error) {
-      console.error(`Failed to simulate execution for automation ${automation.id}:`, error);
+    } finally {
+      runtime.completeExecution(automation.id);
     }
+  }
+
+  /**
+   * Evaluate trigger conditions for an automation.
+   */
+  async evaluateTriggerConditions(automation: StoredAutomation): Promise<boolean> {
+    const runtime = await this.getRuntime();
+    const evaluation = await runtime.evaluatePersistedAutomation(automation);
+    return evaluation.met;
+  }
+
+  private async emitTriggered(
+    automation: StoredAutomation,
+    evaluation: TriggerEvaluationResult
+  ): Promise<void> {
+    const event: AutomationTriggeredEvent = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      source: 'galaxy-websocket',
+      type: 'automation:triggered',
+      data: {
+        automationId: automation.id,
+        userId: automation.user_id,
+        walletId: automation.wallet_id ?? '',
+        triggerCondition: JSON.stringify(automation.trigger_conditions),
+        triggerData: evaluation.triggerData,
+      },
+    };
+
+    await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
+    await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
+    console.info(`[automation ${automation.id}] emitted automation:triggered`);
+  }
+
+  private async emitExecuted(
+    automation: StoredAutomation,
+    result: ExecutionResult
+  ): Promise<void> {
+    const event: AutomationExecutedEvent = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      source: 'galaxy-websocket',
+      type: 'automation:executed',
+      data: {
+        automationId: automation.id,
+        userId: automation.user_id,
+        walletId: automation.wallet_id ?? '',
+        result: result.success ? 'success' : 'failed',
+        executedAt: Date.now(),
+        transactionHash: result.success ? result.transactionHash : undefined,
+        error: result.success
+          ? undefined
+          : result.error?.message ?? 'Automation execution failed',
+      },
+    };
+
+    await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
+    await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
+    console.info(
+      `[automation ${automation.id}] emitted automation:executed ` +
+        `success=${result.success}` +
+        (result.transactionHash ? ` hash=${result.transactionHash}` : '') +
+        (result.error ? ` error=${result.error.message}` : '')
+    );
+  }
+
+  private async getRuntime(): Promise<AutomationRuntime> {
+    if (this.runtime) {
+      return this.runtime;
+    }
+
+    if (!this.runtimePromise) {
+      this.runtimePromise = this.createDefaultRuntime();
+    }
+
+    this.runtime = await this.runtimePromise;
+    return this.runtime;
+  }
+
+  private async createDefaultRuntime(): Promise<AutomationRuntime> {
+    const moduleName = '@galaxy-kj/core-automation';
+    const { AutomationService } = (await import(moduleName)) as {
+      AutomationService: new (config: {
+        network: {
+          type: 'PUBLIC' | 'TESTNET';
+          horizonUrl: string;
+          networkPassphrase: string;
+        };
+        sourceSecret?: string;
+        oracle?: {
+          getAggregatedPrices: (
+            symbols: string[]
+          ) => Promise<Array<{ symbol: string; price: number }>>;
+        };
+      }) => AutomationRuntime;
+    };
+
+    const isMainnet = config.stellar.network === 'mainnet';
+    let oracle:
+      | {
+          getAggregatedPrices: (
+            symbols: string[]
+          ) => Promise<Array<{ symbol: string; price: number }>>;
+        }
+      | undefined;
+
+    try {
+      const aggregator = await createDefaultPriceAggregator();
+      oracle = {
+        getAggregatedPrices: async (symbols: string[]) =>
+          Promise.all(
+            symbols.map(async symbol => {
+              const snapshot = await aggregator.getAggregatedPrice(symbol);
+              return { symbol, price: snapshot.price };
+            })
+          ),
+      };
+    } catch (error) {
+      console.warn(
+        '[automation-handler] price oracle unavailable; price triggers will not fire',
+        error
+      );
+    }
+
+    return new AutomationService({
+      network: {
+        type: isMainnet ? 'PUBLIC' : 'TESTNET',
+        horizonUrl: config.stellar.horizonUrl,
+        networkPassphrase: isMainnet
+          ? 'Public Global Stellar Network ; September 2015'
+          : 'Test SDF Network ; September 2015',
+      },
+      sourceSecret: process.env.AUTOMATION_SOURCE_SECRET || '',
+      oracle,
+    });
   }
 
   /**
@@ -625,7 +811,7 @@ export class AutomationHandler {
     const oneHourAgo = Date.now() - 3600000;
     
     for (const [automationId, automation] of this.activeAutomations.entries()) {
-      if (automation.lastActivity < oneHourAgo) {
+      if (automation.lastActivity !== undefined && automation.lastActivity < oneHourAgo) {
         this.activeAutomations.delete(automationId);
       }
     }
@@ -674,10 +860,18 @@ export class AutomationHandler {
    * Cleanup automation handler
    */
   public cleanup(): void {
-    // Unsubscribe from Supabase real-time
+    this.stopped = true;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+
     this.supabase.removeAllChannels();
-    
-    // Clear local data
+
     this.automationSubscriptions.clear();
     this.activeAutomations.clear();
   }

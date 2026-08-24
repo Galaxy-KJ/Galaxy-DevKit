@@ -9,7 +9,12 @@
     "skipLibCheck": true,
     "declaration": false,
     "outDir": "./dist-test",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@galaxy-kj/core-oracles": ["../oracles/src/index.ts"],
+      "@galaxy-kj/core-stellar-sdk": ["../stellar-sdk/src/index.ts"],
+      "@galaxy-kj/core-stellar-sdk/*": ["../stellar-sdk/src/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
