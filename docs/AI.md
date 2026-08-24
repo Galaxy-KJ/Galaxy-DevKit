@@ -1085,7 +1085,9 @@ Usage notes:
 ### Smart Contracts
 
 - `packages/contracts/smart-swap/src/lib.rs` - Smart swap contract
-- `packages/contracts/security-limits/src/lib.rs` - Security limits contract
+- `packages/contracts/security-limits/` - Risk-management contract. Per-owner persistent keys (`DataKey::Limits(Address)`, `Profile(Address)`, `Usage(Address, Symbol)`). Instance storage holds only admin, enforcer, and id counters. Mutating config requires `owner.require_auth()`. `record_transaction` requires the enforcer set at `initialize`. Typed errors live in `SecurityLimitsError`. Window reset is persisted only in `record_transaction`; `check_transaction_allowed` is read-only and returns `CheckResult`. Events use topics `(name, owner, asset)`.
+
+**Pattern for new Soroban contracts:** put per-user state in persistent storage keyed by `Address`, never in a global instance `Map`. Call `require_auth` on the address that owns the state. Return `Result<T, #[contracterror]>` instead of `panic!("Not authorized")`. Extend TTL on every persistent read and write.
 
 ### CLI
 

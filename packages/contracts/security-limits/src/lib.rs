@@ -1,103 +1,207 @@
-//! Security Limits Contract for Galaxy DevKit
-//! 
-//! This contract implements security limits and risk management
-//! for automated trading operations in the Stellar ecosystem.
+//! Security Limits contract for Galaxy DevKit.
+//!
+//! Per-owner spending limits and risk profiles for automated trading.
+//! Mutating entry points require host authorization. Per-user state lives in
+//! persistent storage so one account's reads never deserialize another.
 
 #![no_std]
 
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, vec, Address, BytesN, Env, Map, Symbol,
-    Vec, String as SorobanString,
+mod events;
+mod storage;
+mod types;
+
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, Symbol, Vec};
+
+pub use types::{
+    CheckResult, DataKey, LimitType, RiskLevel, RiskProfile, SecurityLimit, SecurityLimitsError,
+    Usage, DAILY_WINDOW_SECS,
 };
 
-/// Contract type definitions
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SecurityLimit {
-    pub id: u64,
-    pub owner: Address,
-    pub limit_type: LimitType,
-    pub asset: Symbol,
-    pub max_amount: u64,
-    pub time_window: u64,
-    pub current_usage: u64,
-    pub last_reset: u64,
-    pub is_active: bool,
-    pub created_at: u64,
-}
+use storage::{
+    bump_instance, daily_volume_asset, effective_usage, get_enforcer, load_limits, load_profile,
+    load_usage, require_init, save_limits, save_profile, save_usage, take_next_limit_id,
+    take_next_tx_id,
+};
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LimitType {
-    Daily,
-    Weekly,
-    Monthly,
-    PerTransaction,
-    PerHour,
-    Custom(u64),
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TransactionRecord {
-    pub id: u64,
-    pub owner: Address,
-    pub asset: Symbol,
-    pub amount: u64,
-    pub timestamp: u64,
-    pub transaction_hash: BytesN<32>,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RiskProfile {
-    pub owner: Address,
-    pub risk_level: RiskLevel,
-    pub max_daily_volume: u64,
-    pub max_single_transaction: u64,
-    pub allowed_assets: Vec<Symbol>,
-    pub blacklisted_assets: Vec<Symbol>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Restricted,
-}
-
-/// Contract storage keys
-const SECURITY_LIMITS: Symbol = symbol_short!("SECLIMITS");
-const TRANSACTION_RECORDS: Symbol = symbol_short!("TXRECORDS");
-const RISK_PROFILES: Symbol = symbol_short!("RISKPROFS");
-const NEXT_LIMIT_ID: Symbol = symbol_short!("NEXTLIMIT");
-const NEXT_TX_ID: Symbol = symbol_short!("NEXTTXID");
-
-// Daily/weekly limits get checked on every guarded transaction, so a
-// week of slack comfortably covers even low-traffic accounts.
-const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
-const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
-
-/// Security Limits Contract
 #[contract]
 pub struct SecurityLimitsContract;
 
-/// Contract implementation
-#[contractimpl]
-impl SecurityLimitsContract {
-    /// Initialize the contract
-    pub fn initialize(env: &Env) {
-        let storage = env.storage().instance();
-        storage.set(&NEXT_LIMIT_ID, &1u64);
-        storage.set(&NEXT_TX_ID, &1u64);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+fn require_owner_auth(owner: &Address) {
+    owner.require_auth();
+}
+
+/// Recording is gated by the stored enforcer (automation engine).
+/// Pass the owner as `enforcer` at `initialize` to let the owner self-record.
+fn require_enforcer_auth(env: &Env) -> Address {
+    let enforcer = get_enforcer(env);
+    enforcer.require_auth();
+    enforcer
+}
+
+fn asset_allowed(profile: &RiskProfile, asset: &Symbol) -> bool {
+    for blacklisted in profile.blacklisted_assets.iter() {
+        if blacklisted == *asset {
+            return false;
+        }
+    }
+    if profile.allowed_assets.len() > 0 {
+        for allowed in profile.allowed_assets.iter() {
+            if allowed == *asset {
+                return true;
+            }
+        }
+        return false;
+    }
+    true
+}
+
+fn window_for_limit(limit: &SecurityLimit) -> u64 {
+    match limit.limit_type {
+        LimitType::PerTransaction => 0,
+        _ => limit.time_window,
+    }
+}
+
+fn evaluate_limits(
+    env: &Env,
+    owner: &Address,
+    asset: &Symbol,
+    amount: u64,
+) -> CheckResult {
+    if amount == 0 {
+        return CheckResult::denied(SecurityLimitsError::InvalidAmount);
     }
 
-    /// Create a new security limit
+    if let Some(profile) = load_profile(env, owner) {
+        if !asset_allowed(&profile, asset) {
+            return CheckResult::denied(SecurityLimitsError::AssetNotAllowed);
+        }
+        if amount > profile.max_single_transaction {
+            return CheckResult::denied(SecurityLimitsError::LimitExceeded);
+        }
+
+        let now = env.ledger().timestamp();
+        let daily_asset = daily_volume_asset(env);
+        let usage = load_usage(env, owner, &daily_asset);
+        let (current, _) =
+            effective_usage(usage.amount, usage.last_reset, DAILY_WINDOW_SECS, now);
+        match current.checked_add(amount) {
+            Some(projected) if projected > profile.max_daily_volume => {
+                return CheckResult::denied(SecurityLimitsError::LimitExceeded);
+            }
+            None => return CheckResult::denied(SecurityLimitsError::Overflow),
+            _ => {}
+        }
+    }
+
+    let limits = load_limits(env, owner);
+    let now = env.ledger().timestamp();
+    for (_, limit) in limits.iter() {
+        if !limit.is_active || limit.asset != *asset {
+            continue;
+        }
+        if matches!(limit.limit_type, LimitType::PerTransaction) {
+            if amount > limit.max_amount {
+                return CheckResult::denied(SecurityLimitsError::LimitExceeded);
+            }
+            continue;
+        }
+        let window = window_for_limit(&limit);
+        let (current, _) = effective_usage(limit.current_usage, limit.last_reset, window, now);
+        match current.checked_add(amount) {
+            Some(projected) if projected > limit.max_amount => {
+                return CheckResult::denied(SecurityLimitsError::LimitExceeded);
+            }
+            None => return CheckResult::denied(SecurityLimitsError::Overflow),
+            _ => {}
+        }
+    }
+
+    CheckResult::ok()
+}
+
+fn persist_usage(env: &Env, owner: &Address, asset: &Symbol, amount: u64) -> Result<(), SecurityLimitsError> {
+    let now = env.ledger().timestamp();
+    let mut limits = load_limits(env, owner);
+    let mut changed = false;
+
+    // Map::keys then get to mutate; iterate a snapshot of ids.
+    let ids: Vec<u64> = limits.keys();
+    for id in ids.iter() {
+        let mut limit = match limits.get(id) {
+            Some(l) => l,
+            None => continue,
+        };
+        if !limit.is_active || limit.asset != *asset {
+            continue;
+        }
+        if matches!(limit.limit_type, LimitType::PerTransaction) {
+            continue;
+        }
+        let window = window_for_limit(&limit);
+        let (current, reset_at) =
+            effective_usage(limit.current_usage, limit.last_reset, window, now);
+        let next = current
+            .checked_add(amount)
+            .ok_or(SecurityLimitsError::Overflow)?;
+        limit.current_usage = next;
+        limit.last_reset = reset_at;
+        limits.set(id, limit);
+        changed = true;
+    }
+    if changed {
+        save_limits(env, owner, &limits);
+    }
+
+    if load_profile(env, owner).is_some() {
+        let daily_asset = daily_volume_asset(env);
+        let usage = load_usage(env, owner, &daily_asset);
+        let (current, reset_at) =
+            effective_usage(usage.amount, usage.last_reset, DAILY_WINDOW_SECS, now);
+        let next = current
+            .checked_add(amount)
+            .ok_or(SecurityLimitsError::Overflow)?;
+        save_usage(
+            env,
+            owner,
+            &daily_asset,
+            &Usage {
+                amount: next,
+                last_reset: reset_at,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+#[contractimpl]
+impl SecurityLimitsContract {
+    /// Initialize once with an `admin` and an `enforcer`.
+    ///
+    /// `enforcer` is the address allowed to call [`Self::record_transaction`]
+    /// (the automation engine). Pass the same address as `admin` for a
+    /// single-operator deployment. Re-initialization returns
+    /// [`SecurityLimitsError::AlreadyInitialized`].
+    pub fn initialize(
+        env: &Env,
+        admin: Address,
+        enforcer: Address,
+    ) -> Result<(), SecurityLimitsError> {
+        admin.require_auth();
+        let storage = env.storage().instance();
+        if storage.has(&DataKey::Admin) {
+            return Err(SecurityLimitsError::AlreadyInitialized);
+        }
+        storage.set(&DataKey::Admin, &admin);
+        storage.set(&DataKey::Enforcer, &enforcer);
+        storage.set(&DataKey::NextLimitId, &1u64);
+        storage.set(&DataKey::NextTxId, &1u64);
+        bump_instance(env);
+        Ok(())
+    }
+
+    /// Create a new limit for `owner`. Requires `owner` authorization.
     pub fn create_security_limit(
         env: &Env,
         owner: Address,
@@ -105,125 +209,101 @@ impl SecurityLimitsContract {
         asset: Symbol,
         max_amount: u64,
         time_window: u64,
-    ) -> u64 {
-        let storage = env.storage().instance();
-        let mut next_id: u64 = storage.get(&NEXT_LIMIT_ID).unwrap_or(1);
-        
+    ) -> Result<u64, SecurityLimitsError> {
+        require_init(env);
+        require_owner_auth(&owner);
+        if max_amount == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
+        }
+        if !matches!(limit_type, LimitType::PerTransaction) && time_window == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
+        }
+
+        let id = take_next_limit_id(env);
+        let now = env.ledger().timestamp();
         let limit = SecurityLimit {
-            id: next_id,
+            id,
             owner: owner.clone(),
             limit_type,
-            asset,
+            asset: asset.clone(),
             max_amount,
             time_window,
             current_usage: 0,
-            last_reset: env.ledger().timestamp(),
+            last_reset: now,
             is_active: true,
-            created_at: env.ledger().timestamp(),
+            created_at: now,
         };
 
-        // Store the limit
-        let mut limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        limits.set(next_id, limit);
-        storage.set(&SECURITY_LIMITS, &limits);
-        
-        // Increment next ID
-        next_id += 1;
-        storage.set(&NEXT_LIMIT_ID, &next_id);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        next_id - 1
+        let mut limits = load_limits(env, &owner);
+        limits.set(id, limit);
+        save_limits(env, &owner, &limits);
+        events::limit_created(env, &owner, &asset, id);
+        Ok(id)
     }
 
-    /// Check if a transaction is allowed within security limits
+    /// Read-only check. Never writes. Consults the risk profile and every
+    /// active limit for `(owner, asset)`.
     pub fn check_transaction_allowed(
         env: &Env,
         owner: Address,
         asset: Symbol,
         amount: u64,
-    ) -> bool {
-        let storage = env.storage().instance();
-        let limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        let current_time = env.ledger().timestamp();
-
-        for (_, limit) in limits.iter() {
-            if limit.owner == owner && limit.asset == asset && limit.is_active {
-                // Check if limit applies to this time window
-                if Self::is_limit_applicable(&limit, current_time) {
-                    // Reset usage if time window has passed
-                    let mut updated_limit = limit.clone();
-                    if current_time - limit.last_reset > limit.time_window {
-                        updated_limit.current_usage = 0;
-                        updated_limit.last_reset = current_time;
-                    }
-                    
-                    // Check if transaction would exceed limit
-                    if updated_limit.current_usage + amount > limit.max_amount {
-                        return false;
-                    }
-                }
-            }
-        }
-        
-        true
+    ) -> CheckResult {
+        require_init(env);
+        bump_instance(env);
+        evaluate_limits(env, &owner, &asset, amount)
     }
 
-    /// Record a transaction
+    /// Record a filled trade against `owner`'s limits. Requires the stored
+    /// enforcer to authorize. Does not keep an on-chain history vec; emits
+    /// `tx_recorded` instead. When the check fails, emits `limit_breached`
+    /// and returns the typed reason.
     pub fn record_transaction(
         env: &Env,
         owner: Address,
         asset: Symbol,
         amount: u64,
         transaction_hash: BytesN<32>,
-    ) -> u64 {
-        let storage = env.storage().instance();
-        let mut next_tx_id: u64 = storage.get(&NEXT_TX_ID).unwrap_or(1);
-        
-        let record = TransactionRecord {
-            id: next_tx_id,
-            owner: owner.clone(),
-            asset: asset.clone(),
-            amount,
-            timestamp: env.ledger().timestamp(),
-            transaction_hash,
-        };
-
-        // Store the transaction record
-        let mut records: Vec<TransactionRecord> = storage.get(&TRANSACTION_RECORDS).unwrap_or(Vec::new(&env));
-        records.push_back(record.clone());
-        storage.set(&TRANSACTION_RECORDS, &records);
-        
-        // Update security limits usage
-        Self::update_limit_usage(env, &owner, &asset, amount);
-        
-        // Increment next ID
-        next_tx_id += 1;
-        storage.set(&NEXT_TX_ID, &next_tx_id);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        next_tx_id - 1
-    }
-
-    /// Get security limits for an owner
-    pub fn get_security_limits(env: &Env, owner: Address) -> Vec<SecurityLimit> {
-        let storage = env.storage().instance();
-        let limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        let mut owner_limits = Vec::new(&env);
-        
-        for (_, limit) in limits.iter() {
-            if limit.owner == owner {
-                owner_limits.push_back(limit);
-            }
+    ) -> Result<u64, SecurityLimitsError> {
+        require_init(env);
+        require_enforcer_auth(env);
+        if amount == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
         }
-        
-        owner_limits
+
+        let check = evaluate_limits(env, &owner, &asset, amount);
+        if !check.allowed {
+            let reason = check.reason.unwrap_or(SecurityLimitsError::LimitExceeded as u32);
+            events::limit_breached(env, &owner, &asset, reason, amount);
+            return Err(match reason {
+                3 => SecurityLimitsError::LimitExceeded,
+                4 => SecurityLimitsError::AssetNotAllowed,
+                6 => SecurityLimitsError::InvalidAmount,
+                7 => SecurityLimitsError::Overflow,
+                _ => SecurityLimitsError::LimitExceeded,
+            });
+        }
+
+        persist_usage(env, &owner, &asset, amount)?;
+        let tx_id = take_next_tx_id(env);
+        events::tx_recorded(env, &owner, &asset, amount, &transaction_hash, tx_id);
+        Ok(tx_id)
     }
 
-    /// Update a security limit
+    /// Limits of a single owner. Does not scan other accounts.
+    pub fn get_security_limits(env: &Env, owner: Address) -> Vec<SecurityLimit> {
+        require_init(env);
+        bump_instance(env);
+        let limits = load_limits(env, &owner);
+        let mut out = Vec::new(env);
+        for (_, limit) in limits.iter() {
+            out.push_back(limit);
+        }
+        out
+    }
+
+    /// Update an existing limit. Requires `owner` authorization and that the
+    /// limit lives in that owner's map.
     pub fn update_security_limit(
         env: &Env,
         limit_id: u64,
@@ -231,46 +311,50 @@ impl SecurityLimitsContract {
         max_amount: u64,
         time_window: u64,
         is_active: bool,
-    ) {
-        let storage = env.storage().instance();
-        let mut limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        
-        let mut limit = limits.get(limit_id).unwrap();
-        
-        // Check ownership
-        if limit.owner != owner {
-            panic!("Not authorized");
+    ) -> Result<(), SecurityLimitsError> {
+        require_init(env);
+        require_owner_auth(&owner);
+        if max_amount == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
         }
-        
-        // Update limit
+
+        let mut limits = load_limits(env, &owner);
+        let mut limit = limits
+            .get(limit_id)
+            .ok_or(SecurityLimitsError::LimitNotFound)?;
+        if !matches!(limit.limit_type, LimitType::PerTransaction) && time_window == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
+        }
         limit.max_amount = max_amount;
         limit.time_window = time_window;
         limit.is_active = is_active;
-        
+        let asset = limit.asset.clone();
         limits.set(limit_id, limit);
-        storage.set(&SECURITY_LIMITS, &limits);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        save_limits(env, &owner, &limits);
+        events::limit_updated(env, &owner, &asset, limit_id);
+        Ok(())
     }
 
-    /// Delete a security limit
-    pub fn delete_security_limit(env: &Env, limit_id: u64, owner: Address) {
-        let storage = env.storage().instance();
-        let mut limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        
-        let limit = limits.get(limit_id).unwrap();
-        
-        // Check ownership
-        if limit.owner != owner {
-            panic!("Not authorized");
-        }
-        
-        // Remove limit
+    /// Delete a limit. Requires `owner` authorization.
+    pub fn delete_security_limit(
+        env: &Env,
+        limit_id: u64,
+        owner: Address,
+    ) -> Result<(), SecurityLimitsError> {
+        require_init(env);
+        require_owner_auth(&owner);
+        let mut limits = load_limits(env, &owner);
+        let limit = limits
+            .get(limit_id)
+            .ok_or(SecurityLimitsError::LimitNotFound)?;
+        let asset = limit.asset.clone();
         limits.remove(limit_id);
-        storage.set(&SECURITY_LIMITS, &limits);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        save_limits(env, &owner, &limits);
+        events::limit_deleted(env, &owner, &asset, limit_id);
+        Ok(())
     }
 
-    /// Create or update risk profile
+    /// Create or replace the owner's risk profile. Requires `owner` authorization.
     pub fn set_risk_profile(
         env: &Env,
         owner: Address,
@@ -279,10 +363,17 @@ impl SecurityLimitsContract {
         max_single_transaction: u64,
         allowed_assets: Vec<Symbol>,
         blacklisted_assets: Vec<Symbol>,
-    ) {
-        let storage = env.storage().instance();
-        let mut profiles: Map<Address, RiskProfile> = storage.get(&RISK_PROFILES).unwrap_or(Map::new(&env));
-        
+    ) -> Result<(), SecurityLimitsError> {
+        require_init(env);
+        require_owner_auth(&owner);
+        if max_daily_volume == 0 || max_single_transaction == 0 {
+            return Err(SecurityLimitsError::InvalidAmount);
+        }
+
+        let now = env.ledger().timestamp();
+        let created_at = load_profile(env, &owner)
+            .map(|p| p.created_at)
+            .unwrap_or(now);
         let profile = RiskProfile {
             owner: owner.clone(),
             risk_level,
@@ -290,75 +381,41 @@ impl SecurityLimitsContract {
             max_single_transaction,
             allowed_assets,
             blacklisted_assets,
-            created_at: profiles.get(owner.clone()).map(|p| p.created_at).unwrap_or(env.ledger().timestamp()),
-            updated_at: env.ledger().timestamp(),
+            created_at,
+            updated_at: now,
         };
-        
-        profiles.set(owner, profile);
-        storage.set(&RISK_PROFILES, &profiles);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        save_profile(env, &owner, &profile);
+        events::profile_set(env, &owner);
+        Ok(())
     }
 
-    /// Get risk profile for an owner
     pub fn get_risk_profile(env: &Env, owner: Address) -> Option<RiskProfile> {
-        let storage = env.storage().instance();
-        let profiles: Map<Address, RiskProfile> = storage.get(&RISK_PROFILES).unwrap_or(Map::new(&env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-        profiles.get(owner)
+        require_init(env);
+        bump_instance(env);
+        load_profile(env, &owner)
     }
 
-    /// Check if asset is allowed for owner
     pub fn is_asset_allowed(env: &Env, owner: Address, asset: Symbol) -> bool {
-        if let Some(profile) = Self::get_risk_profile(env, owner) {
-            // Check if asset is blacklisted
-            for blacklisted_asset in profile.blacklisted_assets.iter() {
-                if blacklisted_asset == asset {
-                    return false;
-                }
-            }
-            
-            // Check if asset is in allowed list (if allowed list is not empty)
-            if profile.allowed_assets.len() > 0 {
-                for allowed_asset in profile.allowed_assets.iter() {
-                    if allowed_asset == asset {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        }
-        
-        true // Default to allowed if no profile exists
-    }
-
-    /// Helper function to check if limit is applicable
-    fn is_limit_applicable(limit: &SecurityLimit, current_time: u64) -> bool {
-        match limit.limit_type {
-            LimitType::Daily => current_time - limit.last_reset < 86400, // 24 hours
-            LimitType::Weekly => current_time - limit.last_reset < 604800, // 7 days
-            LimitType::Monthly => current_time - limit.last_reset < 2592000, // 30 days
-            LimitType::PerTransaction => true,
-            LimitType::PerHour => current_time - limit.last_reset < 3600, // 1 hour
-            LimitType::Custom(window) => current_time - limit.last_reset < window,
+        require_init(env);
+        bump_instance(env);
+        match load_profile(env, &owner) {
+            Some(profile) => asset_allowed(&profile, &asset),
+            None => true,
         }
     }
 
-    /// Helper function to update limit usage
-    fn update_limit_usage(env: &Env, owner: &Address, asset: &Symbol, amount: u64) {
-        let storage = env.storage().instance();
-        let mut limits: Map<u64, SecurityLimit> = storage.get(&SECURITY_LIMITS).unwrap_or(Map::new(&env));
-        
-        for (id, mut limit) in limits.iter() {
-            if limit.owner == *owner && limit.asset == *asset && limit.is_active {
-                limit.current_usage += amount;
-                limits.set(id, limit);
-            }
-        }
-        
-        storage.set(&SECURITY_LIMITS, &limits);
+    pub fn get_admin(env: &Env) -> Address {
+        require_init(env);
+        bump_instance(env);
+        env.storage().instance().get(&DataKey::Admin).unwrap()
+    }
+
+    pub fn get_enforcer(env: &Env) -> Address {
+        require_init(env);
+        bump_instance(env);
+        get_enforcer(env)
     }
 }
 
 #[cfg(test)]
 mod test;
-
