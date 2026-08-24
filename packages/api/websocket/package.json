@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@galaxy-kj/core-oracles": "*",
+    "@galaxy-kj/core-automation": "*",
     "@supabase/supabase-js": "^2.38.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",

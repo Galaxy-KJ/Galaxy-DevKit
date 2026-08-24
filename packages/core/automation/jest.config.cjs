@@ -5,10 +5,12 @@ module.exports = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: './tsconfig.test.json',
+      diagnostics: false,
     }],
   },
   moduleNameMapper: {
     '^@galaxy-kj/core-oracles$': '<rootDir>/../oracles/src/index.ts',
+    '^@galaxy-kj/core-stellar-sdk$': '<rootDir>/../stellar-sdk/src/index.ts',
     '^@galaxy-kj/core-stellar-sdk/soroban$': '<rootDir>/../stellar-sdk/src/soroban/index.ts',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
