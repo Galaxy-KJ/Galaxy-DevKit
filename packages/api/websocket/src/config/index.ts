@@ -51,6 +51,11 @@ export interface WebSocketConfig {
     /** Whether credentials are allowed */
     credentials: boolean;
   };
+
+  /** Optional shared coordination store. Local development falls back to in-memory Socket.IO. */
+  redis: {
+    url?: string;
+  };
   
   /** Connection configuration */
   connection: {
@@ -141,6 +146,9 @@ function loadConfig(): WebSocketConfig {
     cors: {
       allowedOrigins,
       credentials: corsCredentials
+    },
+    redis: {
+      url: process.env.REDIS_URL || undefined
     },
     connection: {
       timeout: connectionTimeout,
