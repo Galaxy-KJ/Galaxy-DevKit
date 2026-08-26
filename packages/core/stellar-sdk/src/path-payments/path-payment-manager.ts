@@ -133,7 +133,7 @@ export class PathPaymentManager {
     sourceAccountId: string
   ): Promise<SwapResult> {
     const paths = params.customPath
-      ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
+      ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
         sourceAsset: params.sendAsset,
         destAsset: params.destAsset,
@@ -210,7 +210,7 @@ export class PathPaymentManager {
    */
   async estimateSwap(params: SwapParams): Promise<SwapEstimate> {
     const paths = params.customPath
-      ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
+      ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
         sourceAsset: params.sendAsset,
         destAsset: params.destAsset,
@@ -445,6 +445,29 @@ export class PathPaymentManager {
     });
   }
 
+  private async resolveCustomPath(params: SwapParams): Promise<PaymentPath> {
+    const paths = await this.findPaths({
+      sourceAsset: params.sendAsset,
+      destAsset: params.destAsset,
+      amount: params.amount,
+      type: params.type,
+    });
+    const requested = params.customPath ?? [];
+    const match = paths.find((candidate) => candidate.path.length === requested.length &&
+      candidate.path.every((asset, index) => asset.equals(requested[index])));
+    if (!match || !this.hasUsableQuote(match, params.type)) {
+      throw new Error('Unable to obtain a safe Horizon quote for the custom payment path');
+    }
+    return match;
+  }
+
+  private hasUsableQuote(path: PaymentPath, type: SwapType): boolean {
+    const counterAmount = type === 'strict_send' ? path.destination_amount : path.source_amount;
+    return Number.isFinite(Number(counterAmount)) && new BigNumber(counterAmount).isGreaterThan(0) &&
+      Number.isFinite(Number(path.price)) && new BigNumber(path.price).isGreaterThan(0) &&
+      Number.isFinite(Number(path.priceImpact));
+  }
+
   private buildPathFromCustom(
     sendAsset: Asset,
     destAsset: Asset,
@@ -505,6 +528,10 @@ export class PathPaymentManager {
 
   private validateSlippageProtection(params: SwapParams, estimate: SwapEstimate): void {
     const maxSlippage = params.maxSlippage ?? 1;
+    const requiredAmount = params.type === 'strict_send' ? estimate.minimumReceived : estimate.maximumCost;
+    if (!requiredAmount || !Number.isFinite(Number(requiredAmount)) || new BigNumber(requiredAmount).isLessThanOrEqualTo(0)) {
+      throw new Error('Slippage protection: quote has no usable counter-amount');
+    }
     if (params.minDestinationAmount && estimate.minimumReceived) {
       if (new BigNumber(estimate.minimumReceived).isLessThan(params.minDestinationAmount)) {
         throw new Error(`Slippage protection: minimum received ${estimate.minimumReceived} is below required ${params.minDestinationAmount}`);
