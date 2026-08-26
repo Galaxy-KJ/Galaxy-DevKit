@@ -282,8 +282,8 @@ describe('DexAggregator (services/dex-aggregator.ts)', () => {
 
       expect(factory.createProtocol).toHaveBeenCalledTimes(1);
       const cfg = factory.createProtocol.mock.calls[0][0];
-      expect(cfg.protocolId).toBe('sdex');
-      expect(cfg.name).toBe('Stellar DEX');
+      expect(cfg.protocolId).toBe('aquarius');
+      expect(cfg.name).toBe('Aquarius');
     });
 
     it('dispatches a split with Aquarius + Soroswap and applies correct venue configs', async () => {
@@ -307,7 +307,7 @@ describe('DexAggregator (services/dex-aggregator.ts)', () => {
 
       expect(proto.swap).toHaveBeenCalledTimes(2);
       const venueConfigs = factory.createProtocol.mock.calls.map((c) => c[0].protocolId);
-      expect(venueConfigs).toEqual(['soroswap', 'sdex']);
+      expect(venueConfigs).toEqual(['soroswap', 'aquarius']);
     });
   });
 

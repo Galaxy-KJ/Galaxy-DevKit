@@ -42,6 +42,7 @@ export type {
 export * from './protocols/blend/index.js';
 export * from './protocols/soroswap/index.js';
 export * from './protocols/sdex/index.js';
+export * from './protocols/aquarius/index.js';
 
 // Services
 export { ProtocolFactory, getProtocolFactory } from './services/protocol-factory.js';
