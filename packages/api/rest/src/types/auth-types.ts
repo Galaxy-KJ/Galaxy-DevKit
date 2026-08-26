@@ -87,6 +87,7 @@ export interface ApiKey {
   rateLimit: number;
   lastUsedAt?: Date;
   expiresAt?: Date;
+  revokedAt?: Date;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -280,4 +281,3 @@ export interface AuthenticatedRequest extends Express.Request {
   permissions?: string[];
   session?: Session;
 }
-
