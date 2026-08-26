@@ -58,6 +58,8 @@ import {
  * @extends BaseProtocol
  */
 export class SdexProtocol extends BaseProtocol {
+  private static readonly STATS_CACHE_TTL_MS = 30_000;
+  private statsCache?: { value: ProtocolStats; expiresAt: number };
   /**
    * @param config - Protocol configuration. `contractAddresses` may be empty
    *   because SDEX is a native Stellar feature — no smart-contract addresses
@@ -98,14 +100,51 @@ export class SdexProtocol extends BaseProtocol {
 
   public async getStats(): Promise<ProtocolStats> {
     this.ensureInitialized();
-    // SDEX stats are network-wide; surface placeholder values.
-    return {
-      totalSupply: '0',
-      totalBorrow: '0',
-      tvl: '0',
-      utilizationRate: 0,
-      timestamp: new Date(),
-    };
+    if (this.statsCache && Date.now() < this.statsCache.expiresAt) {
+      return this.statsCache.value;
+    }
+
+    try {
+      const records = await this.fetchAllLiquidityPools();
+      const depth = records.reduce((total, pool) => {
+        const reserves = Array.isArray(pool.reserves) ? pool.reserves : [];
+        return total.plus(reserves.reduce(
+          (sum, reserve) => sum.plus(String(reserve.amount ?? '0')),
+          new BigNumber(0),
+        ));
+      }, new BigNumber(0));
+
+      const value: ProtocolStats = {
+        // Horizon exposes reserve amounts, not a universal USD oracle. Report
+        // aggregate reserve depth honestly rather than returning fake zeros.
+        totalSupply: depth.toFixed(7),
+        tvl: depth.toFixed(7),
+        // SDEX has no lending market by definition.
+        totalBorrow: '0',
+        utilizationRate: 0,
+        timestamp: new Date(),
+      };
+      this.statsCache = { value, expiresAt: Date.now() + SdexProtocol.STATS_CACHE_TTL_MS };
+      return value;
+    } catch (error) {
+      this.handleError(error, 'getStats');
+    }
+  }
+
+  private async fetchAllLiquidityPools(): Promise<Array<{ reserves?: Array<{ amount?: string }> }>> {
+    const records: Array<{ reserves?: Array<{ amount?: string }> }> = [];
+    let nextUrl: string | undefined = `${this.config.network.horizonUrl.replace(/\/$/, '')}/liquidity_pools?limit=200`;
+    while (nextUrl) {
+      const response = await fetch(nextUrl);
+      if (!response.ok) throw new Error(`Horizon liquidity_pools returned ${response.status}`);
+      const page = await response.json() as {
+        _embedded?: { records?: Array<{ reserves?: Array<{ amount?: string }> }> };
+        _links?: { next?: { href?: string } };
+      };
+      records.push(...(page._embedded?.records ?? []));
+      nextUrl = page._links?.next?.href;
+    }
+    return records;
   }
 
   // ─── Unsupported lending operations ───────────────────────────────────────
