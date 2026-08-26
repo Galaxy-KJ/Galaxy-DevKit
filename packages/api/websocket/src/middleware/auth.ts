@@ -98,6 +98,12 @@ let supabaseClient: SupabaseClient | null = null;
  */
 let supabaseAdminClient: SupabaseClient | null = null;
 
+const OWNERSHIP_CACHE_TTL_MS = 30_000;
+const OWNERSHIP_CACHE_MAX_ENTRIES = 100;
+type OwnershipKind = 'wallet' | 'automation';
+type OwnershipCacheEntry = { allowed: boolean; expiresAt: number };
+const ownershipCache = new WeakMap<ExtendedSocket, Map<string, OwnershipCacheEntry>>();
+
 /**
  * Initialize Supabase client
  */
@@ -404,7 +410,7 @@ export function requireAuth(
  * @param roomName - Room name
  * @returns boolean - Whether access is allowed
  */
-export function canAccessRoom(socket: ExtendedSocket, roomName: string): boolean {
+export async function canAccessRoom(socket: ExtendedSocket, roomName: string): Promise<boolean> {
   if (!socket.isAuthenticated || !socket.userId) {
     return false;
   }
@@ -422,18 +428,66 @@ export function canAccessRoom(socket: ExtendedSocket, roomName: string): boolean
   // Wallet-specific rooms (user must own the wallet)
   if (roomName.startsWith('wallet:')) {
     const walletId = roomName.replace('wallet:', '');
-    // TODO: Check if user owns the wallet
-    return true; // Placeholder
+    return verifyResourceOwnership(socket, 'wallet', walletId, 'invisible_wallets');
   }
 
   // Automation-specific rooms (user must own the automation)
   if (roomName.startsWith('automation:')) {
     const automationId = roomName.replace('automation:', '');
-    // TODO: Check if user owns the automation
-    return true; // Placeholder
+    return verifyResourceOwnership(socket, 'automation', automationId, 'automations');
   }
 
   return false;
+}
+
+/**
+ * Resolve ownership from Supabase and cache only the bounded, short-lived
+ * decision for this socket. Any lookup error is deliberately a denial.
+ */
+async function verifyResourceOwnership(
+  socket: ExtendedSocket,
+  kind: OwnershipKind,
+  resourceId: string,
+  table: 'invisible_wallets' | 'automations',
+): Promise<boolean> {
+  const cacheKey = `${kind}:${resourceId}`;
+  const now = Date.now();
+  let cache = ownershipCache.get(socket);
+  const cached = cache?.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.allowed;
+
+  let allowed = false;
+  try {
+    const { data, error } = await initializeSupabaseAdminClient()
+      .from(table)
+      .select('id')
+      .eq('id', resourceId)
+      .eq('user_id', socket.userId!)
+      .maybeSingle();
+    allowed = !error && Boolean(data);
+  } catch {
+    allowed = false;
+  }
+
+  if (!cache) {
+    cache = new Map();
+    ownershipCache.set(socket, cache);
+  }
+  if (cache.size >= OWNERSHIP_CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(cacheKey, { allowed, expiresAt: now + OWNERSHIP_CACHE_TTL_MS });
+
+  if (!allowed) {
+    console.warn(JSON.stringify({
+      event: 'websocket_room_access_denied',
+      userId: socket.userId,
+      room: `${kind}:${resourceId}`,
+      reason: 'ownership_check_failed',
+    }));
+  }
+  return allowed;
 }
 
 /**
