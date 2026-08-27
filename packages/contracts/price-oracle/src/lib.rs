@@ -13,9 +13,9 @@
 //! | `get_*`              | anyone              |
 //!
 //! ## Storage layout
-//! All state lives in **instance storage** (one ledger entry) which is the
-//! cheapest option for frequently-read data.  Each price history vector is
-//! bounded to `TWAP_WINDOW_SIZE` entries so storage growth is constant.
+//! Global configuration lives in instance storage. Each pair's bounded price
+//! history and each pusher authorization live in separate persistent entries,
+//! so updating one pair does not deserialize and rewrite every pair's history.
 //!
 //! ## Precision
 //! Prices are scaled by **1 000 000** (six implied decimal places).
@@ -27,9 +27,9 @@
 
 mod twap;
 mod types;
-pub use types::{OracleError, PriceEntry, PriceResult};
 use twap::{compute_twap, compute_twap_window};
 use types::PriceRingBuffer;
+pub use types::{OracleError, PriceDataKey, PriceEntry, PriceResult};
 
 use soroban_sdk::{
     contract, contractimpl, panic_with_error, symbol_short, Address, Env, Map, Symbol, Vec,
@@ -39,11 +39,11 @@ use soroban_sdk::{
 // Constants
 // ---------------------------------------------------------------------------
 
-/// Symbol keys for instance storage.
+/// Symbol keys for global instance storage.
 const KEY_ADMIN: Symbol = symbol_short!("ADMIN");
 const KEY_PUSHERS: Symbol = symbol_short!("PUSHERS");
-/// `Map<(Symbol, Symbol), PriceRingBuffer>` — rolling TWAP window per pair.
-const KEY_PRICES: Symbol = symbol_short!("PRICES");
+/// Pair keys are retained only to support the `get_all_prices` enumeration API.
+const KEY_PAIRS: Symbol = symbol_short!("PAIRS");
 
 /// Maximum number of historical observations retained per pair.
 /// Older entries are discarded to keep storage bounded.
@@ -69,11 +69,11 @@ pub const WINDOW_5M: u64 = 300;
 pub const WINDOW_15M: u64 = 900;
 pub const WINDOW_1H: u64 = 3600;
 
-/// Instance TTL. ADMIN/PUSHERS/PRICES are read on every call, including by
-/// consumers who never push — reads extend the TTL too so a feed doesn't
-/// archive just because the pusher bot went quiet.
+/// Instance TTL for global configuration and enumeration metadata.
 const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
 const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+const PERSISTENT_TTL_THRESHOLD: u32 = 60_480;
+const PERSISTENT_TTL_EXTEND: u32 = 120_960;
 
 // ---------------------------------------------------------------------------
 // Event topic symbols  (≤ 9 ASCII chars for symbol_short!)
@@ -109,8 +109,8 @@ impl PriceOracleContract {
         storage.set(&KEY_ADMIN, &admin);
         let empty_pushers: Vec<Address> = Vec::new(env);
         storage.set(&KEY_PUSHERS, &empty_pushers);
-        let empty_prices: Map<(Symbol, Symbol), PriceRingBuffer> = Map::new(env);
-        storage.set(&KEY_PRICES, &empty_prices);
+        let empty_pairs: Vec<(Symbol, Symbol)> = Vec::new(env);
+        storage.set(&KEY_PAIRS, &empty_pairs);
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_INIT,), admin);
@@ -162,6 +162,14 @@ impl PriceOracleContract {
         }
         pushers.push_back(pusher.clone());
         storage.set(&KEY_PUSHERS, &pushers);
+        env.storage()
+            .persistent()
+            .set(&PriceDataKey::Pusher(pusher.clone()), &true);
+        env.storage().persistent().extend_ttl(
+            &PriceDataKey::Pusher(pusher),
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_P_ADD,), pusher);
@@ -195,6 +203,8 @@ impl PriceOracleContract {
         if !found {
             panic_with_error!(env, OracleError::PusherNotFound);
         }
+        let pusher_key = PriceDataKey::Pusher(pusher.clone());
+        env.storage().persistent().remove(&pusher_key);
         storage.set(&KEY_PUSHERS, &new_pushers);
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
@@ -232,11 +242,10 @@ impl PriceOracleContract {
         }
 
         let storage = env.storage().instance();
-        let mut prices: Map<(Symbol, Symbol), PriceRingBuffer> =
-            storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
-
-        let key = (base.clone(), quote.clone());
-        let mut buffer: PriceRingBuffer = prices.get(key.clone()).unwrap_or(PriceRingBuffer::new(env));
+        let key = PriceDataKey::Price(base.clone(), quote.clone());
+        let persistent = env.storage().persistent();
+        let mut buffer: PriceRingBuffer = persistent.get(&key).unwrap_or(PriceRingBuffer::new(env));
+        let is_new_pair = !persistent.has(&key);
 
         // O(1) amortized: overwrites the oldest slot in place once full,
         // instead of rebuilding the whole vector on every push past capacity.
@@ -249,8 +258,13 @@ impl PriceOracleContract {
             TWAP_WINDOW_SIZE,
         );
 
-        prices.set(key, buffer);
-        storage.set(&KEY_PRICES, &prices);
+        persistent.set(&key, &buffer);
+        persistent.extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+        if is_new_pair {
+            let mut pairs: Vec<(Symbol, Symbol)> = storage.get(&KEY_PAIRS).unwrap_or(Vec::new(env));
+            pairs.push_back((base.clone(), quote.clone()));
+            storage.set(&KEY_PAIRS, &pairs);
+        }
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         env.events().publish((EVT_PRICE,), (base, quote, price));
@@ -274,13 +288,13 @@ impl PriceOracleContract {
     /// Return the full rolling history (up to `TWAP_WINDOW_SIZE` entries),
     /// oldest-to-newest.
     pub fn get_price_history(env: &Env, base: Symbol, quote: Symbol) -> Vec<PriceEntry> {
-        let storage = env.storage().instance();
-        let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
-            storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-        let key = (base, quote);
-        match prices.get(key) {
-            Some(buffer) => buffer.chronological(env, TWAP_WINDOW_SIZE),
+        let storage = env.storage().persistent();
+        let key = PriceDataKey::Price(base, quote);
+        match storage.get(&key) {
+            Some(buffer) => {
+                storage.extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+                buffer.chronological(env, TWAP_WINDOW_SIZE)
+            }
             None => Vec::new(env),
         }
     }
@@ -404,12 +418,20 @@ impl PriceOracleContract {
     /// [`PriceEntry`].  Pairs that have no data are omitted.
     pub fn get_all_prices(env: &Env) -> Map<(Symbol, Symbol), PriceEntry> {
         let storage = env.storage().instance();
-        let prices: Map<(Symbol, Symbol), PriceRingBuffer> =
-            storage.get(&KEY_PRICES).unwrap_or(Map::new(env));
+        let pairs: Vec<(Symbol, Symbol)> = storage.get(&KEY_PAIRS).unwrap_or(Vec::new(env));
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         let mut latest: Map<(Symbol, Symbol), PriceEntry> = Map::new(env);
-        for (key, buffer) in prices.iter() {
+        for key in pairs.iter() {
+            let storage_key = PriceDataKey::Price(key.0.clone(), key.1.clone());
+            let Some(buffer) = env.storage().persistent().get(&storage_key) else {
+                continue;
+            };
+            env.storage().persistent().extend_ttl(
+                &storage_key,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND,
+            );
             let history = buffer.chronological(env, TWAP_WINDOW_SIZE);
             if !history.is_empty() {
                 let last = history.get(history.len() - 1).unwrap();
@@ -425,16 +447,19 @@ impl PriceOracleContract {
 
     /// Panic with [`OracleError::Unauthorized`] if `caller` is not registered.
     fn assert_is_pusher(env: &Env, caller: &Address) {
-        let pushers: Vec<Address> = env
+        let key = PriceDataKey::Pusher(caller.clone());
+        if env
             .storage()
-            .instance()
-            .get(&KEY_PUSHERS)
-            .unwrap_or(Vec::new(env));
-
-        for pusher in pushers.iter() {
-            if pusher == *caller {
-                return;
-            }
+            .persistent()
+            .get::<_, bool>(&key)
+            .unwrap_or(false)
+        {
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND,
+            );
+            return;
         }
         panic_with_error!(env, OracleError::Unauthorized);
     }

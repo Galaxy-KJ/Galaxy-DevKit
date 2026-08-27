@@ -11,7 +11,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{storage::Instance as _, Address as _, Ledger as _},
+    testutils::{storage::Instance as _, storage::Persistent as _, Address as _, Ledger as _},
     Address, Env, Symbol,
 };
 
@@ -370,7 +370,10 @@ fn test_ring_buffer_wraparound_preserves_chronological_order() {
 
     // Surviving entries must still read oldest-to-newest (pushes 5..14).
     for (idx, i) in (5u32..15u32).enumerate() {
-        assert_eq!(history.get(idx as u32).unwrap().price, 1_000_000 + i as i128);
+        assert_eq!(
+            history.get(idx as u32).unwrap().price,
+            1_000_000 + i as i128
+        );
     }
 }
 
@@ -711,6 +714,32 @@ fn test_push_price_survives_past_initial_threshold() {
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+#[test]
+fn test_pair_history_uses_independent_persistent_entry() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+
+    let key = PriceDataKey::Price(base, quote);
+    let persistent_ttl = env.as_contract(&contract_id, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(persistent_ttl, PERSISTENT_TTL_EXTEND);
+}
+
+#[test]
+fn test_pusher_authorization_uses_independent_persistent_entry() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+
+    let key = PriceDataKey::Pusher(pusher);
+    let persistent_ttl = env.as_contract(&contract_id, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(persistent_ttl, PERSISTENT_TTL_EXTEND);
 }
 
 #[test]
