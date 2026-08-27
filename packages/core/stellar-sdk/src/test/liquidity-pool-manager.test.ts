@@ -74,7 +74,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
     liquidityPoolDeposit: jest.fn((opts) => ({ type: 'liquidityPoolDeposit', ...opts })),
     liquidityPoolWithdraw: jest.fn((opts) => ({ type: 'liquidityPoolWithdraw', ...opts })),
   },
-  TransactionBuilder: jest.fn().mockImplementation((source, opts) => ({
+  TransactionBuilder: jest.fn().mockImplementation(() => ({
     addOperation: jest.fn().mockReturnThis(),
     addMemo: jest.fn().mockReturnThis(),
     setTimeout: jest.fn().mockReturnThis(),

@@ -369,7 +369,7 @@ export class PathPaymentManager {
     if (!response.ok) return [];
     const json = await response.json();
     const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_send'));
+    return records.map((r: any) => this.horizonPathToPaymentPath(r));
   }
 
   private async fetchStrictReceivePaths(
@@ -394,7 +394,7 @@ export class PathPaymentManager {
     if (!response.ok) return [];
     const json = await response.json();
     const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_receive'));
+    return records.map((r: any) => this.horizonPathToPaymentPath(r));
   }
 
   private toHorizonAsset(asset: Asset): { asset_type: string; asset_code?: string; asset_issuer?: string } {
@@ -411,7 +411,7 @@ export class PathPaymentManager {
     return new Asset(rec.asset_code, rec.asset_issuer);
   }
 
-  private horizonPathToPaymentPath(rec: any, type: SwapType): PaymentPath {
+  private horizonPathToPaymentPath(rec: any): PaymentPath {
     const pathRecs = rec.path || [];
     const path = pathRecs.map((p: any) => this.horizonAssetToSdk(typeof p === 'object' ? p : { asset_type: p }));
     const src = rec.source_asset ?? (rec.source_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.source_asset_code, asset_issuer: rec.source_asset_issuer });
@@ -504,7 +504,6 @@ export class PathPaymentManager {
   }
 
   private validateSlippageProtection(params: SwapParams, estimate: SwapEstimate): void {
-    const maxSlippage = params.maxSlippage ?? 1;
     if (params.minDestinationAmount && estimate.minimumReceived) {
       if (new BigNumber(estimate.minimumReceived).isLessThan(params.minDestinationAmount)) {
         throw new Error(`Slippage protection: minimum received ${estimate.minimumReceived} is below required ${params.minDestinationAmount}`);

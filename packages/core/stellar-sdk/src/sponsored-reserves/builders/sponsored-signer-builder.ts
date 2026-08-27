@@ -11,11 +11,10 @@ import {
   Operation,
   TransactionBuilder,
   Horizon,
-  StrKey,
   xdr,
 } from '@stellar/stellar-sdk';
 import { NetworkConfig } from '../../types/stellar-types.js';
-import { SponsorshipResult, SignerEntryConfig } from '../types/sponsored-reserves-types.js';
+import { SponsorshipResult } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,

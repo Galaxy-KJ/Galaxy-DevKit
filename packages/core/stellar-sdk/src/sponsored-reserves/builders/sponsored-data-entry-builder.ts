@@ -14,7 +14,7 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import { NetworkConfig } from '../../types/stellar-types.js';
-import { SponsorshipResult, DataEntryConfig } from '../types/sponsored-reserves-types.js';
+import { SponsorshipResult } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,

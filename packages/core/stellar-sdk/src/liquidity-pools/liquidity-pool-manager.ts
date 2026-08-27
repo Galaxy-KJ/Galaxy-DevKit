@@ -355,7 +355,7 @@ export class LiquidityPoolManager {
               balance: shares,
               percentage,
             });
-          } catch (error) {
+          } catch {
             // Pool might not exist anymore, skip it
             continue;
           }
@@ -525,7 +525,7 @@ export class LiquidityPoolManager {
     try {
       const feeStats = await this.server.feeStats();
       return feeStats.max_fee.mode;
-    } catch (error) {
+    } catch {
       return BASE_FEE;
     }
   }

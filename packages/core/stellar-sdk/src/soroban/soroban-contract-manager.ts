@@ -12,11 +12,8 @@ import {
   xdr,
   rpc as SorobanRpc,
   TransactionBuilder,
-  Keypair,
   Contract,
-  Networks,
   BASE_FEE,
-  ScInt,
   Address,
 } from '@stellar/stellar-sdk';
 import { ScValConverter } from './utils/scval-converter.js';
@@ -29,7 +26,6 @@ import {
   InvocationResult,
   SimulationResult,
   ContractEventDetail,
-  ContractAbi,
   ContractUpgradeParams,
   ContractUpgradeResult,
 } from '../types/contract-types.js';
@@ -54,10 +50,6 @@ export class SorobanContractManager {
     try {
       // Get account information
       const account = await this.server.getAccount(deployer.publicKey());
-
-      // Create contract deployment transaction
-      const contractArgs = salt ? [salt] : [];
-      const contract = new Contract(deployer.publicKey());
 
       const operation = xdr.HostFunction.hostFunctionTypeCreateContract({
         contractIdPreimage:
@@ -268,7 +260,7 @@ export class SorobanContractManager {
    * Read contract state
    */
   async readContractState(params: ContractStateQueryParams): Promise<any> {
-    const { contractId, key, networkPassphrase } = params;
+    const { contractId, key } = params;
 
     try {
       const contract = new Contract(contractId);
@@ -311,8 +303,6 @@ export class SorobanContractManager {
       startLedger,
       endLedger,
       eventTypes,
-      topics,
-      networkPassphrase,
     } = params;
 
     try {
@@ -370,9 +360,6 @@ export class SorobanContractManager {
     try {
       // Get account information
       const account = await this.server.getAccount(admin.publicKey());
-
-      // Create contract instance
-      const contract = new Contract(contractId);
 
       // Create upload operation
       const uploadOp =

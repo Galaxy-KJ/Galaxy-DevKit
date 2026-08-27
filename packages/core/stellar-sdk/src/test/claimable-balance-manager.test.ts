@@ -4,7 +4,7 @@
  */
 
 import { ClaimableBalanceManager } from '../claimable-balances/claimable-balance-manager.js';
-import { Asset, Horizon, Operation, BASE_FEE } from '@stellar/stellar-sdk';
+import { Asset, Horizon } from '@stellar/stellar-sdk';
 import { Wallet } from '../types/stellar-types.js';
 
 // Mock dependencies
@@ -91,7 +91,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
     predicateAnd: jest.fn((preds) => ({ type: 'and', predicates: preds })),
     predicateOr: jest.fn((preds) => ({ type: 'or', predicates: preds })),
   },
-  TransactionBuilder: jest.fn().mockImplementation((source, opts) => ({
+  TransactionBuilder: jest.fn().mockImplementation(() => ({
     addOperation: jest.fn().mockReturnThis(),
     addMemo: jest.fn().mockReturnThis(),
     setTimeout: jest.fn().mockReturnThis(),
