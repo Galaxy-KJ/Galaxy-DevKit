@@ -32,7 +32,7 @@ export class ContractEventMonitor {
    * Subscribe to contract events
    */
   async subscribeToEvents(subscription: EventSubscription): Promise<string> {
-    const { contractId, eventTypes, onEvent, onError, onClose } = subscription;
+    const { contractId, onError } = subscription;
 
     try {
       // Generate unique subscription ID
@@ -72,7 +72,6 @@ export class ContractEventMonitor {
       endLedger,
       eventTypes,
       topics,
-      networkPassphrase,
     } = params;
 
     try {

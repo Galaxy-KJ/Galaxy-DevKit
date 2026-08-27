@@ -6,8 +6,6 @@
  * @since 2024-12-01
  */
 
-import { Keypair, Transaction, Account } from '@stellar/stellar-sdk';
-
 /**
  * Network configuration for Stellar operations
  * @interface NetworkConfig

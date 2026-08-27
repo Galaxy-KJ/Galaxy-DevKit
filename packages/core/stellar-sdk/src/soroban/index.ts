@@ -18,6 +18,7 @@ export { AbiParser } from './utils/abi-parser.js';
 export { ErrorParser, SorobanError } from './utils/error-parser.js';
 export { FunctionSignatureBuilder } from './utils/function-signature-builder.js';
 export { EventDecoder } from './utils/event-decoder.js';
+export { predictContractAddress, normalizeSalt } from './utils/contract-address.js';
 
 // Types
 export type {

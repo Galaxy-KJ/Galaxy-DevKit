@@ -274,7 +274,7 @@ export class StellarService {
     try {
       await this.getAccountInfo(publicKey);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -745,7 +745,7 @@ export class StellarService {
         const feeStats = await this.server.feeStats();
         return feeStats.max_fee.mode;
       });
-    } catch (error) {
+    } catch {
       return BASE_FEE;
     }
   }

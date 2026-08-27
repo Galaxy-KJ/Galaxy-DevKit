@@ -18,7 +18,6 @@ import {
 } from '@stellar/stellar-sdk';
 import { NetworkConfig } from '../../types/stellar-types.js';
 import {
-  ClaimableBalanceSponsorshipConfig,
   SponsorshipResult,
   Claimant,
   ClaimPredicate,
@@ -27,7 +26,6 @@ import {
   validatePublicKey,
   validateSecretKey,
   validateAmount,
-  validateClaimants,
 } from '../utils/sponsorship-validation.js';
 
 /**

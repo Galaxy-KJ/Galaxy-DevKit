@@ -9,6 +9,7 @@
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { SorobanContractManager } from '../soroban-contract-manager.js';
 import { ScValConverter } from '../utils/scval-converter.js';
+import { predictContractAddress } from '../utils/contract-address.js';
 import {
   ContractFactoryConfig,
   ContractDeploymentParams,
@@ -71,20 +72,22 @@ export class ContractFactory {
   }
 
   /**
-   * Get predicted contract address
+   * Get predicted contract address.
+   *
+   * Deterministic: the same `deployer` + `salt` + network passphrase always
+   * returns the same `C...` strkey, matching the contract id a subsequent
+   * deployment with those inputs will produce on-chain (CAP-46). The salt is
+   * required and must normalize to exactly 32 bytes; see
+   * {@link normalizeSalt} for accepted input types.
+   *
+   * @throws {Error} If the salt cannot be normalized to 32 bytes.
    */
-  getPredictedAddress(deployer: Keypair, salt?: string | xdr.ScVal): string {
-    // This is a simplified implementation
-    // In practice, you'd calculate the contract ID using the stellar-sdk utilities
-    const scSalt = salt
-      ? typeof salt === 'string'
-        ? ScValConverter.toScVal(salt)
-        : salt
-      : xdr.ScVal.scvVoid();
-
-    // For now, return a placeholder
-    // The actual implementation would use ContractIdPreimage utilities
-    return `PREDICTED_${deployer.publicKey().substr(0, 8)}_${Date.now()}`;
+  getPredictedAddress(deployer: Keypair, salt: string | Buffer | xdr.ScVal): string {
+    return predictContractAddress(
+      deployer.publicKey(),
+      salt,
+      this.networkPassphrase
+    );
   }
 
   /**

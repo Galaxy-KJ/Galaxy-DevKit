@@ -74,7 +74,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
       ...opts,
     })),
   },
-  TransactionBuilder: jest.fn().mockImplementation((source, opts) => ({
+  TransactionBuilder: jest.fn().mockImplementation(() => ({
     addOperation: jest.fn().mockReturnThis(),
     addMemo: jest.fn().mockReturnThis(),
     setTimeout: jest.fn().mockReturnThis(),
@@ -133,7 +133,7 @@ describe('SponsoredReservesManager', () => {
   describe('beginSponsoringFutureReserves', () => {
     it('should create begin sponsoring operation for valid public key', () => {
       const sponsoredKey = 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
-      const operation = manager.beginSponsoringFutureReserves(sponsoredKey);
+      manager.beginSponsoringFutureReserves(sponsoredKey);
 
       const { Operation } = require('@stellar/stellar-sdk');
       expect(Operation.beginSponsoringFutureReserves).toHaveBeenCalledWith({
@@ -151,7 +151,7 @@ describe('SponsoredReservesManager', () => {
   describe('endSponsoringFutureReserves', () => {
     it('should create end sponsoring operation with sponsored as source', () => {
       const sponsoredKey = 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
-      const operation = manager.endSponsoringFutureReserves(sponsoredKey);
+      manager.endSponsoringFutureReserves(sponsoredKey);
 
       const { Operation } = require('@stellar/stellar-sdk');
       expect(Operation.endSponsoringFutureReserves).toHaveBeenCalledWith({
@@ -461,14 +461,14 @@ describe('SponsoredReservesManager', () => {
 
   describe('buildClaimPredicate', () => {
     it('should build unconditional predicate', () => {
-      const predicate = manager.buildClaimPredicate({ unconditional: true });
+      manager.buildClaimPredicate({ unconditional: true });
 
       const { Claimant } = require('@stellar/stellar-sdk');
       expect(Claimant.predicateUnconditional).toHaveBeenCalled();
     });
 
     it('should build beforeAbsoluteTime predicate', () => {
-      const predicate = manager.buildClaimPredicate({
+      manager.buildClaimPredicate({
         beforeAbsoluteTime: '1704067200'
       });
 
@@ -477,7 +477,7 @@ describe('SponsoredReservesManager', () => {
     });
 
     it('should build AND predicate', () => {
-      const predicate = manager.buildClaimPredicate({
+      manager.buildClaimPredicate({
         and: [
           { unconditional: true },
           { beforeAbsoluteTime: '1704067200' },
@@ -489,7 +489,7 @@ describe('SponsoredReservesManager', () => {
     });
 
     it('should build OR predicate', () => {
-      const predicate = manager.buildClaimPredicate({
+      manager.buildClaimPredicate({
         or: [
           { unconditional: true },
           { beforeAbsoluteTime: '1704067200' },
@@ -501,7 +501,7 @@ describe('SponsoredReservesManager', () => {
     });
 
     it('should build NOT predicate', () => {
-      const predicate = manager.buildClaimPredicate({
+      manager.buildClaimPredicate({
         not: { beforeAbsoluteTime: '1704067200' },
       });
 
