@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Soroban contract types and interfaces
  * @description Type definitions for Soroban contract operations
@@ -107,7 +105,9 @@ export interface SimulationResult {
   memoryBytes: number;
   transactionData: xdr.SorobanTransactionData;
   minResourceFee: string;
-  cost: xdr.Cost;
+  // `xdr.Cost` isn't exported by @stellar/stellar-sdk v14; the RPC's resource
+  // cost shape isn't part of its public types, so this is left unverified.
+  cost: unknown;
 }
 
 export interface ContractEventDetail {

@@ -6,18 +6,13 @@
  * @since 2024-12-01
  */
 
-import {
-  Asset,
-  Operation,
-  TransactionBuilder,
-  Account,
-} from '@stellar/stellar-sdk';
+import { Asset, Operation, Account } from '@stellar/stellar-sdk';
 import {
   TimeLockedBalanceParams,
   VestingScheduleParams,
   EscrowParams,
 } from './types.js';
-import { beforeAbsoluteTime, unconditional, and, or } from './predicate-builder.js';
+import { beforeAbsoluteTime, unconditional, and } from './predicate-builder.js';
 import { toStellarPredicate } from './predicate-builder.js';
 
 /**

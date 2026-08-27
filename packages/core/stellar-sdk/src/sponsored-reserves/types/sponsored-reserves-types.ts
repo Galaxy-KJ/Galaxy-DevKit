@@ -6,8 +6,6 @@
  * @since 2024-12-01
  */
 
-import { Asset, xdr } from '@stellar/stellar-sdk';
-
 /**
  * Types of ledger entries that can be sponsored
  * @type SponsoredEntryType

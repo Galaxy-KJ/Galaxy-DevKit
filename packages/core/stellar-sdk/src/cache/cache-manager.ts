@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { ICache, CacheOptions, CacheStats } from './cache-interface.js';
+import { CacheOptions, CacheStats } from './cache-interface.js';
 import { InMemoryCache } from './in-memory-cache.js';
 
 export interface ChannelConfig {

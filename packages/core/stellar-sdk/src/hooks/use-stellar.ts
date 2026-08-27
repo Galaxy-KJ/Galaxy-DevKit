@@ -21,7 +21,6 @@ import {
 import type {
   CreateClaimableBalanceParams,
   ClaimBalanceParams,
-  QueryClaimableBalancesParams,
   ClaimableBalanceResult,
   ClaimableBalance,
 } from '../claimable-balances/types.js';

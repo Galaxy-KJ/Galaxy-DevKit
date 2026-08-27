@@ -18,14 +18,12 @@ import {
 import { NetworkConfig } from '../../types/stellar-types.js';
 import {
   SponsorshipResult,
-  ClaimableBalanceEntryConfig,
   Claimant,
   ClaimPredicate,
 } from '../types/sponsored-reserves-types.js';
 import {
   validatePublicKey,
   validateSecretKey,
-  validateAssetCode,
   validateAmount,
   validateClaimants,
 } from '../utils/sponsorship-validation.js';

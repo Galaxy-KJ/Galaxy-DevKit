@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Token Contract Wrapper
  * @description Wrapper for Soroban token contracts with common operations
@@ -8,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { Keypair, xdr } from '@stellar/stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 import { SorobanContractManager } from '../soroban-contract-manager.js';
 import { ScValConverter } from '../utils/scval-converter.js';
 import { TokenContractInfo } from '../types/contract-types.js';
@@ -117,7 +115,7 @@ export class TokenContractWrapper {
     expirationLedger?: number
   ): Promise<{ transactionHash: string; ledger: number }> {
     const amountStr = typeof amount === 'number' ? amount.toString() : amount;
-    const args = [owner.publicKey(), spender, amountStr];
+    const args: (string | number)[] = [owner.publicKey(), spender, amountStr];
 
     if (expirationLedger) {
       args.push(expirationLedger);

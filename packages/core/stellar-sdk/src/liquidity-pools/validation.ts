@@ -135,7 +135,7 @@ export function validatePublicKey(publicKey: string): boolean {
   try {
     Keypair.fromPublicKey(publicKey);
     return true;
-  } catch (error) {
+  } catch {
     throw new Error(`Invalid public key: ${publicKey}`);
   }
 }
