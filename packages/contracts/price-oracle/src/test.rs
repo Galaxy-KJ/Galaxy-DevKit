@@ -284,6 +284,26 @@ fn test_price_history_exact_window_size() {
 }
 
 #[test]
+fn test_price_history_isolated_per_pair() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let quote = Symbol::new(&env, "USDC");
+    let xlm = Symbol::new(&env, "XLM");
+    let btc = Symbol::new(&env, "BTC");
+
+    for i in 0..TWAP_WINDOW_SIZE + 5 {
+        env.ledger().with_mut(|li| li.timestamp += 10);
+        client.push_price(&pusher, &xlm, &quote, &(1_000_000 + i as i128));
+    }
+    client.push_price(&pusher, &btc, &quote, &60_000_000_000_i128);
+
+    assert_eq!(client.get_price_history(&xlm, &quote).len(), TWAP_WINDOW_SIZE);
+    assert_eq!(client.get_price_history(&btc, &quote).len(), 1);
+    assert_eq!(client.get_price(&btc, &quote).price, 60_000_000_000_i128);
+}
+
+#[test]
 fn test_twap_between_two_prices() {
     let (env, contract_id, admin, pusher) = setup();
     let client = init_client(&env, &contract_id, &admin);
