@@ -99,7 +99,7 @@ export class RoomManager {
       }
 
       // Check access permissions
-      if (!canAccessRoom(socket, roomName)) {
+      if (!(await canAccessRoom(socket, roomName))) {
         throw new RoomError('Access denied to this room');
       }
 
