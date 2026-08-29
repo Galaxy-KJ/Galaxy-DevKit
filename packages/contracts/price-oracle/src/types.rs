@@ -2,7 +2,7 @@
 //!
 //! All SDK-annotated items live here so that `lib.rs` can stay focused on logic.
 
-use soroban_sdk::{contracterror, contracttype, Address, Env, Vec};
+use soroban_sdk::{contracterror, contracttype, Address, Env, Symbol, Vec};
 
 // ---------------------------------------------------------------------------
 // Error codes
@@ -74,6 +74,15 @@ pub struct PriceResult {
     pub age_seconds: u64,
     /// `true` when `age_seconds` exceeds the requested `max_age` threshold.
     pub is_stale: bool,
+}
+
+/// Persistent keys keep pair histories and pusher authorization independent.
+/// The instance store only contains global configuration and enumeration data.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PriceDataKey {
+    Price(Symbol, Symbol),
+    Pusher(Address),
 }
 
 // ---------------------------------------------------------------------------
