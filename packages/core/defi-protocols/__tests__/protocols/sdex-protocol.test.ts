@@ -173,6 +173,50 @@ describe('SdexProtocol – basics', () => {
     fetchMock.mockRestore();
   });
 
+  it('uses the short-lived stats cache for repeated reads', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ _embedded: { records: [{ reserves: [{ amount: '4' }] }] } }),
+    } as Response);
+
+    await protocol.getStats();
+    await protocol.getStats();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it('follows liquidity-pool pagination and tolerates missing reserve arrays', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          _embedded: { records: [{ reserves: [{ amount: '2' }] }, {}] },
+          _links: { next: { href: 'https://horizon.example/page-2' } },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ _embedded: { records: [{ reserves: [{ amount: '3' }] }] } }),
+      } as Response);
+
+    const stats = await protocol.getStats();
+
+    expect(stats.tvl).toBe('5.0000000');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://horizon.example/page-2');
+    fetchMock.mockRestore();
+  });
+
+  it('propagates a failed liquidity-pool response', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 503,
+    } as Response);
+
+    await expect(protocol.getStats()).rejects.toThrow(/liquidity_pools returned 503/i);
+    fetchMock.mockRestore();
+  });
+
   it('throws when calling methods before initialize()', async () => {
     const uninit = new SdexProtocol(mockConfig);
     await expect(uninit.getSwapQuote(XLM, USDC, '10')).rejects.toThrow(/not initialized/i);
