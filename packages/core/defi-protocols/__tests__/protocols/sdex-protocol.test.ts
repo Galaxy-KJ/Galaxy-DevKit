@@ -154,11 +154,23 @@ describe('SdexProtocol – basics', () => {
     expect(horizonMock.ledgers).toHaveBeenCalledTimes(1);
   });
 
-  it('returns placeholder getStats()', async () => {
+  it('reports aggregate liquidity-pool depth in getStats()', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        _embedded: {
+          records: [
+            { reserves: [{ amount: '12.5000000' }, { amount: '7.5000000' }] },
+          ],
+        },
+      }),
+    } as Response);
+
     const stats = await protocol.getStats();
-    expect(stats.tvl).toBe('0');
-    expect(stats.totalSupply).toBe('0');
+    expect(stats.tvl).toBe('20.0000000');
+    expect(stats.totalSupply).toBe('20.0000000');
     expect(stats.timestamp).toBeInstanceOf(Date);
+    fetchMock.mockRestore();
   });
 
   it('throws when calling methods before initialize()', async () => {
