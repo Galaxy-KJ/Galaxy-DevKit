@@ -137,9 +137,7 @@ export class DexAggregator implements IDexAggregator {
       case 'sdex':
         return { ...this.baseConfig, protocolId: 'sdex', name: 'Stellar DEX' };
       case 'aquarius':
-        // Aquarius AMM orders settle through the Stellar DEX order book,
-        // so execution uses the SDEX path-payment protocol.
-        return { ...this.baseConfig, protocolId: 'sdex', name: 'Stellar DEX' };
+        return { ...this.baseConfig, protocolId: 'aquarius', name: 'Aquarius' };
       case 'soroswap':
       default:
         return { ...this.baseConfig, protocolId: 'soroswap' };
