@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.api_keys (
   rate_limit INTEGER DEFAULT 1000,
   last_used_at TIMESTAMP WITH TIME ZONE,
   expires_at TIMESTAMP WITH TIME ZONE,
+  revoked_at TIMESTAMP WITH TIME ZONE,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -112,4 +113,3 @@ COMMENT ON COLUMN public.api_keys.rate_limit IS 'Maximum requests per minute for
 COMMENT ON COLUMN public.api_sessions.session_token IS 'Unique session token for authentication';
 COMMENT ON COLUMN public.api_sessions.refresh_token IS 'Unique refresh token for session renewal';
 COMMENT ON COLUMN public.api_sessions.device_info IS 'JSON object containing device information';
-

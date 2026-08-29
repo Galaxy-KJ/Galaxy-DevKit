@@ -380,11 +380,22 @@ class RestApiServer {
     // List API keys
     router.get('/', async (req, res, next) => {
       try {
-        // This would require additional service method to list API keys
-        // For now, return a placeholder
-        res.json({
-          message: 'List API keys endpoint - to be implemented',
-        });
+        if (!req.user) return res.status(401).json({ error: { code: 'AUTH_ERROR', message: 'Authentication required', details: {} } });
+        const limit = Number.parseInt(String(req.query.limit || '50'), 10);
+        const offset = Number.parseInt(String(req.query.offset || '0'), 10);
+        const result = await authService.listApiKeys(req.user.userId, Number.isFinite(limit) ? limit : 50, Number.isFinite(offset) ? offset : 0);
+        res.json({ apiKeys: result.keys.map(({ userId: _userId, isActive: _isActive, updatedAt: _updatedAt, metadata: _metadata, ...key }) => key), pagination: { limit: Math.min(Math.max(limit || 50, 1), 100), offset: Math.max(offset || 0, 0), total: result.total } });
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    router.delete('/:id', async (req, res, next) => {
+      try {
+        if (!req.user) return res.status(401).json({ error: { code: 'AUTH_ERROR', message: 'Authentication required', details: {} } });
+        const revoked = await authService.revokeApiKey(req.user.userId, req.params.id);
+        if (!revoked) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API key not found', details: {} } });
+        res.status(204).send();
       } catch (error) {
         next(error);
       }

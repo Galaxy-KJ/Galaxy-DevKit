@@ -215,6 +215,10 @@ export class AuthService {
         }
       }
 
+      if (data.revoked_at) {
+        return { valid: false, error: 'API key revoked' };
+      }
+
       // Update last used timestamp
       await this.supabase
         .from('api_keys')
@@ -233,6 +237,7 @@ export class AuthService {
         rateLimit: data.rate_limit || 1000,
         lastUsedAt: data.last_used_at ? new Date(data.last_used_at) : undefined,
         expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
+        revokedAt: data.revoked_at ? new Date(data.revoked_at) : undefined,
         isActive: data.is_active,
         createdAt: new Date(data.created_at),
         updatedAt: new Date(data.updated_at),
@@ -336,6 +341,43 @@ export class AuthService {
     }
   }
 
+  async listApiKeys(userId: string, limit = 50, offset = 0): Promise<{ keys: ApiKey[]; total: number }> {
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const safeOffset = Math.max(offset, 0);
+    const { data, error, count } = await this.supabase
+      .from('api_keys')
+      .select('id,user_id,key_prefix,name,scopes,rate_limit,last_used_at,expires_at,revoked_at,is_active,created_at,updated_at,metadata', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(safeOffset, safeOffset + safeLimit - 1);
+    if (error) throw new AuthenticationError(AuthErrorCode.INVALID_API_KEY, `Failed to list API keys: ${error.message}`, 500);
+    return {
+      keys: (data || []).map((key) => ({
+        id: key.id, userId: key.user_id, keyPrefix: key.key_prefix, name: key.name,
+        scopes: (key.scopes as string[]) || [], rateLimit: key.rate_limit || 1000,
+        lastUsedAt: key.last_used_at ? new Date(key.last_used_at) : undefined,
+        expiresAt: key.expires_at ? new Date(key.expires_at) : undefined,
+        revokedAt: key.revoked_at ? new Date(key.revoked_at) : undefined,
+        isActive: key.is_active, createdAt: new Date(key.created_at), updatedAt: new Date(key.updated_at),
+        metadata: (key.metadata as Record<string, unknown>) || {},
+      })),
+      total: count || 0,
+    };
+  }
+
+  async revokeApiKey(userId: string, keyId: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('api_keys')
+      .update({ is_active: false, revoked_at: new Date().toISOString() })
+      .eq('id', keyId)
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .select('id')
+      .maybeSingle();
+    if (error) throw new AuthenticationError(AuthErrorCode.INVALID_API_KEY, `Failed to revoke API key: ${error.message}`, 500);
+    return Boolean(data);
+  }
+
   /**
    * Refresh token
    * @param refreshToken - Refresh token
@@ -417,4 +459,3 @@ export class AuthService {
     await this.sessionService.revokeAllUserSessions(userId);
   }
 }
-
