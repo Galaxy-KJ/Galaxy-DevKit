@@ -133,7 +133,7 @@ export class PathPaymentManager {
     sourceAccountId: string
   ): Promise<SwapResult> {
     const paths = params.customPath
-      ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
+      ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
         sourceAsset: params.sendAsset,
         destAsset: params.destAsset,
@@ -210,7 +210,7 @@ export class PathPaymentManager {
    */
   async estimateSwap(params: SwapParams): Promise<SwapEstimate> {
     const paths = params.customPath
-      ? [this.buildPathFromCustom(params.sendAsset, params.destAsset, params.customPath, params.amount, params.type)]
+      ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
         sourceAsset: params.sendAsset,
         destAsset: params.destAsset,
@@ -369,7 +369,7 @@ export class PathPaymentManager {
     if (!response.ok) return [];
     const json = await response.json();
     const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r));
+    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_send'));
   }
 
   private async fetchStrictReceivePaths(
@@ -394,7 +394,7 @@ export class PathPaymentManager {
     if (!response.ok) return [];
     const json = await response.json();
     const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r));
+    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_receive'));
   }
 
   private toHorizonAsset(asset: Asset): { asset_type: string; asset_code?: string; asset_issuer?: string } {
@@ -411,7 +411,7 @@ export class PathPaymentManager {
     return new Asset(rec.asset_code, rec.asset_issuer);
   }
 
-  private horizonPathToPaymentPath(rec: any): PaymentPath {
+  private horizonPathToPaymentPath(rec: any, type: SwapType): PaymentPath {
     const pathRecs = rec.path || [];
     const path = pathRecs.map((p: any) => this.horizonAssetToSdk(typeof p === 'object' ? p : { asset_type: p }));
     const src = rec.source_asset ?? (rec.source_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.source_asset_code, asset_issuer: rec.source_asset_issuer });
@@ -443,6 +443,29 @@ export class PathPaymentManager {
       }
       return new BigNumber(a.source_amount).comparedTo(b.source_amount) as number;
     });
+  }
+
+  private async resolveCustomPath(params: SwapParams): Promise<PaymentPath> {
+    const paths = await this.findPaths({
+      sourceAsset: params.sendAsset,
+      destAsset: params.destAsset,
+      amount: params.amount,
+      type: params.type,
+    });
+    const requested = params.customPath ?? [];
+    const match = paths.find((candidate) => candidate.path.length === requested.length &&
+      candidate.path.every((asset, index) => asset.equals(requested[index])));
+    if (!match || !this.hasUsableQuote(match, params.type)) {
+      throw new Error('Unable to obtain a safe Horizon quote for the custom payment path');
+    }
+    return match;
+  }
+
+  private hasUsableQuote(path: PaymentPath, type: SwapType): boolean {
+    const counterAmount = type === 'strict_send' ? path.destination_amount : path.source_amount;
+    return Number.isFinite(Number(counterAmount)) && new BigNumber(counterAmount).isGreaterThan(0) &&
+      Number.isFinite(Number(path.price)) && new BigNumber(path.price).isGreaterThan(0) &&
+      Number.isFinite(Number(path.priceImpact));
   }
 
   private buildPathFromCustom(
@@ -504,6 +527,11 @@ export class PathPaymentManager {
   }
 
   private validateSlippageProtection(params: SwapParams, estimate: SwapEstimate): void {
+    const maxSlippage = params.maxSlippage ?? 1;
+    const requiredAmount = params.type === 'strict_send' ? estimate.minimumReceived : estimate.maximumCost;
+    if (!requiredAmount || !Number.isFinite(Number(requiredAmount)) || new BigNumber(requiredAmount).isLessThanOrEqualTo(0)) {
+      throw new Error('Slippage protection: quote has no usable counter-amount');
+    }
     if (params.minDestinationAmount && estimate.minimumReceived) {
       if (new BigNumber(estimate.minimumReceived).isLessThan(params.minDestinationAmount)) {
         throw new Error(`Slippage protection: minimum received ${estimate.minimumReceived} is below required ${params.minDestinationAmount}`);
