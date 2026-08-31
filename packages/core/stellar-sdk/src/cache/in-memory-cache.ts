@@ -3,7 +3,7 @@
  * @description Map-based in-memory cache supporting LRU eviction, request deduplication,
  *              cache stampede prevention (promise coalescing), and Stale-While-Revalidate (SWR).
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 1.1.0
  * @since 2026-07-15
  */
 
@@ -149,6 +149,63 @@ export class InMemoryCache implements ICache {
   }
 
   /**
+   * Read-only snapshot of this cache's keys. Safe for callers that need to
+   * scan/categorize entries (e.g. by prefix) without reaching into the
+   * private `cache` Map or seeing entry values/TTL internals.
+   */
+  keys(): string[] {
+    return Array.from(this.cache.keys());
+  }
+
+  /**
+   * Delete every entry whose key starts with `prefix`. Returns the number
+   * of entries removed. This is the public replacement for callers that
+   * used to walk `(cache as any).cache` to do prefix-scoped invalidation.
+   */
+  deleteByPrefix(prefix: string): number {
+    let deleted = 0;
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.deleteSync(key);
+        deleted++;
+      }
+    }
+    return deleted;
+  }
+
+  /**
+   * Current configured maximum entry count.
+   */
+  getMaxSize(): number {
+    return this.maxSize;
+  }
+
+  /**
+   * Change the maximum entry count in place. This never replaces or
+   * clears the underlying cache — existing entries survive a resize.
+   * Growing is always non-destructive. Shrinking only evicts the minimum
+   * number of entries needed to fit the new size, using the same
+   * oldest-first (LRU/insertion-order) policy `set`/`setSync` already use
+   * for normal eviction. Returns the number of entries evicted (0 unless
+   * shrinking below the current entry count).
+   */
+  resize(newMaxSize: number): number {
+    if (!Number.isFinite(newMaxSize) || newMaxSize < 0) {
+      throw new Error(`InMemoryCache.resize: invalid maxSize ${newMaxSize}`);
+    }
+    this.maxSize = newMaxSize;
+
+    let evicted = 0;
+    while (this.cache.size > this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.deleteSync(oldestKey);
+      evicted++;
+    }
+    return evicted;
+  }
+
+  /**
    * Request deduplication, stampede prevention, and Stale-While-Revalidate wrapper.
    */
   async getOrFetch<T>(
@@ -186,7 +243,7 @@ export class InMemoryCache implements ICache {
 
       if (staleWhileRevalidate && isInSwrWindow) {
         this.hits++; // Considered a hit for the caller
-        
+
         // Trigger revalidation in background
         if (!this.pendingPromises.has(key)) {
           const fetchPromise = fetchFn()
@@ -203,7 +260,7 @@ export class InMemoryCache implements ICache {
             });
           this.pendingPromises.set(key, fetchPromise);
         }
-        
+
         return entry.value as T;
       }
 

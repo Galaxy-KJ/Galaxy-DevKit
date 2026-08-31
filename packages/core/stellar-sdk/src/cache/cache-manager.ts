@@ -2,7 +2,7 @@
  * @fileoverview Caching manager to orchestrate different caching channels and backends
  * @description Supports configurable TTLs, manual/event/time-based invalidation, cache warming, and metrics.
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 1.1.0
  * @since 2026-07-15
  */
 
@@ -93,6 +93,57 @@ export class CacheManager {
     return cache;
   }
 
+  /**
+   * Current effective configuration for a channel (defaults merged with
+   * anything passed to the constructor or a prior `configure` call).
+   */
+  getConfig(type: CacheType): Readonly<ChannelConfig> {
+    return this.configs[type];
+  }
+
+  /**
+   * Reconfigure a channel in place. This is the public replacement for
+   * reaching into `configs`/`caches` directly:
+   *
+   *   (globalCache as any).configs['oracle-price'] = newConfig;
+   *   (globalCache as any).caches.set('oracle-price', new (...)(maxSize));
+   *
+   * Non-destructive by design: changing `maxSize` resizes the existing
+   * `InMemoryCache` instance (see `InMemoryCache.resize`) instead of
+   * replacing it, so entries already cached by other holders of this
+   * channel survive. `ttlMs`/`staleWhileRevalidate`/`swrTtlMs` changes
+   * only affect entries written *after* the call — they don't rewrite
+   * existing entries' expiry.
+   *
+   * Safe to call repeatedly/idempotently: the same channel can be
+   * reconfigured any number of times (e.g. by multiple `PriceCache`
+   * instances) without ever losing cached data, only cached data beyond
+   * the new size still gets evicted, by the channel's normal eviction
+   * policy.
+   */
+  configure(type: CacheType, partial: Partial<ChannelConfig>): Readonly<ChannelConfig> {
+    const current = this.configs[type];
+    if (!current) {
+      throw new Error(`Cache type ${type} not initialized`);
+    }
+    const next: ChannelConfig = { ...current, ...partial };
+    this.configs[type] = next;
+
+    if (partial.maxSize !== undefined) {
+      this.getCache(type).resize(next.maxSize);
+    }
+
+    return next;
+  }
+
+  /**
+   * Delete every entry in `type` whose key starts with `prefix`. Public
+   * replacement for callers that used to walk `(cache as any).cache`.
+   */
+  deleteByPrefix(type: CacheType, prefix: string): number {
+    return this.getCache(type).deleteByPrefix(prefix);
+  }
+
   async getOrFetch<T>(
     type: CacheType,
     key: string,
@@ -128,19 +179,11 @@ export class CacheManager {
   }
 
   async invalidate(type: CacheType, keyPattern: string): Promise<void> {
-    const cache = this.getCache(type);
     if (keyPattern.endsWith('*')) {
       const prefix = keyPattern.slice(0, -1);
-      // Accessing internal map for pattern invalidation
-      const internalCacheMap = (cache as any).cache;
-      if (internalCacheMap instanceof Map) {
-        for (const key of internalCacheMap.keys()) {
-          if (key.startsWith(prefix)) {
-            await cache.delete(key);
-          }
-        }
-      }
+      this.deleteByPrefix(type, prefix);
     } else {
+      const cache = this.getCache(type);
       await cache.delete(keyPattern);
     }
   }
