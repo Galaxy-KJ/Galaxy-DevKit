@@ -364,6 +364,9 @@ fn test_accept_bid_settles_at_bid_price_and_removes_both_records() {
     assert!(market
         .try_cancel_listing(&seller, &s.nft_id, &token_id)
         .is_err());
+    assert!(market
+        .try_cancel_bid(&bidder, &s.nft_id, &token_id)
+        .is_err());
 }
 
 // ---------------------------------------------------------------------------
