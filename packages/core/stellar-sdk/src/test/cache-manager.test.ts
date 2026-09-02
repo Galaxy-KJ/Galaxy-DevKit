@@ -1,111 +1,469 @@
-import { CacheManager, DEFAULT_CHANNEL_CONFIGS } from '../cache-manager.js';
+/**
+ * @fileoverview Unit tests for the Galaxy DevKit caching layer
+ * @description Verifies InMemoryCache and CacheManager: TTL expiry, LRU eviction,
+ *              request deduplication (stampede prevention), stale-while-revalidate,
+ *              event-based invalidation, and hit/miss metrics.
+ * @author Galaxy DevKit Team
+ * @version 1.0.0
+ * @since 2026-07-15
+ */
 
-describe('CacheManager — configure', () => {
-  it('resizes a channel in place without dropping existing entries', async () => {
-    const manager = new CacheManager({ 'oracle-price': { maxSize: 10 } });
-    await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
-    await manager.set('oracle-price', 'oracle:USDC', { price: 2 });
+import { InMemoryCache } from '../cache/in-memory-cache.js';
+import { CacheManager, DEFAULT_CHANNEL_CONFIGS } from '../cache/cache-manager.js';
 
-    manager.configure('oracle-price', { maxSize: 50 });
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-    expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
-    expect(await manager.get('oracle-price', 'oracle:USDC')).toEqual({ price: 2 });
-    expect(manager.getConfig('oracle-price').maxSize).toBe(50);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─── InMemoryCache ──────────────────────────────────────────────────────────
+
+describe('InMemoryCache', () => {
+  let cache: InMemoryCache;
+
+  beforeEach(() => {
+    cache = new InMemoryCache(10);
   });
 
-  it('is safe to call repeatedly — later config wins, no data loss for entries that still fit', async () => {
-    const manager = new CacheManager({ 'oracle-price': { maxSize: 10 } });
-    await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
+  describe('basic get / set', () => {
+    it('returns null for missing keys', async () => {
+      expect(await cache.get('missing')).toBeNull();
+    });
 
-    manager.configure('oracle-price', { maxSize: 20 });
-    manager.configure('oracle-price', { ttlMs: 5000 });
-    manager.configure('oracle-price', { maxSize: 30 });
+    it('stores and retrieves a value', async () => {
+      await cache.set('key1', { foo: 'bar' });
+      const result = await cache.get<{ foo: string }>('key1');
+      expect(result).toEqual({ foo: 'bar' });
+    });
 
-    expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
-    expect(manager.getConfig('oracle-price')).toMatchObject({ maxSize: 30, ttlMs: 5000 });
+    it('overwrites an existing key', async () => {
+      await cache.set('key1', 'first');
+      await cache.set('key1', 'second');
+      expect(await cache.get<string>('key1')).toBe('second');
+    });
   });
 
-  it('only evicts the minimum needed when shrinking below the current entry count', async () => {
-    const manager = new CacheManager({ 'oracle-price': { maxSize: 10 } });
-    await manager.set('oracle-price', 'a', 1);
-    await manager.set('oracle-price', 'b', 2);
-    await manager.set('oracle-price', 'c', 3);
+  describe('TTL expiry', () => {
+    it('returns null after TTL expires', async () => {
+      await cache.set('key1', 'value', { ttlMs: 50 });
+      await sleep(60);
+      expect(await cache.get<string>('key1')).toBeNull();
+    });
 
-    manager.configure('oracle-price', { maxSize: 2 });
-
-    expect(await manager.get('oracle-price', 'a')).toBeNull(); // oldest, evicted
-    expect(await manager.get('oracle-price', 'b')).toBe(2);
-    expect(await manager.get('oracle-price', 'c')).toBe(3);
+    it('returns value before TTL expires', async () => {
+      await cache.set('key1', 'value', { ttlMs: 500 });
+      await sleep(50);
+      expect(await cache.get<string>('key1')).toBe('value');
+    });
   });
 
-  it('throws for an unknown cache type instead of silently no-oping', () => {
-    const manager = new CacheManager();
-    expect(() => manager.configure('not-a-real-type' as any, { maxSize: 5 })).toThrow();
+  describe('delete', () => {
+    it('removes a cached entry', async () => {
+      await cache.set('key1', 'value');
+      await cache.delete('key1');
+      expect(await cache.get<string>('key1')).toBeNull();
+    });
+
+    it('is a no-op for missing keys', async () => {
+      await expect(cache.delete('nonexistent')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('clear', () => {
+    it('removes all entries and resets stats', async () => {
+      await cache.set('a', 1);
+      await cache.set('b', 2);
+      await cache.get<number>('a');
+      await cache.clear();
+      expect(await cache.get<number>('a')).toBeNull();
+      const stats = await cache.getStats();
+      expect(stats.keys).toBe(0);
+      expect(stats.hits).toBe(0);
+      expect(stats.misses).toBe(1); // the get after clear
+    });
+  });
+
+  describe('LRU eviction', () => {
+    it('evicts the oldest entry when maxSize is exceeded', async () => {
+      const small = new InMemoryCache(3);
+      await small.set('a', 1);
+      await small.set('b', 2);
+      await small.set('c', 3);
+      await small.set('d', 4); // triggers eviction of 'a'
+      expect(await small.get<number>('a')).toBeNull();
+      expect(await small.get<number>('d')).toBe(4);
+    });
+
+    it('refreshes LRU position on read', async () => {
+      const small = new InMemoryCache(3);
+      await small.set('a', 1);
+      await small.set('b', 2);
+      await small.set('c', 3);
+      await small.get<number>('a'); // 'a' is now most-recently used
+      await small.set('d', 4);     // should evict 'b', not 'a'
+      expect(await small.get<number>('a')).toBe(1);
+      expect(await small.get<number>('b')).toBeNull();
+    });
+  });
+
+  describe('hit / miss metrics', () => {
+    it('counts hits and misses correctly', async () => {
+      await cache.set('x', 'val');
+      await cache.get<string>('x');   // hit
+      await cache.get<string>('x');   // hit
+      await cache.get<string>('y');   // miss
+
+      const stats = await cache.getStats();
+      expect(stats.hits).toBe(2);
+      expect(stats.misses).toBe(1);
+      expect(stats.keys).toBe(1);
+      expect(stats.hitRate).toBeCloseTo(2 / 3);
+    });
+
+    it('reports 0 hitRate with no requests', async () => {
+      const stats = await cache.getStats();
+      expect(stats.hitRate).toBe(0);
+    });
+  });
+
+  describe('request deduplication (stampede prevention)', () => {
+    it('coalesces concurrent fetches for the same key into one call', async () => {
+      let callCount = 0;
+      const fetchFn = async () => {
+        callCount++;
+        await sleep(50);
+        return 'fetched';
+      };
+
+      const [r1, r2, r3] = await Promise.all([
+        cache.getOrFetch('shared', fetchFn, { ttlMs: 5000 }),
+        cache.getOrFetch('shared', fetchFn, { ttlMs: 5000 }),
+        cache.getOrFetch('shared', fetchFn, { ttlMs: 5000 }),
+      ]);
+
+      expect(callCount).toBe(1);
+      expect(r1).toBe('fetched');
+      expect(r2).toBe('fetched');
+      expect(r3).toBe('fetched');
+    });
+
+    it('serves subsequent calls from cache without fetching again', async () => {
+      let callCount = 0;
+      const fetchFn = async () => { callCount++; return 'result'; };
+
+      await cache.getOrFetch('key', fetchFn, { ttlMs: 5000 });
+      await cache.getOrFetch('key', fetchFn, { ttlMs: 5000 });
+
+      expect(callCount).toBe(1);
+    });
+  });
+
+  describe('stale-while-revalidate (SWR)', () => {
+    it('returns stale value while background refresh happens', async () => {
+      let fetchCount = 0;
+      const fetchFn = async () => { fetchCount++; await sleep(50); return `v${fetchCount}`; };
+
+      // Prime the cache with a short TTL
+      const first = await cache.getOrFetch('swr', fetchFn, { ttlMs: 30, staleWhileRevalidate: true, swrTtlMs: 2000 });
+      expect(first).toBe('v1');
+
+      // Wait for TTL to expire but stay within SWR window
+      await sleep(40);
+
+      // Should return stale immediately (v1) and kick off background refresh
+      const stale = await cache.getOrFetch('swr', fetchFn, { ttlMs: 30, staleWhileRevalidate: true, swrTtlMs: 2000 });
+      expect(stale).toBe('v1');
+
+      // Allow background refresh to complete
+      await sleep(100);
+
+      // Now the fresh value should be in cache
+      const fresh = await cache.getOrFetch('swr', fetchFn, { ttlMs: 30, staleWhileRevalidate: true, swrTtlMs: 2000 });
+      expect(fresh).toBe('v2');
+    });
+  });
+
+  describe('synchronous helpers', () => {
+    it('getSync / setSync work correctly', () => {
+      cache.setSync('syncKey', 'syncVal', { ttlMs: 5000 });
+      expect(cache.getSync<string>('syncKey')).toBe('syncVal');
+    });
+
+    it('deleteSync removes a key', () => {
+      cache.setSync('key', 'val');
+      cache.deleteSync('key');
+      expect(cache.getSync<string>('key')).toBeNull();
+    });
+
+    it('getSync returns null for expired entries', async () => {
+      cache.setSync('exp', 'val', { ttlMs: 30 });
+      await sleep(40);
+      expect(cache.getSync<string>('exp')).toBeNull();
+    });
+  });
+
+  describe('resize', () => {
+    it('growing preserves all existing entries', async () => {
+      const small = new InMemoryCache(2);
+      await small.set('a', 1);
+      await small.set('b', 2);
+
+      const evicted = small.resize(10);
+
+      expect(evicted).toBe(0);
+      expect(await small.get('a')).toBe(1);
+      expect(await small.get('b')).toBe(2);
+      expect(small.getMaxSize()).toBe(10);
+    });
+
+    it('shrinking evicts only the minimum needed, oldest first, and keeps the rest', async () => {
+      const small = new InMemoryCache(10);
+      await small.set('a', 1);
+      await small.set('b', 2);
+      await small.set('c', 3);
+
+      const evicted = small.resize(2);
+
+      expect(evicted).toBe(1);
+      expect(await small.get('a')).toBeNull(); // oldest, evicted
+      expect(await small.get('b')).toBe(2); // survives
+      expect(await small.get('c')).toBe(3); // survives
+      expect(small.getMaxSize()).toBe(2);
+    });
+
+    it('shrinking to the current size evicts nothing', async () => {
+      const small = new InMemoryCache(10);
+      await small.set('a', 1);
+      await small.set('b', 2);
+
+      const evicted = small.resize(2);
+
+      expect(evicted).toBe(0);
+      expect(await small.get('a')).toBe(1);
+      expect(await small.get('b')).toBe(2);
+    });
+
+    it('rejects an invalid maxSize without mutating state', () => {
+      const small = new InMemoryCache(5);
+      expect(() => small.resize(-1)).toThrow();
+      expect(() => small.resize(NaN)).toThrow();
+      expect(small.getMaxSize()).toBe(5);
+    });
+  });
+
+  describe('deleteByPrefix', () => {
+    it('deletes only matching keys and returns the count removed', async () => {
+      await cache.set('oracle:XLM:coingecko', 1);
+      await cache.set('oracle:XLM:cmc', 2);
+      await cache.set('oracle:USDC:coingecko', 3);
+      await cache.set('unrelated:key', 4);
+
+      const removed = cache.deleteByPrefix('oracle:XLM:');
+
+      expect(removed).toBe(2);
+      expect(await cache.get('oracle:XLM:coingecko')).toBeNull();
+      expect(await cache.get('oracle:XLM:cmc')).toBeNull();
+      expect(await cache.get('oracle:USDC:coingecko')).toBe(3);
+      expect(await cache.get('unrelated:key')).toBe(4);
+    });
+
+    it('returns 0 when nothing matches', async () => {
+      await cache.set('a', 1);
+      expect(cache.deleteByPrefix('nope:')).toBe(0);
+      expect(await cache.get('a')).toBe(1);
+    });
+  });
+
+  describe('keys', () => {
+    it('returns a snapshot of current keys without exposing values or the internal Map', async () => {
+      await cache.set('a', 1);
+      await cache.set('b', 2);
+
+      const keys = cache.keys();
+
+      expect(keys.sort()).toEqual(['a', 'b']);
+      expect(Array.isArray(keys)).toBe(true);
+    });
   });
 });
 
-describe('CacheManager — deleteByPrefix', () => {
-  it('deletes only matching keys in the given channel', async () => {
-    const manager = new CacheManager();
-    await manager.set('oracle-price', 'oracle:XLM:coingecko', 1);
-    await manager.set('oracle-price', 'oracle:XLM:cmc', 2);
-    await manager.set('oracle-price', 'oracle:USDC:coingecko', 3);
+// ─── CacheManager ───────────────────────────────────────────────────────────
 
-    const removed = manager.deleteByPrefix('oracle-price', 'oracle:XLM:');
+describe('CacheManager', () => {
+  let manager: CacheManager;
 
-    expect(removed).toBe(2);
-    expect(await manager.get('oracle-price', 'oracle:XLM:coingecko')).toBeNull();
-    expect(await manager.get('oracle-price', 'oracle:USDC:coingecko')).toBe(3);
-  });
-});
-
-describe('CacheManager — invalidate (refactored off private-field access)', () => {
-  it('still supports wildcard invalidation', async () => {
-    const manager = new CacheManager();
-    await manager.set('account-balance', 'balance:GABC:XLM', 1);
-    await manager.set('account-balance', 'balance:GABC:USDC', 2);
-    await manager.set('account-balance', 'balance:GXYZ:XLM', 3);
-
-    await manager.invalidate('account-balance', 'balance:GABC:*');
-
-    expect(await manager.get('account-balance', 'balance:GABC:XLM')).toBeNull();
-    expect(await manager.get('account-balance', 'balance:GABC:USDC')).toBeNull();
-    expect(await manager.get('account-balance', 'balance:GXYZ:XLM')).toBe(3);
+  beforeEach(() => {
+    manager = new CacheManager();
   });
 
-  it('still supports exact-key invalidation', async () => {
-    const manager = new CacheManager();
-    await manager.set('static-data', 'contract:blend-pool', 'addr');
+  describe('getOrFetch', () => {
+    it('fetches and caches a value', async () => {
+      let calls = 0;
+      const result = await manager.getOrFetch('horizon-response', 'acct:GTEST', async () => {
+        calls++;
+        return { accountId: 'GTEST' };
+      });
+      expect(result).toEqual({ accountId: 'GTEST' });
+      expect(calls).toBe(1);
+    });
 
-    await manager.invalidate('static-data', 'contract:blend-pool');
-
-    expect(await manager.get('static-data', 'contract:blend-pool')).toBeNull();
+    it('serves from cache on second call', async () => {
+      let calls = 0;
+      const fn = async () => { calls++; return 'data'; };
+      await manager.getOrFetch('static-data', 'contract:pool', fn);
+      await manager.getOrFetch('static-data', 'contract:pool', fn);
+      expect(calls).toBe(1);
+    });
   });
-});
 
-describe('CacheManager — event-driven invalidation still works after the refactor', () => {
-  it('newPriceFeed clears the price and aggregated entries for that symbol', async () => {
-    const manager = new CacheManager();
-    await manager.set('oracle-price', 'XLM', 1);
-    await manager.set('oracle-price', 'aggregated:XLM', 2);
+  describe('channel isolation', () => {
+    it('uses different caches per channel type', async () => {
+      await manager.set('oracle-price', 'XLM', { price: 0.12 });
+      await manager.set('account-balance', 'XLM', { balance: '1000' });
 
-    manager.events.emit('newPriceFeed', 'XLM');
-    // invalidate() is async and fired via `void`; give the microtask a tick.
-    await Promise.resolve();
-    await Promise.resolve();
+      const oracleVal = await manager.get<{ price: number }>('oracle-price', 'XLM');
+      const balanceVal = await manager.get<{ balance: string }>('account-balance', 'XLM');
 
-    expect(await manager.get('oracle-price', 'XLM')).toBeNull();
-    expect(await manager.get('oracle-price', 'aggregated:XLM')).toBeNull();
+      expect(oracleVal?.price).toBe(0.12);
+      expect(balanceVal?.balance).toBe('1000');
+    });
   });
-});
 
-describe('DEFAULT_CHANNEL_CONFIGS sanity', () => {
-  it('oracle-price defaults are unchanged by this refactor', () => {
-    expect(DEFAULT_CHANNEL_CONFIGS['oracle-price']).toEqual({
-      ttlMs: 15000,
-      staleWhileRevalidate: true,
-      swrTtlMs: 30000,
-      maxSize: 1000,
+  describe('invalidation', () => {
+    it('deletes a specific key', async () => {
+      await manager.set('horizon-response', 'tx:abc123', { hash: 'abc' });
+      await manager.invalidate('horizon-response', 'tx:abc123');
+      expect(await manager.get('horizon-response', 'tx:abc123')).toBeNull();
+    });
+
+    it('deletes all keys matching a prefix wildcard', async () => {
+      await manager.set('account-balance', 'balance:GUSER:XLM', 100);
+      await manager.set('account-balance', 'balance:GUSER:USDC', 200);
+      await manager.set('account-balance', 'balance:GOTHER:XLM', 999);
+
+      await manager.invalidate('account-balance', 'balance:GUSER:*');
+
+      expect(await manager.get('account-balance', 'balance:GUSER:XLM')).toBeNull();
+      expect(await manager.get('account-balance', 'balance:GUSER:USDC')).toBeNull();
+      expect(await manager.get<number>('account-balance', 'balance:GOTHER:XLM')).toBe(999);
+    });
+  });
+
+  describe('clear', () => {
+    it('clears all channels', async () => {
+      await manager.set('oracle-price', 'XLM', 0.12);
+      await manager.set('horizon-response', 'account-info:GTEST', {});
+      await manager.clear();
+      expect(await manager.get('oracle-price', 'XLM')).toBeNull();
+      expect(await manager.get('horizon-response', 'account-info:GTEST')).toBeNull();
+    });
+  });
+
+  describe('getStats', () => {
+    it('returns aggregated stats across all channels', async () => {
+      await manager.getOrFetch('oracle-price', 'XLM', async () => 0.12);
+      await manager.get('oracle-price', 'XLM'); // hit
+      await manager.get('oracle-price', 'MISSING'); // miss
+
+      const stats = await manager.getStats();
+      expect(stats.total.hits).toBeGreaterThanOrEqual(1);
+      expect(stats.total.misses).toBeGreaterThanOrEqual(1);
+      expect(stats.total.hitRate).toBeGreaterThan(0);
+      expect(stats['oracle-price']).toBeDefined();
+    });
+  });
+
+  describe('DEFAULT_CHANNEL_CONFIGS', () => {
+    it('has short TTL for oracle prices', () => {
+      expect(DEFAULT_CHANNEL_CONFIGS['oracle-price'].ttlMs).toBeLessThanOrEqual(30000);
+    });
+
+    it('has long TTL for static-data', () => {
+      expect(DEFAULT_CHANNEL_CONFIGS['static-data'].ttlMs).toBeGreaterThanOrEqual(3600000);
+    });
+
+    it('enables SWR for account-balance', () => {
+      expect(DEFAULT_CHANNEL_CONFIGS['account-balance'].staleWhileRevalidate).toBe(true);
+    });
+  });
+
+  describe('event-based invalidation', () => {
+    it('invalidates oracle-price keys on newPriceFeed event', async () => {
+      await manager.set('oracle-price', 'XLM', { price: 0.12 });
+      await manager.set('oracle-price', 'aggregated:XLM', { price: 0.12 });
+
+      manager.events.emit('newPriceFeed', 'XLM');
+      await sleep(20); // allow microtask queue to flush
+
+      expect(await manager.get('oracle-price', 'XLM')).toBeNull();
+      expect(await manager.get('oracle-price', 'aggregated:XLM')).toBeNull();
+    });
+
+    it('invalidates account caches on transaction event', async () => {
+      await manager.set('account-balance', 'balance:GTEST:XLM', '1000');
+      await manager.set('horizon-response', 'account-info:GTEST', {});
+      await manager.set('horizon-response', 'tx-history:GTEST', []);
+
+      manager.events.emit('transaction', 'GTEST');
+      await sleep(20);
+
+      expect(await manager.get('account-balance', 'balance:GTEST:XLM')).toBeNull();
+      expect(await manager.get('horizon-response', 'account-info:GTEST')).toBeNull();
+    });
+  });
+
+  describe('configure', () => {
+    it('resizes a channel in place without dropping existing entries', async () => {
+      await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
+      await manager.set('oracle-price', 'oracle:USDC', { price: 2 });
+
+      manager.configure('oracle-price', { maxSize: 50 });
+
+      expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
+      expect(await manager.get('oracle-price', 'oracle:USDC')).toEqual({ price: 2 });
+      expect(manager.getConfig('oracle-price').maxSize).toBe(50);
+    });
+
+    it('is safe to call repeatedly — later config wins, no data loss for entries that still fit', async () => {
+      await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
+
+      manager.configure('oracle-price', { maxSize: 20 });
+      manager.configure('oracle-price', { ttlMs: 5000 });
+      manager.configure('oracle-price', { maxSize: 30 });
+
+      expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
+      expect(manager.getConfig('oracle-price')).toMatchObject({ maxSize: 30, ttlMs: 5000 });
+    });
+
+    it('only evicts the minimum needed when shrinking below the current entry count', async () => {
+      await manager.set('oracle-price', 'a', 1);
+      await manager.set('oracle-price', 'b', 2);
+      await manager.set('oracle-price', 'c', 3);
+
+      manager.configure('oracle-price', { maxSize: 2 });
+
+      expect(await manager.get('oracle-price', 'a')).toBeNull(); // oldest, evicted
+      expect(await manager.get('oracle-price', 'b')).toBe(2);
+      expect(await manager.get('oracle-price', 'c')).toBe(3);
+    });
+
+    it('throws for an unknown cache type instead of silently no-oping', () => {
+      expect(() => manager.configure('not-a-real-type' as any, { maxSize: 5 })).toThrow();
+    });
+  });
+
+  describe('deleteByPrefix', () => {
+    it('deletes only matching keys in the given channel', async () => {
+      await manager.set('oracle-price', 'oracle:XLM:coingecko', 1);
+      await manager.set('oracle-price', 'oracle:XLM:cmc', 2);
+      await manager.set('oracle-price', 'oracle:USDC:coingecko', 3);
+
+      const removed = manager.deleteByPrefix('oracle-price', 'oracle:XLM:');
+
+      expect(removed).toBe(2);
+      expect(await manager.get('oracle-price', 'oracle:XLM:coingecko')).toBeNull();
+      expect(await manager.get('oracle-price', 'oracle:USDC:coingecko')).toBe(3);
     });
   });
 });

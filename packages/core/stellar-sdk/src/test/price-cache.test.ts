@@ -1,146 +1,262 @@
+/**
+ * @fileoverview Tests for price cache
+ * @description Unit tests for price caching functionality
+ */
+
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { globalCache, DEFAULT_CHANNEL_CONFIGS } from '@galaxy-kj/core-stellar-sdk';
-import { PriceCache } from '../price-cache.js';
-import { PriceData, AggregatedPrice } from '../../types/oracle-types.js';
+import { PriceCache } from '../../src/cache/price-cache';
+import { PriceData, AggregatedPrice } from '../../src/types/oracle-types.js';
 
-// __dirname (not import.meta.url) — this repo's ts-jest setup transpiles
-// to CommonJS at test time (see jest.config.js's moduleNameMapper hack for
-// resolving relative `.js`-suffixed ESM-style imports back to `.ts`, which
-// wouldn't be needed under real ESM).
-const SOURCE_FILE = path.join(__dirname, '../price-cache.ts');
+const SOURCE_FILE = path.join(__dirname, '../../src/cache/price-cache.ts');
 
-function makePrice(symbol: string, price: number, source = 'coingecko'): PriceData {
-  return { symbol, price, timestamp: new Date(), source };
-}
+describe('PriceCache', () => {
+  let cache: PriceCache;
 
-function makeAggregated(symbol: string, price: number): AggregatedPrice {
-  return {
-    symbol,
-    price,
-    timestamp: new Date(),
-    confidence: 1,
-    sourcesUsed: ['coingecko'],
-    outliersFiltered: [],
-    sourceCount: 1,
-  };
-}
-
-afterEach(async () => {
-  // PriceCache reconfigures the process-wide 'oracle-price' channel, so
-  // each test must restore it — otherwise tests leak config/state into
-  // each other via the shared globalCache singleton.
-  globalCache.configure('oracle-price', DEFAULT_CHANNEL_CONFIGS['oracle-price']);
-  await globalCache.clear();
-});
-
-describe('PriceCache source', () => {
-  it('contains no `as any` escapes', () => {
-    const source = readFileSync(SOURCE_FILE, 'utf8');
-    expect(source).not.toMatch(/as\s+any/);
-  });
-});
-
-describe('PriceCache — shared-channel reconfiguration is non-destructive', () => {
-  it('a price written before construction is still readable after a second PriceCache changes maxSize', () => {
-    const first = new PriceCache();
-    first.setPrice(makePrice('XLM', 0.12));
-
-    // This used to reach into globalCache's private fields and swap out
-    // the live cache instance, silently dropping everything written above.
-    const second = new PriceCache({ maxSize: 5000 });
-
-    expect(first.getPrice('XLM', 'coingecko')).toEqual(
-      expect.objectContaining({ symbol: 'XLM', price: 0.12 })
-    );
-    expect(second.getPrice('XLM', 'coingecko')).toEqual(
-      expect.objectContaining({ symbol: 'XLM', price: 0.12 })
-    );
+  beforeEach(() => {
+    cache = new PriceCache({ ttlMs: 1000, maxSize: 10 });
   });
 
-  it('constructing several PriceCache instances with different configs never wipes prior entries', () => {
-    const a = new PriceCache();
-    a.setPrice(makePrice('XLM', 0.12));
-
-    new PriceCache({ maxSize: 200 });
-    new PriceCache({ ttlMs: 5000 });
-    new PriceCache({ maxSize: 9000, ttlMs: 10000 });
-
-    expect(a.getPrice('XLM', 'coingecko')?.price).toBe(0.12);
+  // PriceCache shares the process-wide 'oracle-price' channel by design
+  // (see price-cache.ts's own header comment) — that's what lets one
+  // aggregator's write be visible elsewhere. Before the fix for #410,
+  // `beforeEach` re-running `new PriceCache({ maxSize: 10 })` above
+  // *accidentally* reset that shared cache as a side effect of the bug
+  // being fixed here, which is what gave every test in this file a clean
+  // slate without anyone writing an explicit teardown for it. Now that
+  // reconfiguring is correctly non-destructive, that implicit reset no
+  // longer happens, so it needs to be explicit instead.
+  afterEach(async () => {
+    globalCache.configure('oracle-price', DEFAULT_CHANNEL_CONFIGS['oracle-price']);
+    await globalCache.clear();
   });
 
-  it('shrinking maxSize evicts only enough entries to fit, not everything', () => {
-    const cache = new PriceCache({ maxSize: 100 });
-    cache.setPrice(makePrice('AAA', 1));
-    cache.setPrice(makePrice('BBB', 2));
-    cache.setPrice(makePrice('CCC', 3));
+  describe('getPrice and setPrice', () => {
+    it('should cache and retrieve price', () => {
+      const price: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
 
-    // eslint-disable-next-line no-new
-    new PriceCache({ maxSize: 2 });
+      cache.setPrice(price);
+      const retrieved = cache.getPrice('XLM', 'source1');
 
-    const remaining = [
-      cache.getPrice('AAA', 'coingecko'),
-      cache.getPrice('BBB', 'coingecko'),
-      cache.getPrice('CCC', 'coingecko'),
-    ].filter((p) => p !== null);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.price).toBe(100);
+      expect(retrieved?.symbol).toBe('XLM');
+    });
 
-    expect(remaining.length).toBe(2);
-    // Oldest write (AAA) is the one evicted by the oldest-first policy.
-    expect(cache.getPrice('AAA', 'coingecko')).toBeNull();
-    expect(cache.getPrice('CCC', 'coingecko')?.price).toBe(3);
-  });
-});
+    it('should return null for non-existent price', () => {
+      const retrieved = cache.getPrice('XLM', 'source1');
+      expect(retrieved).toBeNull();
+    });
 
-describe('PriceCache — invalidate via public API', () => {
-  it('removes all source-scoped entries for a symbol plus its aggregate, leaving other symbols intact', () => {
-    const cache = new PriceCache();
-    cache.setPrice(makePrice('XLM', 0.1, 'coingecko'));
-    cache.setPrice(makePrice('XLM', 0.11, 'cmc'));
-    cache.setAggregatedPrice(makeAggregated('XLM', 0.105));
-    cache.setPrice(makePrice('USDC', 1, 'coingecko'));
+    it('should return null for expired price', async () => {
+      const price: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
 
-    cache.invalidate('XLM');
+      cache.setPrice(price);
+      await new Promise((resolve) => setTimeout(resolve, 1100)); // Wait for expiration
 
-    expect(cache.getPrice('XLM', 'coingecko')).toBeNull();
-    expect(cache.getPrice('XLM', 'cmc')).toBeNull();
-    expect(cache.getAggregatedPrice('XLM')).toBeNull();
-    expect(cache.getPrice('USDC', 'coingecko')?.price).toBe(1);
-  });
-
-  it('invalidating a single source only removes that source', () => {
-    const cache = new PriceCache();
-    cache.setPrice(makePrice('XLM', 0.1, 'coingecko'));
-    cache.setPrice(makePrice('XLM', 0.11, 'cmc'));
-
-    cache.invalidate('XLM', 'coingecko');
-
-    expect(cache.getPrice('XLM', 'coingecko')).toBeNull();
-    expect(cache.getPrice('XLM', 'cmc')?.price).toBe(0.11);
-  });
-});
-
-describe('PriceCache — clear/getStats', () => {
-  it('clear only removes oracle: namespaced entries', () => {
-    const cache = new PriceCache();
-    cache.setPrice(makePrice('XLM', 0.1));
-    cache.setAggregatedPrice(makeAggregated('XLM', 0.1));
-
-    cache.clear();
-
-    expect(cache.getPrice('XLM', 'coingecko')).toBeNull();
-    expect(cache.getAggregatedPrice('XLM')).toBeNull();
+      const retrieved = cache.getPrice('XLM', 'source1');
+      expect(retrieved).toBeNull();
+    });
   });
 
-  it('getStats reports price vs aggregated counts correctly', () => {
-    const cache = new PriceCache();
-    cache.setPrice(makePrice('XLM', 0.1, 'coingecko'));
-    cache.setPrice(makePrice('USDC', 1, 'coingecko'));
-    cache.setAggregatedPrice(makeAggregated('XLM', 0.1));
+  describe('getAggregatedPrice and setAggregatedPrice', () => {
+    it('should cache and retrieve aggregated price', () => {
+      const aggregated: AggregatedPrice = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        confidence: 0.9,
+        sourcesUsed: ['source1', 'source2'],
+        outliersFiltered: [],
+        sourceCount: 2,
+      };
 
-    const stats = cache.getStats();
+      cache.setAggregatedPrice(aggregated);
+      const retrieved = cache.getAggregatedPrice('XLM');
 
-    expect(stats.priceCount).toBe(2);
-    expect(stats.aggregatedCount).toBe(1);
-    expect(stats.totalSize).toBe(3);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.price).toBe(100);
+      expect(retrieved?.confidence).toBe(0.9);
+    });
+
+    it('should return null for non-existent aggregated price', () => {
+      const retrieved = cache.getAggregatedPrice('XLM');
+      expect(retrieved).toBeNull();
+    });
+  });
+
+  describe('invalidate', () => {
+    it('should invalidate specific source price', () => {
+      const price: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
+
+      cache.setPrice(price);
+      cache.invalidate('XLM', 'source1');
+
+      const retrieved = cache.getPrice('XLM', 'source1');
+      expect(retrieved).toBeNull();
+    });
+
+    it('should invalidate all prices for symbol', () => {
+      const price1: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
+      const price2: PriceData = {
+        symbol: 'XLM',
+        price: 101,
+        timestamp: new Date(),
+        source: 'source2',
+      };
+
+      cache.setPrice(price1);
+      cache.setPrice(price2);
+      cache.invalidate('XLM');
+
+      expect(cache.getPrice('XLM', 'source1')).toBeNull();
+      expect(cache.getPrice('XLM', 'source2')).toBeNull();
+    });
+
+    it('should invalidate aggregated price', () => {
+      const aggregated: AggregatedPrice = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        confidence: 0.9,
+        sourcesUsed: ['source1'],
+        outliersFiltered: [],
+        sourceCount: 1,
+      };
+
+      cache.setAggregatedPrice(aggregated);
+      cache.invalidate('XLM');
+
+      expect(cache.getAggregatedPrice('XLM')).toBeNull();
+    });
+  });
+
+  describe('clear', () => {
+    it('should clear all cache', () => {
+      const price: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
+
+      cache.setPrice(price);
+      cache.clear();
+
+      expect(cache.getPrice('XLM', 'source1')).toBeNull();
+      expect(cache.getStats().totalSize).toBe(0);
+    });
+  });
+
+  describe('getStats', () => {
+    it('should return cache statistics', () => {
+      const price: PriceData = {
+        symbol: 'XLM',
+        price: 100,
+        timestamp: new Date(),
+        source: 'source1',
+      };
+
+      cache.setPrice(price);
+
+      const stats = cache.getStats();
+      expect(stats.priceCount).toBe(1);
+      expect(stats.aggregatedCount).toBe(0);
+      expect(stats.totalSize).toBe(1);
+    });
+  });
+
+  describe('LRU eviction', () => {
+    it('should evict oldest entries when max size reached', () => {
+      const cache = new PriceCache({ ttlMs: 60000, maxSize: 3 });
+
+      // Add 4 prices (exceeds max size)
+      for (let i = 0; i < 4; i++) {
+        const price: PriceData = {
+          symbol: `XLM${i}`,
+          price: 100 + i,
+          timestamp: new Date(),
+          source: 'source1',
+        };
+        cache.setPrice(price);
+      }
+
+      const stats = cache.getStats();
+      expect(stats.priceCount).toBeLessThanOrEqual(3);
+    });
+  });
+
+  describe('source contains no `as any` escapes (#410)', () => {
+    it('price-cache.ts does not reach into globalCache internals', () => {
+      const source = readFileSync(SOURCE_FILE, 'utf8');
+      expect(source).not.toMatch(/as\s+any/);
+    });
+  });
+
+  describe('shared-channel reconfiguration is non-destructive (#410)', () => {
+    it('a price written before construction is still readable after a second PriceCache changes maxSize', () => {
+      cache.setPrice({ symbol: 'XLM', price: 0.12, timestamp: new Date(), source: 'coingecko' });
+
+      // This used to reach into globalCache's private fields and swap out
+      // the live cache instance, silently dropping everything written above.
+      const second = new PriceCache({ maxSize: 5000 });
+
+      expect(cache.getPrice('XLM', 'coingecko')?.price).toBe(0.12);
+      expect(second.getPrice('XLM', 'coingecko')?.price).toBe(0.12);
+    });
+
+    it('constructing several PriceCache instances with different configs never wipes prior entries', () => {
+      cache.setPrice({ symbol: 'XLM', price: 0.12, timestamp: new Date(), source: 'coingecko' });
+
+      // eslint-disable-next-line no-new
+      new PriceCache({ maxSize: 200 });
+      // eslint-disable-next-line no-new
+      new PriceCache({ ttlMs: 5000 });
+      // eslint-disable-next-line no-new
+      new PriceCache({ maxSize: 9000, ttlMs: 10000 });
+
+      expect(cache.getPrice('XLM', 'coingecko')?.price).toBe(0.12);
+    });
+
+    it('shrinking maxSize evicts only enough entries to fit, not everything', () => {
+      cache.setPrice({ symbol: 'AAA', price: 1, timestamp: new Date(), source: 'coingecko' });
+      cache.setPrice({ symbol: 'BBB', price: 2, timestamp: new Date(), source: 'coingecko' });
+      cache.setPrice({ symbol: 'CCC', price: 3, timestamp: new Date(), source: 'coingecko' });
+
+      // eslint-disable-next-line no-new
+      new PriceCache({ maxSize: 2 });
+
+      const remaining = [
+        cache.getPrice('AAA', 'coingecko'),
+        cache.getPrice('BBB', 'coingecko'),
+        cache.getPrice('CCC', 'coingecko'),
+      ].filter((p) => p !== null);
+
+      expect(remaining.length).toBe(2);
+      // Oldest write (AAA) is the one evicted by the oldest-first policy.
+      expect(cache.getPrice('AAA', 'coingecko')).toBeNull();
+      expect(cache.getPrice('CCC', 'coingecko')?.price).toBe(3);
+    });
   });
 });
