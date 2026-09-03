@@ -32,6 +32,13 @@ export const SUITE_THRESHOLDS: Record<string, SuiteThreshold> = {
   'decrypt v1 pbkdf2': { p95Slack: 3.0, hzFloor: 0.3 },
   'encrypt v2 argon2id': { p95Slack: 3.0, hzFloor: 0.3 },
   'decrypt v2 argon2id': { p95Slack: 3.0, hzFloor: 0.3 },
+  // Cache operations run at nanosecond scale, so p99 jitter on shared CI
+  // runners can spike well past the default 20% slack without any code
+  // change. Keep the throughput floor at 80% (real regressions still fail),
+  // but tolerate a 50% p95 swing for these metrics.
+  'cache hit': { p95Slack: 1.5, hzFloor: 0.8 },
+  'cache miss': { p95Slack: 1.5, hzFloor: 0.8 },
+  'cache eviction': { p95Slack: 1.5, hzFloor: 0.8 },
 };
 
 export interface CompareFailure {

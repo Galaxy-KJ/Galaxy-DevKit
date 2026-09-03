@@ -8,6 +8,8 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
 import cors from 'cors';
 import { config, validateConfig, isProductionReady } from './config';
 import { RoomManager } from './services/room-manager';
@@ -34,6 +36,7 @@ class WebSocketServer {
   private automationHandler!: AutomationHandler;
   private transactionMonitoringHandler!: TransactionMonitoringHandler;
   private isShuttingDown = false;
+  private redisClients: Redis[] = [];
 
   constructor() {
     this.app = express();
@@ -137,6 +140,25 @@ class WebSocketServer {
     });
   }
 
+  /** Attach the cross-instance adapter when Redis is configured. */
+  private async configureSharedAdapter(): Promise<void> {
+    if (!config.redis.url) {
+      console.warn('REDIS_URL is not configured; using the single-instance Socket.IO adapter');
+      return;
+    }
+    const publisher = new Redis(config.redis.url, { lazyConnect: true, maxRetriesPerRequest: 3 });
+    const subscriber = publisher.duplicate();
+    try {
+      await Promise.all([publisher.connect(), subscriber.connect()]);
+      this.io.adapter(createAdapter(publisher, subscriber));
+      this.redisClients = [publisher, subscriber];
+      console.log('Socket.IO Redis adapter enabled for cross-instance rooms and broadcasts');
+    } catch (error) {
+      await Promise.allSettled([publisher.quit(), subscriber.quit()]);
+      throw new Error(`Redis adapter initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /**
    * Setup all handlers
    */
@@ -186,6 +208,8 @@ class WebSocketServer {
         this.eventBroadcaster.destroy();
         this.transactionHandler.cleanup();
         this.automationHandler.cleanup();
+        await Promise.allSettled(this.redisClients.map((client) => client.quit()));
+        this.redisClients = [];
 
         // Close HTTP server
         this.httpServer.close(() => {
@@ -235,6 +259,8 @@ class WebSocketServer {
       if (config.server.environment === 'production' && !isProductionReady()) {
         throw new Error('Configuration is not production-ready');
       }
+
+      await this.configureSharedAdapter();
 
       // Start HTTP server
       await new Promise<void>((resolve, reject) => {
