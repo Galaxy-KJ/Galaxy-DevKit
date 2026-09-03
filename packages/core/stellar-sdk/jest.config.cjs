@@ -34,7 +34,9 @@ module.exports = {
   moduleNameMapper: {
     '^bip39$': '<rootDir>/src/test/__mocks__/bip39.js',
     '^ed25519-hd-key$': '<rootDir>/src/test/__mocks__/ed25519-hd-key.js',
+    
     // Resolve relative .js imports to .ts (ESM-style imports in TS source)
     '^(\\.\\.?/.*)\\.js$': '$1',
-  }
+  },
+  resolver: 'ts-jest/resolver',
 };

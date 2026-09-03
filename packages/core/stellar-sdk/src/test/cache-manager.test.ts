@@ -202,6 +202,90 @@ describe('InMemoryCache', () => {
       expect(cache.getSync<string>('exp')).toBeNull();
     });
   });
+
+  describe('resize', () => {
+    it('growing preserves all existing entries', async () => {
+      const small = new InMemoryCache(2);
+      await small.set('a', 1);
+      await small.set('b', 2);
+
+      const evicted = small.resize(10);
+
+      expect(evicted).toBe(0);
+      expect(await small.get('a')).toBe(1);
+      expect(await small.get('b')).toBe(2);
+      expect(small.getMaxSize()).toBe(10);
+    });
+
+    it('shrinking evicts only the minimum needed, oldest first, and keeps the rest', async () => {
+      const small = new InMemoryCache(10);
+      await small.set('a', 1);
+      await small.set('b', 2);
+      await small.set('c', 3);
+
+      const evicted = small.resize(2);
+
+      expect(evicted).toBe(1);
+      expect(await small.get('a')).toBeNull(); // oldest, evicted
+      expect(await small.get('b')).toBe(2); // survives
+      expect(await small.get('c')).toBe(3); // survives
+      expect(small.getMaxSize()).toBe(2);
+    });
+
+    it('shrinking to the current size evicts nothing', async () => {
+      const small = new InMemoryCache(10);
+      await small.set('a', 1);
+      await small.set('b', 2);
+
+      const evicted = small.resize(2);
+
+      expect(evicted).toBe(0);
+      expect(await small.get('a')).toBe(1);
+      expect(await small.get('b')).toBe(2);
+    });
+
+    it('rejects an invalid maxSize without mutating state', () => {
+      const small = new InMemoryCache(5);
+      expect(() => small.resize(-1)).toThrow();
+      expect(() => small.resize(NaN)).toThrow();
+      expect(small.getMaxSize()).toBe(5);
+    });
+  });
+
+  describe('deleteByPrefix', () => {
+    it('deletes only matching keys and returns the count removed', async () => {
+      await cache.set('oracle:XLM:coingecko', 1);
+      await cache.set('oracle:XLM:cmc', 2);
+      await cache.set('oracle:USDC:coingecko', 3);
+      await cache.set('unrelated:key', 4);
+
+      const removed = cache.deleteByPrefix('oracle:XLM:');
+
+      expect(removed).toBe(2);
+      expect(await cache.get('oracle:XLM:coingecko')).toBeNull();
+      expect(await cache.get('oracle:XLM:cmc')).toBeNull();
+      expect(await cache.get('oracle:USDC:coingecko')).toBe(3);
+      expect(await cache.get('unrelated:key')).toBe(4);
+    });
+
+    it('returns 0 when nothing matches', async () => {
+      await cache.set('a', 1);
+      expect(cache.deleteByPrefix('nope:')).toBe(0);
+      expect(await cache.get('a')).toBe(1);
+    });
+  });
+
+  describe('keys', () => {
+    it('returns a snapshot of current keys without exposing values or the internal Map', async () => {
+      await cache.set('a', 1);
+      await cache.set('b', 2);
+
+      const keys = cache.keys();
+
+      expect(keys.sort()).toEqual(['a', 'b']);
+      expect(Array.isArray(keys)).toBe(true);
+    });
+  });
 });
 
 // ─── CacheManager ───────────────────────────────────────────────────────────
@@ -326,6 +410,60 @@ describe('CacheManager', () => {
 
       expect(await manager.get('account-balance', 'balance:GTEST:XLM')).toBeNull();
       expect(await manager.get('horizon-response', 'account-info:GTEST')).toBeNull();
+    });
+  });
+
+  describe('configure', () => {
+    it('resizes a channel in place without dropping existing entries', async () => {
+      await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
+      await manager.set('oracle-price', 'oracle:USDC', { price: 2 });
+
+      manager.configure('oracle-price', { maxSize: 50 });
+
+      expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
+      expect(await manager.get('oracle-price', 'oracle:USDC')).toEqual({ price: 2 });
+      expect(manager.getConfig('oracle-price').maxSize).toBe(50);
+    });
+
+    it('is safe to call repeatedly — later config wins, no data loss for entries that still fit', async () => {
+      await manager.set('oracle-price', 'oracle:XLM', { price: 1 });
+
+      manager.configure('oracle-price', { maxSize: 20 });
+      manager.configure('oracle-price', { ttlMs: 5000 });
+      manager.configure('oracle-price', { maxSize: 30 });
+
+      expect(await manager.get('oracle-price', 'oracle:XLM')).toEqual({ price: 1 });
+      expect(manager.getConfig('oracle-price')).toMatchObject({ maxSize: 30, ttlMs: 5000 });
+    });
+
+    it('only evicts the minimum needed when shrinking below the current entry count', async () => {
+      await manager.set('oracle-price', 'a', 1);
+      await manager.set('oracle-price', 'b', 2);
+      await manager.set('oracle-price', 'c', 3);
+
+      manager.configure('oracle-price', { maxSize: 2 });
+
+      expect(await manager.get('oracle-price', 'a')).toBeNull(); // oldest, evicted
+      expect(await manager.get('oracle-price', 'b')).toBe(2);
+      expect(await manager.get('oracle-price', 'c')).toBe(3);
+    });
+
+    it('throws for an unknown cache type instead of silently no-oping', () => {
+      expect(() => manager.configure('not-a-real-type' as any, { maxSize: 5 })).toThrow();
+    });
+  });
+
+  describe('deleteByPrefix', () => {
+    it('deletes only matching keys in the given channel', async () => {
+      await manager.set('oracle-price', 'oracle:XLM:coingecko', 1);
+      await manager.set('oracle-price', 'oracle:XLM:cmc', 2);
+      await manager.set('oracle-price', 'oracle:USDC:coingecko', 3);
+
+      const removed = manager.deleteByPrefix('oracle-price', 'oracle:XLM:');
+
+      expect(removed).toBe(2);
+      expect(await manager.get('oracle-price', 'oracle:XLM:coingecko')).toBeNull();
+      expect(await manager.get('oracle-price', 'oracle:USDC:coingecko')).toBe(3);
     });
   });
 });

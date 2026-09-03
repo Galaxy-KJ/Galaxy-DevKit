@@ -2,7 +2,7 @@
  * @fileoverview Price cache implementation delegating to unified globalCache
  * @description Price cache using the DevKit unified caching singleton under the hood
  * @author Galaxy DevKit Team
- * @version 2.0.0
+ * @version 2.1.0
  * @since 2026-07-15
  */
 
@@ -18,21 +18,34 @@ const DEFAULT_CACHE_CONFIG: CacheConfig = {
 export class PriceCache {
   private config: CacheConfig;
 
+  /**
+   * PriceCache is a thin wrapper around the process-wide `oracle-price`
+   * channel on `globalCache` — every PriceCache instance shares the same
+   * underlying cache by design, which is what lets one aggregator's write
+   * be visible to another PriceCache elsewhere in the process. It does
+   * not own a private cache of its own.
+   *
+   * Passing `maxSize`/`ttlMs` here reconfigures that shared channel
+   * through `globalCache.configure(...)` (the public API — see
+   * cache-manager.ts). This is non-destructive: `configure` resizes the
+   * existing cache in place rather than replacing it, so entries already
+   * written by other PriceCache instances (or anything else using the
+   * `oracle-price` channel) survive. Constructing a second
+   * `PriceCache({ maxSize })` is therefore safe and effectively
+   * idempotent — the last config applied wins for the channel's
+   * TTL/size going forward, but no existing entry is dropped as a side
+   * effect of construction. Shrinking `maxSize` below the current entry
+   * count still evicts the minimum needed via the channel's normal
+   * oldest-first eviction policy, exactly as a normal cache write would.
+   */
   constructor(config: Partial<CacheConfig> = {}) {
     this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
-    // If a custom maxSize is provided, configure the oracle-price channel on globalCache
+
     if (config.maxSize !== undefined || config.ttlMs !== undefined) {
-      const existing = (globalCache as any).configs['oracle-price'] || {};
-      const newConfig = {
-        ...existing,
+      globalCache.configure('oracle-price', {
         ...(config.maxSize !== undefined ? { maxSize: config.maxSize } : {}),
         ...(config.ttlMs !== undefined ? { ttlMs: config.ttlMs } : {}),
-      };
-      (globalCache as any).configs['oracle-price'] = newConfig;
-      // Re-instantiate cache with the updated maxSize
-      if (config.maxSize !== undefined) {
-        (globalCache as any).caches.set('oracle-price', new (globalCache.getCache('oracle-price').constructor as any)(config.maxSize));
-      }
+      });
     }
   }
 
@@ -66,41 +79,22 @@ export class PriceCache {
   invalidate(symbol: string, source?: string): void {
     const cache = globalCache.getCache('oracle-price');
     if (source) {
-      const key = this.getKey(symbol, source);
-      cache.deleteSync(key);
-    } else {
-      // Invalidate all entries starting with oracle:symbol: or equal to oracle:symbol
-      const internalCacheMap = (cache as any).cache;
-      if (internalCacheMap instanceof Map) {
-        const keysToDelete: string[] = [];
-        for (const key of internalCacheMap.keys()) {
-          if (key.startsWith(`oracle:${symbol}:`) || key === `oracle:${symbol}`) {
-            keysToDelete.push(key);
-          }
-        }
-        for (const key of keysToDelete) {
-          cache.deleteSync(key);
-        }
-      }
-      cache.deleteSync(`oracle:aggregated:${symbol}`);
+      cache.deleteSync(this.getKey(symbol, source));
+      return;
     }
+
+    // Invalidate every source-scoped entry for this symbol
+    // (oracle:symbol:*), the bare per-symbol key (oracle:symbol), and the
+    // aggregated entry — all through the public API.
+    globalCache.deleteByPrefix('oracle-price', `oracle:${symbol}:`);
+    cache.deleteSync(`oracle:${symbol}`);
+    cache.deleteSync(`oracle:aggregated:${symbol}`);
   }
 
   clear(): void {
-    const cache = globalCache.getCache('oracle-price');
-    // Wipe only entries belonging to this namespace (oracle:)
-    const internalCacheMap = (cache as any).cache;
-    if (internalCacheMap instanceof Map) {
-      const keysToDelete: string[] = [];
-      for (const key of internalCacheMap.keys()) {
-        if (key.startsWith('oracle:')) {
-          keysToDelete.push(key);
-        }
-      }
-      for (const key of keysToDelete) {
-        cache.deleteSync(key);
-      }
-    }
+    // Wipe only entries belonging to this namespace (oracle:), not the
+    // whole shared channel.
+    globalCache.deleteByPrefix('oracle-price', 'oracle:');
   }
 
   getStats(): {
@@ -109,19 +103,14 @@ export class PriceCache {
     totalSize: number;
   } {
     const cache = globalCache.getCache('oracle-price');
-    const internalCacheMap = (cache as any).cache;
     let priceCount = 0;
     let aggregatedCount = 0;
 
-    if (internalCacheMap instanceof Map) {
-      for (const key of internalCacheMap.keys()) {
-        if (key.startsWith('oracle:')) {
-          if (key.startsWith('oracle:aggregated:')) {
-            aggregatedCount++;
-          } else {
-            priceCount++;
-          }
-        }
+    for (const key of cache.keys()) {
+      if (key.startsWith('oracle:aggregated:')) {
+        aggregatedCount++;
+      } else if (key.startsWith('oracle:')) {
+        priceCount++;
       }
     }
 

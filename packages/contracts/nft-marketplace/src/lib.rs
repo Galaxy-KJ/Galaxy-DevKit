@@ -98,6 +98,27 @@ impl NftMarketplaceContract {
 
     /// One-time marketplace configuration. Panics on re-initialization.
     ///
+    /// # Security: must be called atomically with deployment
+    /// This function has no caller-authorization check of its own — by
+    /// design, since there is no meaningful authority to check against
+    /// before the contract has any state. That means a bare, standalone
+    /// call to `initialize` right after deployment is front-runnable:
+    /// whoever's transaction reaches it first permanently owns `admin`.
+    /// Adding `admin.require_auth()` here would NOT fix this, since an
+    /// attacker simply signs as the `admin` address they themselves pass
+    /// in — the check would authenticate the attacker against their own
+    /// chosen identity.
+    ///
+    /// The real mitigation lives outside this file: deploy exclusively
+    /// through `marketplace-factory`'s `deploy_marketplace`, which
+    /// deploys this contract and calls `initialize` in the same
+    /// invocation. Sub-calls within one Soroban invocation are atomic
+    /// with respect to the rest of the network, so there is no window
+    /// between "the contract exists" and "the contract is configured"
+    /// for a third party's transaction to land in. Never deploy this
+    /// contract directly and call `initialize` as a separate, later
+    /// transaction.
+    ///
     /// * `admin`         – can update the fee.
     /// * `payment_token` – SEP-41 / SAC token every listing is priced and
     ///                     settled in.
