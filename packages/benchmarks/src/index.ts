@@ -27,6 +27,17 @@ function baselinePath(): string {
   return path.join(root, 'baselines', file);
 }
 
+/**
+ * Nearest-rank percentile over an ascending-sorted array.
+ * `p` is 0-100 (e.g. 95 for p95).
+ */
+function percentile(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const rank = Math.ceil((p / 100) * sortedAsc.length) - 1;
+  const idx = Math.min(sortedAsc.length - 1, Math.max(0, rank));
+  return sortedAsc[idx];
+}
+
 function rowFromTask(task: {
   name: string;
   result?: {
@@ -38,13 +49,22 @@ function rowFromTask(task: {
 }): BenchRow {
   const r = task.result ?? {};
   const meanMs = r.mean ?? 0;
-  const p95Ms = r.p99 ?? meanMs;
+
+  // tinybench doesn't expose a p95 field directly (only p75/p99/p995/p999),
+  // so compute a genuine p95 from the raw per-iteration samples it does
+  // expose. This is also inherently less noisy than reusing p99 (more
+  // samples land in the 95th-percentile bucket than the 99th), which was
+  // the previous approach here despite the field being named `p95Ms`.
+  const samples = r.samples ?? [];
+  const sorted = samples.length > 0 ? [...samples].sort((a, b) => a - b) : [];
+  const p95Ms = sorted.length > 0 ? percentile(sorted, 95) : (r.p99 ?? meanMs);
+
   return {
     name: task.name,
     hz: r.hz ?? 0,
     meanMs,
     p95Ms,
-    samples: r.samples?.length ?? 0,
+    samples: samples.length,
   };
 }
 
