@@ -250,17 +250,42 @@ describe('PathPaymentManager', () => {
       expect(estimate.highImpact).toBe(false);
     });
 
-    it('estimates a swap along an explicit custom path without querying Horizon', async () => {
+    it('estimates a swap along an explicit custom path by querying Horizon', async () => {
+      mockFetchOnce([
+        horizonPathRecord({
+          path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+          destination_amount: '95',
+        }),
+      ]);
+
       const estimate = await manager.estimateSwap({
         sendAsset: Asset.native(),
         destAsset: usdc,
         amount: '100',
         type: 'strict_send',
+        maxSlippage: 1,
         customPath: [eurc],
       });
 
-      expect(global.fetch).not.toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
       expect(estimate.path).toEqual([Asset.native(), eurc, usdc]);
+      expect(estimate.minimumReceived).toBe('94.0500000');
+      expect(estimate.outputAmount).toBe('95');
+      expect(Number(estimate.price)).toBeGreaterThan(0);
+    });
+
+    it('throws in estimateSwap when custom path cannot be resolved from Horizon', async () => {
+      mockFetchOnce([]);
+
+      await expect(
+        manager.estimateSwap({
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          customPath: [eurc],
+        })
+      ).rejects.toThrow('Unable to obtain a safe Horizon quote for the custom payment path');
     });
   });
 
@@ -392,6 +417,172 @@ describe('PathPaymentManager', () => {
       await manager.findPaths(params);
 
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('submits a strict_send path payment with custom path asserting destMin is non-zero and protects slippage', async () => {
+      mockFetchOnce([
+        horizonPathRecord({
+          path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+          destination_amount: '95',
+        }),
+      ]);
+
+      const result = await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 1,
+          customPath: [eurc],
+        },
+        password,
+        keypair.publicKey()
+      );
+
+      expect(result.transactionHash).toBe('tx-hash-1');
+      expect(server.submitTransaction).toHaveBeenCalledTimes(1);
+
+      const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
+      const op = submittedTx.operations[0];
+      expect(op.type).toBe('pathPaymentStrictSend');
+      expect(op.destMin).toBe('94.0500000');
+      expect(op.destMin).not.toBe('0');
+      expect(op.path).toHaveLength(1);
+      expect(op.path[0].equals(eurc)).toBe(true);
+      expect(result.outputAmount).toBe('95');
+    });
+
+    it('submits a strict_receive path payment with custom path asserting sendMax is non-zero', async () => {
+      mockFetchOnce([
+        horizonPathRecord({
+          source_amount: '95',
+          destination_amount: '100',
+          path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+        }),
+      ]);
+
+      const result = await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_receive',
+          maxSlippage: 1,
+          customPath: [eurc],
+        },
+        password,
+        keypair.publicKey()
+      );
+
+      expect(result.transactionHash).toBe('tx-hash-1');
+      expect(server.submitTransaction).toHaveBeenCalledTimes(1);
+
+      const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
+      const op = submittedTx.operations[0];
+      expect(op.type).toBe('pathPaymentStrictReceive');
+      expect(op.sendMax).toBe('95.9500000');
+      expect(op.sendMax).not.toBe('0');
+      expect(op.path).toHaveLength(1);
+      expect(op.path[0].equals(eurc)).toBe(true);
+    });
+
+    it('throws before submitTransaction if computed minimumReceived is zero', async () => {
+      mockFetchOnce([
+        horizonPathRecord({
+          path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+          destination_amount: '0',
+        }),
+      ]);
+
+      await expect(
+        manager.executeSwap(
+          wallet,
+          {
+            sendAsset: Asset.native(),
+            destAsset: usdc,
+            amount: '100',
+            type: 'strict_send',
+            customPath: [eurc],
+          },
+          password,
+          keypair.publicKey()
+        )
+      ).rejects.toThrow(/Unable to obtain a safe Horizon quote/);
+
+      expect(server.submitTransaction).not.toHaveBeenCalled();
+    });
+
+    it('ensures estimateSwap and executeSwap produce matching bounds for custom path', async () => {
+      const customRecord = horizonPathRecord({
+        path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+        destination_amount: '95',
+      });
+
+      mockFetchOnce([customRecord]);
+      const estimate = await manager.estimateSwap({
+        sendAsset: Asset.native(),
+        destAsset: usdc,
+        amount: '100',
+        type: 'strict_send',
+        maxSlippage: 1,
+        customPath: [eurc],
+      });
+
+      mockFetchOnce([customRecord]);
+      await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 1,
+          customPath: [eurc],
+        },
+        password,
+        keypair.publicKey()
+      );
+
+      const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
+      const op = submittedTx.operations[0];
+      expect(op.destMin).toBe(estimate.minimumReceived);
+    });
+
+    it('flags highImpactWarning correctly for high-impact custom path in executeSwap', async () => {
+      (manager as any).swapHistory.push({
+        pairKey: (manager as any).getPairKey(Asset.native(), usdc),
+        executedPrice: '1.0',
+        success: true,
+        timestamp: new Date(),
+      });
+
+      mockFetchOnce([
+        horizonPathRecord({
+          path: [{ asset_type: 'credit_alphanum4', asset_code: 'EURC', asset_issuer: eurc.getIssuer() }],
+          source_amount: '100',
+          destination_amount: '50',
+        }),
+      ]);
+
+      const result = await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 10,
+          customPath: [eurc],
+        },
+        password,
+        keypair.publicKey()
+      );
+
+      expect(result.highImpactWarning).toBe(true);
+      expect(Number(result.priceImpact)).toBeGreaterThanOrEqual(5);
     });
   });
 
