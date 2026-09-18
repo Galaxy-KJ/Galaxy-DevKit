@@ -222,7 +222,9 @@ export class PathPaymentManager {
     if (!bestPath) {
       throw new Error('No payment path found for estimate');
     }
-    return this.estimateSwapFromPath(bestPath, params);
+    const estimate = this.estimateSwapFromPath(bestPath, params);
+    this.validateSlippageProtection(params, estimate);
+    return estimate;
   }
 
   /**
@@ -466,27 +468,6 @@ export class PathPaymentManager {
     return Number.isFinite(Number(counterAmount)) && new BigNumber(counterAmount).isGreaterThan(0) &&
       Number.isFinite(Number(path.price)) && new BigNumber(path.price).isGreaterThan(0) &&
       Number.isFinite(Number(path.priceImpact));
-  }
-
-  private buildPathFromCustom(
-    sendAsset: Asset,
-    destAsset: Asset,
-    customPath: Asset[],
-    amount: string,
-    type: SwapType
-  ): PaymentPath {
-    const placeholderDest = type === 'strict_send' ? amount : '0';
-    const placeholderSrc = type === 'strict_receive' ? amount : '0';
-    return {
-      source_asset: sendAsset,
-      destination_asset: destAsset,
-      path: customPath,
-      source_amount: type === 'strict_send' ? amount : placeholderSrc,
-      destination_amount: type === 'strict_receive' ? amount : placeholderDest,
-      price: '0',
-      priceImpact: '0',
-      pathDepth: customPath.length,
-    };
   }
 
   private estimateSwapFromPath(path: PaymentPath, params: SwapParams): SwapEstimate {
