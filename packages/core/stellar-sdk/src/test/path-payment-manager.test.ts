@@ -154,11 +154,11 @@ describe('PathPaymentManager', () => {
     });
 
     it('supports 12-character alphanumeric assets (credit_alphanum12) in Horizon queries', async () => {
-      const longAsset = new Asset('LONGTOKEN12', usdc.getIssuer());
+      const longAsset = new Asset('LONGTOKEN123', usdc.getIssuer());
       mockFetchOnce([
         horizonPathRecord({
           destination_asset_type: 'credit_alphanum12',
-          destination_asset_code: 'LONGTOKEN12',
+          destination_asset_code: 'LONGTOKEN123',
           destination_asset_issuer: usdc.getIssuer(),
         }),
       ]);
@@ -173,8 +173,8 @@ describe('PathPaymentManager', () => {
       expect(paths).toHaveLength(1);
       const [url] = (global.fetch as jest.Mock).mock.calls[0];
       expect(url).toContain('destination_asset_type=credit_alphanum12');
-      expect(url).toContain('destination_asset_code=LONGTOKEN12');
-      expect(paths[0].destination_asset.getCode()).toBe('LONGTOKEN12');
+      expect(url).toContain('destination_asset_code=LONGTOKEN123');
+      expect(paths[0].destination_asset.getCode()).toBe('LONGTOKEN123');
     });
   });
 
@@ -552,10 +552,10 @@ describe('PathPaymentManager', () => {
     });
 
     it('executes swap with 12-character alphanumeric custom path asset', async () => {
-      const longAsset = new Asset('LONGTOKEN12', usdc.getIssuer());
+      const longAsset = new Asset('LONGTOKEN123', usdc.getIssuer());
       mockFetchOnce([
         horizonPathRecord({
-          path: [{ asset_type: 'credit_alphanum12', asset_code: 'LONGTOKEN12', asset_issuer: usdc.getIssuer() }],
+          path: [{ asset_type: 'credit_alphanum12', asset_code: 'LONGTOKEN123', asset_issuer: usdc.getIssuer() }],
           destination_amount: '95',
         }),
       ]);
