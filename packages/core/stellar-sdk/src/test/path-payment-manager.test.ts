@@ -6,6 +6,7 @@
 import { Account, Asset, Horizon, Keypair } from '@stellar/stellar-sdk';
 import { PathPaymentManager } from '../path-payments/path-payment-manager.js';
 import { Wallet } from '../types/stellar-types.js';
+import BigNumber from 'bignumber.js';
 
 jest.mock('../utils/encryption.utils', () => ({
   decryptPrivateKeyToString: jest.fn((encrypted: string, pwd: string) =>
@@ -151,6 +152,30 @@ describe('PathPaymentManager', () => {
 
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
+
+    it('supports 12-character alphanumeric assets (credit_alphanum12) in Horizon queries', async () => {
+      const longAsset = new Asset('LONGTOKEN12', usdc.getIssuer());
+      mockFetchOnce([
+        horizonPathRecord({
+          destination_asset_type: 'credit_alphanum12',
+          destination_asset_code: 'LONGTOKEN12',
+          destination_asset_issuer: usdc.getIssuer(),
+        }),
+      ]);
+
+      const paths = await manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: longAsset,
+        amount: '100',
+        type: 'strict_send',
+      });
+
+      expect(paths).toHaveLength(1);
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('destination_asset_type=credit_alphanum12');
+      expect(url).toContain('destination_asset_code=LONGTOKEN12');
+      expect(paths[0].destination_asset.getCode()).toBe('LONGTOKEN12');
+    });
   });
 
   describe('getBestPath', () => {
@@ -245,7 +270,16 @@ describe('PathPaymentManager', () => {
         maxSlippage: 1,
       });
 
+      const expectedMinReceived = new BigNumber(estimate.outputAmount)
+        .times(new BigNumber(1).minus(new BigNumber(1).dividedBy(100)))
+        .toFixed(7);
+      const expectedMaxCost = new BigNumber(estimate.inputAmount)
+        .times(new BigNumber(1).plus(new BigNumber(1).dividedBy(100)))
+        .toFixed(7);
+
+      expect(estimate.minimumReceived).toBe(expectedMinReceived);
       expect(estimate.minimumReceived).toBe('94.0500000');
+      expect(estimate.maximumCost).toBe(expectedMaxCost);
       expect(estimate.maximumCost).toBe('101.0000000');
       expect(estimate.highImpact).toBe(false);
     });
@@ -269,6 +303,10 @@ describe('PathPaymentManager', () => {
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
       expect(estimate.path).toEqual([Asset.native(), eurc, usdc]);
+      const expectedMinReceived = new BigNumber(estimate.outputAmount)
+        .times(new BigNumber(1).minus(new BigNumber(1).dividedBy(100)))
+        .toFixed(7);
+      expect(estimate.minimumReceived).toBe(expectedMinReceived);
       expect(estimate.minimumReceived).toBe('94.0500000');
       expect(estimate.outputAmount).toBe('95');
       expect(Number(estimate.price)).toBeGreaterThan(0);
@@ -286,6 +324,20 @@ describe('PathPaymentManager', () => {
           customPath: [eurc],
         })
       ).rejects.toThrow('Unable to obtain a safe Horizon quote for the custom payment path');
+    });
+
+    it('throws in estimateSwap when maxSlippage is non-positive', async () => {
+      mockFetchOnce([horizonPathRecord()]);
+
+      await expect(
+        manager.estimateSwap({
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 0,
+        })
+      ).rejects.toThrow('Slippage protection: maxSlippage must be positive, got 0');
     });
   });
 
@@ -447,8 +499,13 @@ describe('PathPaymentManager', () => {
       const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
       const op = submittedTx.operations[0];
       expect(op.type).toBe('pathPaymentStrictSend');
+      const expectedMin = new BigNumber(result.outputAmount)
+        .times(new BigNumber(1).minus(new BigNumber(1).dividedBy(100)))
+        .toFixed(7);
+      expect(op.destMin).toBe(expectedMin);
       expect(op.destMin).toBe('94.0500000');
       expect(op.destMin).not.toBe('0');
+      expect(new BigNumber(op.destMin).isGreaterThan(0)).toBe(true);
       expect(op.path).toHaveLength(1);
       expect(op.path[0].equals(eurc)).toBe(true);
       expect(result.outputAmount).toBe('95');
@@ -483,10 +540,44 @@ describe('PathPaymentManager', () => {
       const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
       const op = submittedTx.operations[0];
       expect(op.type).toBe('pathPaymentStrictReceive');
+      const expectedSendMax = new BigNumber(95)
+        .times(new BigNumber(1).plus(new BigNumber(1).dividedBy(100)))
+        .toFixed(7);
+      expect(op.sendMax).toBe(expectedSendMax);
       expect(op.sendMax).toBe('95.9500000');
       expect(op.sendMax).not.toBe('0');
+      expect(new BigNumber(op.sendMax).isGreaterThan(0)).toBe(true);
       expect(op.path).toHaveLength(1);
       expect(op.path[0].equals(eurc)).toBe(true);
+    });
+
+    it('executes swap with 12-character alphanumeric custom path asset', async () => {
+      const longAsset = new Asset('LONGTOKEN12', usdc.getIssuer());
+      mockFetchOnce([
+        horizonPathRecord({
+          path: [{ asset_type: 'credit_alphanum12', asset_code: 'LONGTOKEN12', asset_issuer: usdc.getIssuer() }],
+          destination_amount: '95',
+        }),
+      ]);
+
+      const result = await manager.executeSwap(
+        wallet,
+        {
+          sendAsset: Asset.native(),
+          destAsset: usdc,
+          amount: '100',
+          type: 'strict_send',
+          maxSlippage: 1,
+          customPath: [longAsset],
+        },
+        password,
+        keypair.publicKey()
+      );
+
+      expect(result.transactionHash).toBe('tx-hash-1');
+      const submittedTx = (server.submitTransaction as jest.Mock).mock.calls[0][0];
+      const op = submittedTx.operations[0];
+      expect(op.path[0].equals(longAsset)).toBe(true);
     });
 
     it('throws before submitTransaction if computed minimumReceived is zero', async () => {

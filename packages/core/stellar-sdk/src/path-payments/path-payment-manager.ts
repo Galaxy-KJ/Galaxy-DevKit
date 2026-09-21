@@ -401,9 +401,13 @@ export class PathPaymentManager {
 
   private toHorizonAsset(asset: Asset): { asset_type: string; asset_code?: string; asset_issuer?: string } {
     if (asset.isNative()) return { asset_type: 'native' };
+    const code = asset.getCode();
+    const assetType = typeof (asset as any).getAssetType === 'function'
+      ? (asset as any).getAssetType()
+      : (code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12');
     return {
-      asset_type: 'credit_alphanum4',
-      asset_code: asset.getCode(),
+      asset_type: assetType,
+      asset_code: code,
       asset_issuer: asset.getIssuer(),
     };
   }
@@ -416,8 +420,20 @@ export class PathPaymentManager {
   private horizonPathToPaymentPath(rec: any, type: SwapType): PaymentPath {
     const pathRecs = rec.path || [];
     const path = pathRecs.map((p: any) => this.horizonAssetToSdk(typeof p === 'object' ? p : { asset_type: p }));
-    const src = rec.source_asset ?? (rec.source_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.source_asset_code, asset_issuer: rec.source_asset_issuer });
-    const dst = rec.destination_asset ?? (rec.destination_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.destination_asset_code, asset_issuer: rec.destination_asset_issuer });
+    const src = rec.source_asset ?? (rec.source_asset_type === 'native'
+      ? { asset_type: 'native' }
+      : {
+          asset_type: rec.source_asset_type ?? (rec.source_asset_code && rec.source_asset_code.length > 4 ? 'credit_alphanum12' : 'credit_alphanum4'),
+          asset_code: rec.source_asset_code,
+          asset_issuer: rec.source_asset_issuer,
+        });
+    const dst = rec.destination_asset ?? (rec.destination_asset_type === 'native'
+      ? { asset_type: 'native' }
+      : {
+          asset_type: rec.destination_asset_type ?? (rec.destination_asset_code && rec.destination_asset_code.length > 4 ? 'credit_alphanum12' : 'credit_alphanum4'),
+          asset_code: rec.destination_asset_code,
+          asset_issuer: rec.destination_asset_issuer,
+        });
     const sourceAsset = this.horizonAssetToSdk(src);
     const destAsset = this.horizonAssetToSdk(dst);
     const sourceAmount = rec.source_amount ?? '0';
@@ -508,11 +524,27 @@ export class PathPaymentManager {
   }
 
   private validateSlippageProtection(params: SwapParams, estimate: SwapEstimate): void {
-    const maxSlippage = params.maxSlippage ?? 1;
     const requiredAmount = params.type === 'strict_send' ? estimate.minimumReceived : estimate.maximumCost;
     if (!requiredAmount || !Number.isFinite(Number(requiredAmount)) || new BigNumber(requiredAmount).isLessThanOrEqualTo(0)) {
       throw new Error('Slippage protection: quote has no usable counter-amount');
     }
+
+    if (params.maxSlippage !== undefined) {
+      if (!Number.isFinite(params.maxSlippage) || params.maxSlippage <= 0) {
+        throw new Error(`Slippage protection: maxSlippage must be positive, got ${params.maxSlippage}`);
+      }
+      const appliedSlippage = estimate.volatilityAdjustedSlippage ?? params.maxSlippage;
+      if (appliedSlippage > params.maxSlippage) {
+        throw new Error(
+          `Slippage protection: applied slippage ${appliedSlippage}% exceeds allowed maxSlippage ${params.maxSlippage}%`
+        );
+      }
+    }
+    // Note: When params.maxSlippage is omitted (undefined), estimateSwapFromPath defaults to a
+    // 1% base slippage plus an automatic volatility buffer (capped at 10%, giving up to 11% total tolerance).
+    // This volatility buffer is intentionally applied only when the caller delegates slippage selection to the SDK,
+    // protecting against execution reverts during high-volatility market movements.
+
     if (params.minDestinationAmount && estimate.minimumReceived) {
       if (new BigNumber(estimate.minimumReceived).isLessThan(params.minDestinationAmount)) {
         throw new Error(`Slippage protection: minimum received ${estimate.minimumReceived} is below required ${params.minDestinationAmount}`);
