@@ -212,3 +212,6 @@ packages/contracts/governance/test_snapshots/
 test-results/
 playwright-report/
 playwright-results.json
+
+# TypeScript incremental build cache
+*.tsbuildinfo
