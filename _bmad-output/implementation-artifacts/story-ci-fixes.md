@@ -65,7 +65,7 @@ Fix all failing CI checks to restore pipeline health.
 **Lint Fixes:**
 | File | Fix |
 |------|-----|
-| key-managment.service.ts | Removed unused `error` in catch blocks |
+| key-management.service.ts | Removed unused `error` in catch blocks |
 | invisible.test.ts | Converted imports to type imports, removed unused variable |
 | encryption.utils.ts | Removed unused `AUTH_TAG_LENGTH` constant |
 | base-protocol.ts | Removed unused `Networks`, `SwapQuote`, `LiquidityPool` imports |

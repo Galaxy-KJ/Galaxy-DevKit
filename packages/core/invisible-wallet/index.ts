@@ -7,7 +7,7 @@
  */
 
 export { InvisibleWalletService } from './src/services/invisible-wallet.service.js';
-export { KeyManagementService } from './src/services/key-managment.service.js';
+export { KeyManagementService } from './src/services/key-management.service.js';
 export * from './src/types/wallet.types.js';
 export * from './src/types/smart-wallet.types.js';
 export * from './src/utils/encryption.utils.js';
