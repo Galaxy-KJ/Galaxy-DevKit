@@ -9,8 +9,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "jest --config jest.config.cjs",
-    "lint": "eslint \"src/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
