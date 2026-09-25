@@ -83,6 +83,7 @@ function deriveSessionCredentialId(sessionPublicKey: string): string {
 }
 
 function buildSourceAccount(accountId: string, sequence: bigint) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Stellar SDK requires a duck-typed account object; no public interface exists for the TransactionBuilder source account parameter
   return {
     accountId: () => accountId,
     sequenceNumber: () => sequence.toString(),
@@ -283,6 +284,7 @@ function getContractAddressFromSimulation(
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- XDR Buffer-like type does not expose overloaded toString(encoding) in TypeScript typings; casting to any to call toString('hex') is intentional
   const toStringFn = contractId.toString as any;
   if (typeof toStringFn !== 'function') {
     return null;
@@ -485,6 +487,7 @@ export class SmartWalletService {
     }
 
     const { sequence } = await this.server.getLatestLedger();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Stellar SDK requires a duck-typed account object; no public interface exists for the TransactionBuilder source account parameter
     const sourceAccount = {
       accountId: () => walletAddress,
       sequenceNumber: () => String(BigInt(sequence) + 1n),
@@ -518,10 +521,8 @@ export class SmartWalletService {
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
     this.validateSignatureExpiration(authEntry, sequence);
     const authEntryBytes = authEntry.toXDR();
-    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-      authEntryBytes.byteOffset,
-      authEntryBytes.byteOffset + authEntryBytes.byteLength
-    ) as ArrayBuffer;
+    // Uint8Array.from() creates a new owned Uint8Array, so .buffer is a plain ArrayBuffer (not SharedArrayBuffer)
+    const authEntryArrayBuffer = Uint8Array.from(authEntryBytes).buffer;
     const authEntryHash = new Uint8Array(
       await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)
     );
@@ -529,10 +530,12 @@ export class SmartWalletService {
 
     let assertion: PublicKeyCredential | null = webAuthnAssertion ?? null;
     if (!assertion) {
+      // navigator.credentials.get() returns Credential | null; the publicKey option always yields PublicKeyCredential
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       assertion = (await navigator.credentials.get({
         publicKey: {
           challenge: Buffer.from(base64UrlToUint8Array(challenge)),
-          rpId: (this.webAuthnProvider as any).rpId,
+          rpId: this.webAuthnProvider.relyingPartyId,
           allowCredentials: [
             {
               type: 'public-key' as const,
@@ -555,8 +558,7 @@ export class SmartWalletService {
       throw new Error('addSigner: unable to resolve auth credential id');
     }
 
-    const assertionResponse =
-      assertion.response as AuthenticatorAssertionResponse;
+    const assertionResponse = getAssertionResponse(assertion);
     const signerSignature = buildWebAuthnSignatureScVal(
       new Uint8Array(assertionResponse.authenticatorData),
       new Uint8Array(assertionResponse.clientDataJSON),
@@ -637,10 +639,8 @@ export class SmartWalletService {
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
     this.validateSignatureExpiration(authEntry, sequence);
     const authEntryBytes = authEntry.toXDR();
-    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-      authEntryBytes.byteOffset,
-      authEntryBytes.byteOffset + authEntryBytes.byteLength
-    ) as ArrayBuffer;
+    // Uint8Array.from() creates a new owned Uint8Array, so .buffer is a plain ArrayBuffer (not SharedArrayBuffer)
+    const authEntryArrayBuffer = Uint8Array.from(authEntryBytes).buffer;
     const authEntryHash = new Uint8Array(
       await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)
     );
@@ -879,10 +879,8 @@ export class SmartWalletService {
 
       // 2. Obtain Passkey signature
       const authEntryBytes = authEntry.toXDR();
-      const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-        authEntryBytes.byteOffset,
-        authEntryBytes.byteOffset + authEntryBytes.byteLength
-      ) as ArrayBuffer;
+      // Uint8Array.from() creates a new owned Uint8Array, so .buffer is a plain ArrayBuffer (not SharedArrayBuffer)
+      const authEntryArrayBuffer = Uint8Array.from(authEntryBytes).buffer;
 
       const authEntryHash = new Uint8Array(
         await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)

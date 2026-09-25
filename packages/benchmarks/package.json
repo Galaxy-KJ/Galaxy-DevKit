@@ -7,6 +7,8 @@
   "scripts": {
     "bench": "tsx src/index.ts",
     "bench:compare": "tsx src/index.ts --compare-only",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "test": "tsx --test src/report.test.ts",
     "load:smoke": "node load/run-smoke.mjs",
     "load:average": "k6 run load/average.js",
