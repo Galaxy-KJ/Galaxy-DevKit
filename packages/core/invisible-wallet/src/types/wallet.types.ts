@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Type definitions for Invisible Wallet System
  * @description Contains all interfaces and types for invisible wallet functionality
@@ -51,7 +49,8 @@ export interface InvisibleWallet {
   id: string;
   userId: string;
   publicKey: string;
-  encryptedPrivateKey: string;
+  /** Legacy field retained for read compatibility; new wallets never persist it. */
+  encryptedPrivateKey?: string;
   encryptedSeed?: string;
   network: NetworkConfig;
   createdAt: Date;
@@ -137,7 +136,7 @@ export interface WalletUnlockResult {
 
 export interface WalletOperationResult {
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
   timestamp: Date;
 }

@@ -7,7 +7,9 @@ export interface SoroswapBrowserDeps {
   loadLpPositions: (publicKey: string) => Promise<LpPosition[]>;
 }
 
-export const DEFAULT_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
+
+export const DEFAULT_HORIZON_URL = resolveNetwork('testnet').horizonUrl;
 
 export async function fetchLpPositionsViaHorizon(
   publicKey: string,

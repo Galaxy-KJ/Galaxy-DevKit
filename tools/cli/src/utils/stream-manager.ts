@@ -8,6 +8,7 @@
 import { Observable, Subject, timer, throwError } from 'rxjs';
 import { retry, takeUntil, timeout, catchError, tap } from 'rxjs/operators';
 import * as StellarSDK from '@stellar/stellar-sdk';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 
 export interface StreamOptions {
   network: 'testnet' | 'mainnet';
@@ -45,16 +46,9 @@ export class StreamManager {
 
   constructor(options: StreamOptions) {
     this.network = (options.network || 'testnet').trim();
-    this.horizonUrl =
-      options.horizonUrl ||
-      (this.network === 'mainnet'
-        ? 'https://horizon.stellar.org'
-        : 'https://horizon-testnet.stellar.org');
-    this.rpcUrl =
-      options.rpcUrl ||
-      (this.network === 'mainnet'
-        ? 'https://soroban-rpc.mainnet.stellar.gateway.fm'
-        : 'https://soroban-testnet.stellar.org');
+    const network = resolveNetwork(this.network === 'mainnet' ? 'mainnet' : 'testnet');
+    this.horizonUrl = options.horizonUrl || network.horizonUrl;
+    this.rpcUrl = options.rpcUrl || network.rpcUrl;
     this.server = new StellarSDK.Horizon.Server(this.horizonUrl);
     this.retryConfig = DEFAULT_RETRY_CONFIG;
   }

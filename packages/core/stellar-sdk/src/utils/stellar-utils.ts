@@ -7,6 +7,7 @@
  */
 
 import { Keypair } from '@stellar/stellar-sdk';
+import { resolveNetwork } from './network-utils.js';
 
 /**
  * Validates a Stellar public key
@@ -102,9 +103,7 @@ export const isValidMemo = (memo: string): boolean => {
 export const getNetworkPassphrase = (
   network: 'testnet' | 'mainnet'
 ): string => {
-  return network === 'testnet'
-    ? 'Test SDF Network ; September 2015'
-    : 'Public Global Stellar Network ; September 2015';
+  return resolveNetwork(network).networkPassphrase;
 };
 
 /**
@@ -113,9 +112,7 @@ export const getNetworkPassphrase = (
  * @returns Horizon server URL
  */
 export const getHorizonUrl = (network: 'testnet' | 'mainnet'): string => {
-  return network === 'testnet'
-    ? 'https://horizon-testnet.stellar.org'
-    : 'https://horizon.stellar.org';
+  return resolveNetwork(network).horizonUrl;
 };
 
 /**

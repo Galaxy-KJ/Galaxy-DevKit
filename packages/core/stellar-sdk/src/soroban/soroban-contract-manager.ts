@@ -16,6 +16,7 @@ import {
   BASE_FEE,
   Address,
 } from '@stellar/stellar-sdk';
+import { resolveNetwork } from '../utils/network-utils.js';
 import { ScValConverter } from './utils/scval-converter.js';
 import {
   ContractDeploymentParams,
@@ -34,7 +35,7 @@ export class SorobanContractManager {
   private rpcUrl: string;
   private server: SorobanRpc.Server;
 
-  constructor(rpcUrl: string = 'https://soroban-testnet.stellar.org') {
+  constructor(rpcUrl: string = resolveNetwork('testnet').rpcUrl) {
     this.rpcUrl = rpcUrl;
     this.server = new SorobanRpc.Server(rpcUrl);
   }

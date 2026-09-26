@@ -14,9 +14,15 @@
  * @property {string} passphrase - Network passphrase
  */
 export interface NetworkConfig {
-  network: 'testnet' | 'mainnet';
+  network: Network;
   horizonUrl: string;
   passphrase: string;
+  /** Soroban RPC endpoint for this network. */
+  rpcUrl?: string;
+  /** Canonical name for `passphrase`; retained alongside the legacy alias. */
+  networkPassphrase?: string;
+  /** Friendbot endpoint, when the network provides one. */
+  friendbotUrl?: string;
 }
 
 /**
@@ -163,7 +169,7 @@ export interface TransactionInfo {
  * Network type definition
  * @type Network
  */
-export type Network = 'testnet' | 'mainnet';
+export type Network = 'testnet' | 'mainnet' | 'futurenet';
 
 /**
  * Asset type definition

@@ -13,6 +13,7 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import { Server, Api, assembleTransaction } from '@stellar/stellar-sdk/rpc';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 
 /** Matches Rust SwapConditionType enum variants */
 export type SwapConditionTypeVariant =
@@ -146,8 +147,8 @@ export class SmartSwapClient {
   private contractId: string;
 
   constructor(options: SmartSwapClientOptions = {}) {
-    const rpcUrl = options.rpcUrl ?? 'https://soroban-testnet.stellar.org';
-    this.networkPassphrase = options.networkPassphrase ?? 'Test SDF Network ; September 2015';
+    const rpcUrl = options.rpcUrl ?? resolveNetwork('testnet').rpcUrl;
+    this.networkPassphrase = options.networkPassphrase ?? resolveNetwork('testnet').networkPassphrase;
     this.rpc = new Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
     this.contractId = options.contractId ?? DEFAULT_CONTRACT_ID;
   }

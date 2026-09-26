@@ -171,5 +171,11 @@ export type { ICache, CacheOptions, CacheStats, CacheEntry } from './cache/cache
 export { InMemoryCache } from './cache/in-memory-cache.js';
 export { CacheManager, globalCache, DEFAULT_CHANNEL_CONFIGS } from './cache/cache-manager.js';
 export { NetworkUtils } from './utils/network-utils.js';
+export {
+  NETWORKS,
+  resolveNetwork,
+  type NetworkName,
+  type NetworkDefinition,
+  type NetworkOverrides,
+} from './utils/network-utils.js';
 export { supabaseClient } from './utils/supabase-client.js';
-

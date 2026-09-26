@@ -8,6 +8,7 @@
  */
 
 import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat.js';
+import { resolveNetwork } from '../../utils/network-utils.js';
 import { ScValConverter } from './scval-converter.js';
 import {
   ContractEventQueryParams,
@@ -21,7 +22,7 @@ export class ContractEventMonitor {
   private pollingIntervals: Map<string, NodeJS.Timeout>;
   private lastLedger: number;
 
-  constructor(rpcUrl: string = 'https://soroban-testnet.stellar.org') {
+  constructor(rpcUrl: string = resolveNetwork('testnet').rpcUrl) {
     this.server = new SorobanRpc.Server(rpcUrl);
     this.subscriptions = new Map();
     this.pollingIntervals = new Map();

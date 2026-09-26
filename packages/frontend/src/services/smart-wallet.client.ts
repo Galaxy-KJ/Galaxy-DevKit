@@ -1,5 +1,6 @@
 import { SmartWalletService } from '@galaxy-kj/core-wallet';
 import { Networks } from '@stellar/stellar-sdk';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 import { Buffer } from 'buffer';
 
 export interface WebAuthnCredential {
@@ -13,7 +14,7 @@ export class SmartWalletClient {
   private network: string;
 
   constructor(
-    rpcUrl: string = 'https://soroban-testnet.stellar.org',
+    rpcUrl: string = resolveNetwork('testnet').rpcUrl,
     network: string = Networks.TESTNET
   ) {
     // We use the default WebAuthnProvider which works in the browser

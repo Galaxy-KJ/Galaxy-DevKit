@@ -9,6 +9,7 @@
 import { EventEmitter } from 'events';
 import { CacheOptions, CacheStats } from './cache-interface.js';
 import { InMemoryCache } from './in-memory-cache.js';
+import { resolveNetwork } from '../utils/network-utils.js';
 
 export interface ChannelConfig {
   ttlMs: number;
@@ -223,8 +224,9 @@ export class CacheManager {
   }
 
   async warmCache(networkConfig?: { horizonUrl: string; passphrase?: string }): Promise<void> {
-    const horizonUrl = networkConfig?.horizonUrl || process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
-    const passphrase = networkConfig?.passphrase || process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
+    const defaults = resolveNetwork('testnet');
+    const horizonUrl = networkConfig?.horizonUrl || defaults.horizonUrl;
+    const passphrase = networkConfig?.passphrase || defaults.networkPassphrase;
 
     const network = horizonUrl.includes('mainnet') ? 'mainnet' : 'testnet';
     const { StellarService } = await import('../services/stellar-service.js');

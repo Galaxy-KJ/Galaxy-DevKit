@@ -4,6 +4,7 @@ import ora from 'ora';
 import Table from 'cli-table3';
 import { Horizon, StrKey } from '@stellar/stellar-sdk';
 import { walletStorage } from '../../utils/wallet-storage.js';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 
 interface NormalizedBalance {
     asset: string;
@@ -14,9 +15,7 @@ interface NormalizedBalance {
 }
 
 function horizonUrl(network: string): string {
-    return network === 'mainnet'
-        ? 'https://horizon.stellar.org'
-        : 'https://horizon-testnet.stellar.org';
+    return resolveNetwork(network === 'mainnet' ? 'mainnet' : 'testnet').horizonUrl;
 }
 
 function normalizeBalance(entry: any): NormalizedBalance {

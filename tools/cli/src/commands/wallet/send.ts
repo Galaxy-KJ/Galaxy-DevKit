@@ -14,11 +14,10 @@ import {
     TransactionBuilder
 } from '@stellar/stellar-sdk';
 import { walletStorage } from '../../utils/wallet-storage.js';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 
 function horizonUrl(network: 'testnet' | 'mainnet'): string {
-    return network === 'mainnet'
-        ? 'https://horizon.stellar.org'
-        : 'https://horizon-testnet.stellar.org';
+    return resolveNetwork(network).horizonUrl;
 }
 
 function networkPassphrase(network: 'testnet' | 'mainnet'): string {

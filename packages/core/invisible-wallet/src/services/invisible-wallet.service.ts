@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Invisible Wallet Service
  * @description Main service for managing invisible wallets
@@ -773,19 +771,19 @@ export class InvisibleWalletService {
    * Maps a Supabase row to InvisibleWallet.
    * Any legacy private-key fields are intentionally ignored.
    */
-  private mapDatabaseToWallet(data: any): InvisibleWallet {
+  private mapDatabaseToWallet(data: Record<string, unknown>): InvisibleWallet {
     return {
-      id: data.id,
-      userId: data.user_id,
-      publicKey: data.public_key,
+      id: String(data.id),
+      userId: String(data.user_id),
+      publicKey: String(data.public_key),
       // encryptedPrivateKey intentionally omitted (Phase 1 non-custodial)
-      encryptedSeed: data.encrypted_seed,
-      network: data.network,
-      createdAt: new Date(data.created_at),
-      updatedAt: new Date(data.updated_at),
-      lastAccessedAt: data.last_accessed_at ? new Date(data.last_accessed_at) : undefined,
-      metadata: data.metadata || {},
-      backupStatus: data.backup_status || { isBackedUp: false, backupMethod: 'none' },
+      encryptedSeed: typeof data.encrypted_seed === 'string' ? data.encrypted_seed : undefined,
+      network: data.network as NetworkConfig,
+      createdAt: new Date(String(data.created_at)),
+      updatedAt: new Date(String(data.updated_at)),
+      lastAccessedAt: data.last_accessed_at ? new Date(String(data.last_accessed_at)) : undefined,
+      metadata: (data.metadata as Record<string, unknown> | null) || {},
+      backupStatus: (data.backup_status as InvisibleWallet['backupStatus'] | null) || { isBackedUp: false, backupMethod: 'none' },
     };
   }
 
