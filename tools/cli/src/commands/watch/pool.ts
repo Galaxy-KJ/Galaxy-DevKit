@@ -9,7 +9,6 @@
  * keeping with the rest of the `galaxy watch` family.
  */
 
-// @ts-nocheck
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as StellarSDK from '@stellar/stellar-sdk';
@@ -163,7 +162,7 @@ async function pollOnce(stream: StreamManager, poolId: string): Promise<PoolTick
     // pool lookup. Result includes reserves[] (asset/amount) and total_shares.
     const pool: any = await server
       .liquidityPools()
-      .liquidityPool(poolId)
+      .liquidityPoolId(poolId)
       .call();
 
     const reserves: PoolReserve[] = (pool.reserves ?? []).map((r: any) => ({

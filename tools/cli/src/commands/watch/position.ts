@@ -3,13 +3,13 @@
  * Monitors Blend health factor in real time via polling with a live terminal UI.
  */
 
-// @ts-nocheck
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as StellarSDK from '@stellar/stellar-sdk';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { BlendProtocol } from '../../../../../packages/core/defi-protocols/src/protocols/blend/blend-protocol.js';
 import { getCliBlendConfig } from '../blend/config.js';
+import { sleep as defaultSleep } from '../../utils/async.js';
 
 export interface PositionWatchOptions {
   network: 'testnet' | 'mainnet';
@@ -71,7 +71,7 @@ export async function runPositionWatch(
     ? jsonEmitter()
     : dashboardEmitter(cleanAddress, options, deps.ui).emit;
 
-  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const sleep = deps.sleep ?? defaultSleep;
   let ticksRemaining = deps.maxTicks ?? Number.POSITIVE_INFINITY;
 
   if (options.json) {

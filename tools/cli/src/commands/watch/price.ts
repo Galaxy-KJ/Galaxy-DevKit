@@ -14,13 +14,13 @@
  * crashing the loop, so the watch survives transient RPC hiccups.
  */
 
-// @ts-nocheck
 import { Command } from 'commander';
 import chalk from 'chalk';
 
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { createOracleAggregator } from '../../utils/oracle-registry.js';
 import { MedianStrategy } from '@galaxy-kj/core-oracles';
+import { sleep as defaultSleep } from '../../utils/async.js';
 
 interface PriceWatchOptions {
   network: 'testnet' | 'mainnet';
@@ -107,7 +107,7 @@ export async function runPriceWatch(
 
   let lastPrice: number | null = null;
   let ticksRemaining = deps.maxTicks ?? Number.POSITIVE_INFINITY;
-  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const sleep = deps.sleep ?? defaultSleep;
 
   // Emit a "started" event so JSON consumers can synchronise.
   if (options.json) {
@@ -128,7 +128,7 @@ export async function runPriceWatch(
 }
 
 async function runOneTick(
-  aggregator: { getAggregatedPrice: (s: string) => Promise<{ price: number; confidence: number; sourcesUsed: { name: string }[] }> },
+  aggregator: { getAggregatedPrice: (s: string) => Promise<{ price: number; confidence: number; sourcesUsed: string[] }> },
   ctx: PriceTickContext,
   lastPrice: number | null,
 ): Promise<number | undefined> {
