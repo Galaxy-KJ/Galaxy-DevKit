@@ -8,7 +8,7 @@ Galaxy DevKit is a comprehensive development framework that provides both **APIs
 
 ### Key Features
 
-- **🌐 APIs** - REST, GraphQL, WebSocket endpoints
+- **🌐 APIs** - REST and WebSocket endpoints
 - **🛠️ CLI Tools** - Command-line interface for project creation
 - **📦 SDKs** - TypeScript, Python, JavaScript SDKs
 - **🔗 Smart Contracts** - Rust-based Soroban contracts
@@ -32,7 +32,6 @@ Complete API documentation for Galaxy DevKit services.
 
 - **[API Reference](./api/api-reference.md)** - Complete API documentation
 - **[REST API](./api/rest-api.md)** - REST endpoints documentation
-- **[GraphQL API](./api/graphql-api.md)** - GraphQL schema and queries
 - **[WebSocket API](./api/websocket-api.md)** - Real-time WebSocket API
 - **[SDK Examples](./api/sdk-examples.md)** - SDK usage examples
 
