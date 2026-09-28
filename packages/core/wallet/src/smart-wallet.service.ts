@@ -1,4 +1,5 @@
 import {
+  Account,
   Address,
   Asset,
   Transaction,
@@ -83,15 +84,11 @@ function deriveSessionCredentialId(sessionPublicKey: string): string {
 }
 
 function buildSourceAccount(accountId: string, sequence: bigint) {
-  return {
-    accountId: () => accountId,
-    sequenceNumber: () => sequence.toString(),
-    incrementSequenceNumber: () => {},
-  } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
+  return new Account(accountId, sequence.toString());
 }
 
 function buildAccountAddressScVal(accountId: string): xdr.ScVal {
-  return nativeToScVal(accountId, { type: 'address' }) as xdr.ScVal;
+  return nativeToScVal(accountId, { type: 'address' });
 }
 
 function getStoredCredentialId(): string | null {
@@ -237,6 +234,12 @@ function getAssertionResponse(
   return credential.response;
 }
 
+function isPublicKeyCredential(
+  credential: Credential | null
+): credential is PublicKeyCredential {
+  return credential !== null && 'rawId' in credential && 'response' in credential;
+}
+
 function getAuthEntryArrayBuffer(
   authEntry: xdr.SorobanAuthorizationEntry
 ): ArrayBuffer {
@@ -283,12 +286,12 @@ function getContractAddressFromSimulation(
     return null;
   }
 
-  const toStringFn = contractId.toString as any;
+  const toStringFn = contractId.toString;
   if (typeof toStringFn !== 'function') {
     return null;
   }
 
-  const value = toStringFn.call(contractId, 'hex');
+  const value = Reflect.apply(toStringFn, contractId, ['hex']);
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
@@ -485,11 +488,10 @@ export class SmartWalletService {
     }
 
     const { sequence } = await this.server.getLatestLedger();
-    const sourceAccount = {
-      accountId: () => walletAddress,
-      sequenceNumber: () => String(BigInt(sequence) + 1n),
-      incrementSequenceNumber: () => {},
-    } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
+    const sourceAccount = buildSourceAccount(
+      walletAddress,
+      BigInt(sequence) + 1n
+    );
 
     const invokeTx = new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
@@ -517,11 +519,7 @@ export class SmartWalletService {
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
     this.validateSignatureExpiration(authEntry, sequence);
-    const authEntryBytes = authEntry.toXDR();
-    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-      authEntryBytes.byteOffset,
-      authEntryBytes.byteOffset + authEntryBytes.byteLength
-    ) as ArrayBuffer;
+    const authEntryArrayBuffer = getAuthEntryArrayBuffer(authEntry);
     const authEntryHash = new Uint8Array(
       await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)
     );
@@ -529,10 +527,10 @@ export class SmartWalletService {
 
     let assertion: PublicKeyCredential | null = webAuthnAssertion ?? null;
     if (!assertion) {
-      assertion = (await navigator.credentials.get({
+      const credential = await navigator.credentials.get({
         publicKey: {
           challenge: Buffer.from(base64UrlToUint8Array(challenge)),
-          rpId: (this.webAuthnProvider as any).rpId,
+          rpId: this.webAuthnProvider.relyingPartyId,
           allowCredentials: [
             {
               type: 'public-key' as const,
@@ -542,7 +540,10 @@ export class SmartWalletService {
           userVerification: 'required',
           timeout: 60_000,
         },
-      })) as PublicKeyCredential | null;
+      });
+      if (isPublicKeyCredential(credential)) {
+        assertion = credential;
+      }
     }
     if (!assertion) {
       throw new Error(
@@ -555,8 +556,7 @@ export class SmartWalletService {
       throw new Error('addSigner: unable to resolve auth credential id');
     }
 
-    const assertionResponse =
-      assertion.response as AuthenticatorAssertionResponse;
+    const assertionResponse = getAssertionResponse(assertion);
     const signerSignature = buildWebAuthnSignatureScVal(
       new Uint8Array(assertionResponse.authenticatorData),
       new Uint8Array(assertionResponse.clientDataJSON),
@@ -636,11 +636,7 @@ export class SmartWalletService {
 
     const authEntry: xdr.SorobanAuthorizationEntry = simResult.result.auth[0];
     this.validateSignatureExpiration(authEntry, sequence);
-    const authEntryBytes = authEntry.toXDR();
-    const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-      authEntryBytes.byteOffset,
-      authEntryBytes.byteOffset + authEntryBytes.byteLength
-    ) as ArrayBuffer;
+    const authEntryArrayBuffer = getAuthEntryArrayBuffer(authEntry);
     const authEntryHash = new Uint8Array(
       await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)
     );
@@ -878,11 +874,7 @@ export class SmartWalletService {
       this.validateDeFiAuthorization(authEntry, contractAddress);
 
       // 2. Obtain Passkey signature
-      const authEntryBytes = authEntry.toXDR();
-      const authEntryArrayBuffer = authEntryBytes.buffer.slice(
-        authEntryBytes.byteOffset,
-        authEntryBytes.byteOffset + authEntryBytes.byteLength
-      ) as ArrayBuffer;
+      const authEntryArrayBuffer = getAuthEntryArrayBuffer(authEntry);
 
       const authEntryHash = new Uint8Array(
         await crypto.subtle.digest('SHA-256', authEntryArrayBuffer)
