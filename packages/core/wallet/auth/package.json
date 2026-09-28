@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -19,6 +21,7 @@
     "@types/events": "^3.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.3.0",
+    "eslint": "^9.0.0",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.3.0",
     "ts-jest": "^29.4.6",

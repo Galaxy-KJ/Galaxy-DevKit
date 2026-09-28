@@ -5,6 +5,8 @@
   "description": "Micro-benchmarks and k6 load scenarios for Galaxy DevKit",
   "type": "module",
   "scripts": {
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "bench": "tsx src/index.ts",
     "bench:compare": "tsx src/index.ts --compare-only",
     "test": "tsx --test src/report.test.ts",
