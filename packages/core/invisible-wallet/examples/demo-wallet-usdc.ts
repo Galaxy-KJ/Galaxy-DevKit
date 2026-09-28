@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Demo: Create an Invisible Wallet with XLM + USDC
  * @description

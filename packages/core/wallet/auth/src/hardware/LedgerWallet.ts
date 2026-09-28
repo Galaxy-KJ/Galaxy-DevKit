@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Ledger Wallet Integration for Stellar
  * Provides secure key management and transaction signing using Ledger hardware wallets
@@ -9,6 +8,7 @@ import Transport from '@ledgerhq/hw-transport';
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import TransportNodeHid from '@ledgerhq/hw-transport-node-hid';
 import Str from '@ledgerhq/hw-app-str';
+import { StrKey } from '@stellar/stellar-sdk';
 import {
   LedgerConfig,
   LedgerDeviceInfo,
@@ -86,7 +86,7 @@ export class LedgerWallet extends EventEmitter {
       this.transport.on('disconnect', () => {
         this.handleDisconnect();
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
       this.connectionStatus = {
         connected: false,
@@ -110,7 +110,7 @@ export class LedgerWallet extends EventEmitter {
 
       this.connectionStatus = { connected: false };
       this.emit('disconnected');
-    } catch (error: any) {
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
       this.emit('error', ledgerError);
       throw ledgerError;
@@ -133,7 +133,7 @@ export class LedgerWallet extends EventEmitter {
         appVersion: appConfig.version,
         isStellarAppOpen: true,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
 
       // If app not open, return partial info
@@ -175,19 +175,16 @@ export class LedgerWallet extends EventEmitter {
           : 'Retrieving public key...',
       });
 
-      const result = await this.stellarApp!.getPublicKey(
-        derivationPath,
-        displayOnDevice,
-        false // Don't return chain code
-      );
+      const result = await this.stellarApp!.getPublicKey(derivationPath, displayOnDevice);
+      const publicKey = StrKey.encodeEd25519PublicKey(result.rawPublicKey);
 
       this.emit('public-key-retrieved', {
-        publicKey: result.publicKey,
+        publicKey,
         derivationPath,
       });
 
-      return result.publicKey;
-    } catch (error: any) {
+      return publicKey;
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
       this.emit('error', ledgerError);
       throw ledgerError;
@@ -222,7 +219,7 @@ export class LedgerWallet extends EventEmitter {
 
         accounts.push(account);
         this.accountCache.set(derivationPath, account);
-      } catch (error: any) {
+      } catch (error: unknown) {
         const ledgerError = parseLedgerError(error);
         this.emit('error', ledgerError);
         // Continue with next account instead of failing entirely
@@ -258,7 +255,7 @@ export class LedgerWallet extends EventEmitter {
         message: 'Please review and confirm the transaction on your device',
       });
 
-      const signature = await this.stellarApp!.signTransaction(
+      const signatureResult = await this.stellarApp!.signTransaction(
         derivationPath,
         transactionHash
       );
@@ -266,14 +263,14 @@ export class LedgerWallet extends EventEmitter {
       const publicKey = await this.getPublicKey(derivationPath, false);
 
       const result: LedgerSignatureResult = {
-        signature,
+        signature: signatureResult.signature,
         publicKey,
         hash: transactionHash.toString('hex'),
       };
 
       this.emit('transaction-signed', result);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
       this.emit('error', ledgerError);
       throw ledgerError;
@@ -304,19 +301,19 @@ export class LedgerWallet extends EventEmitter {
         message: 'Please confirm the signature on your device',
       });
 
-      const signature = await this.stellarApp!.signHash(derivationPath, hash);
+      const signatureResult = await this.stellarApp!.signHash(derivationPath, hash);
 
       const publicKey = await this.getPublicKey(derivationPath, false);
 
       const result: LedgerSignatureResult = {
-        signature,
+        signature: signatureResult.signature,
         publicKey,
         hash: hash.toString('hex'),
       };
 
       this.emit('hash-signed', result);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const ledgerError = parseLedgerError(error);
       this.emit('error', ledgerError);
       throw ledgerError;
@@ -352,7 +349,7 @@ export class LedgerWallet extends EventEmitter {
     try {
       if (this.config.transport === 'usb') {
         // Try browser WebUSB first
-        if (typeof window !== 'undefined' && TransportWebUSB.isSupported()) {
+        if (typeof window !== 'undefined' && await TransportWebUSB.isSupported()) {
           return await TransportWebUSB.create();
         }
         // Fall back to Node.js HID
@@ -364,7 +361,7 @@ export class LedgerWallet extends EventEmitter {
           'Bluetooth transport not yet implemented'
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw parseLedgerError(error);
     }
   }
@@ -386,7 +383,7 @@ export class LedgerWallet extends EventEmitter {
       try {
         await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
         await this.connect();
-      } catch (error: any) {
+      } catch (error: unknown) {
         const ledgerError = parseLedgerError(error);
         this.emit('reconnect-failed', ledgerError);
 
@@ -430,7 +427,7 @@ export class LedgerWallet extends EventEmitter {
 export async function detectLedgerDevices(): Promise<boolean> {
   try {
     // Check WebUSB support
-    if (typeof window !== 'undefined' && TransportWebUSB.isSupported()) {
+    if (typeof window !== 'undefined' && await TransportWebUSB.isSupported()) {
       const devices = await TransportWebUSB.list();
       return devices.length > 0;
     }
@@ -446,7 +443,7 @@ export async function detectLedgerDevices(): Promise<boolean> {
 /**
  * Check if Ledger is supported in current environment
  */
-export function isLedgerSupported(): boolean {
+export async function isLedgerSupported(): Promise<boolean> {
   // Check WebUSB support in browser
   if (typeof window !== 'undefined') {
     return TransportWebUSB.isSupported();

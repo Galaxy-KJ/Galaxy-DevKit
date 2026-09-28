@@ -29,7 +29,7 @@
         "packages/core/*/src"
       ],
       "@galaxy-kj/core-stellar-sdk": [
-        "packages/core/stellar-sdk/src"
+        "packages/core/stellar-sdk/src/index.ts"
       ],
       "@galaxy-kj/core-stellar-sdk/*": [
         "packages/core/stellar-sdk/src/*"

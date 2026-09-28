@@ -14,6 +14,8 @@
 
 export type NetworkType = 'testnet' | 'mainnet';
 
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
+
 export interface NetworkConfig {
   /** Human-readable label shown in the UI pill */
   label: string;
@@ -43,16 +45,16 @@ const DEFAULT_NETWORK: NetworkType = 'testnet';
 export const NETWORK_CONFIGS: Record<NetworkType, NetworkConfig> = {
   testnet: {
     label: 'Testnet',
-    rpcUrl: 'https://soroban-testnet.stellar.org',
-    horizonUrl: 'https://horizon-testnet.stellar.org',
-    passphrase: 'Test SDF Network ; September 2015',
+    rpcUrl: resolveNetwork('testnet').rpcUrl,
+    horizonUrl: resolveNetwork('testnet').horizonUrl,
+    passphrase: resolveNetwork('testnet').networkPassphrase,
     writable: true,
   },
   mainnet: {
     label: 'Mainnet',
-    rpcUrl: 'https://soroban-mainnet.stellar.org',
-    horizonUrl: 'https://horizon.stellar.org',
-    passphrase: 'Public Global Stellar Network ; September 2015',
+    rpcUrl: resolveNetwork('mainnet').rpcUrl,
+    horizonUrl: resolveNetwork('mainnet').horizonUrl,
+    passphrase: resolveNetwork('mainnet').networkPassphrase,
     writable: false,
   },
 };

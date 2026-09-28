@@ -1,6 +1,7 @@
 import { SmartWalletClient } from './smart-wallet.client';
 import { Address, StrKey, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 
 /**
  * Represents information about an imported smart wallet
@@ -33,7 +34,7 @@ export class WalletConnectorService {
 
   constructor(
     client: SmartWalletClient,
-    rpcUrl: string = 'https://soroban-testnet.stellar.org',
+    rpcUrl: string = resolveNetwork('testnet').rpcUrl,
     network: string = Networks.TESTNET
   ) {
     this.client = client;

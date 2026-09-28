@@ -10,8 +10,10 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const HORIZON_TESTNET = 'https://horizon-testnet.stellar.org';
-const HORIZON_MAINNET = 'https://horizon.stellar.org';
+import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
+
+const HORIZON_TESTNET = resolveNetwork('testnet').horizonUrl;
+const HORIZON_MAINNET = resolveNetwork('mainnet').horizonUrl;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

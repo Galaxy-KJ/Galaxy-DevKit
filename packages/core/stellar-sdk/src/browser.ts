@@ -14,3 +14,11 @@ export type {
   PaymentResult,
   Wallet,
 } from './types/stellar-types.js';
+
+export {
+  NETWORKS,
+  resolveNetwork,
+  type NetworkName,
+  type NetworkDefinition,
+  type NetworkOverrides,
+} from './utils/network-utils.js';

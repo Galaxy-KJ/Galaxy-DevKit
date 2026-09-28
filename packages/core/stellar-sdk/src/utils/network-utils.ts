@@ -7,7 +7,72 @@
  */
 
 import { Networks, StrKey } from '@stellar/stellar-sdk';
-import { NetworkConfig } from '../types/stellar-types.js';
+import { Network, NetworkConfig } from '../types/stellar-types.js';
+
+export type NetworkName = Network;
+
+export interface NetworkDefinition extends NetworkConfig {
+  name: NetworkName;
+  rpcUrl: string;
+  networkPassphrase: string;
+  friendbotUrl: string;
+}
+
+export type NetworkOverrides = Partial<Pick<NetworkDefinition, 'horizonUrl' | 'rpcUrl' | 'networkPassphrase' | 'friendbotUrl'>>;
+
+const DEFAULT_NETWORKS: Record<NetworkName, NetworkDefinition> = {
+  testnet: {
+    name: 'testnet',
+    network: 'testnet',
+    horizonUrl: 'https://horizon-testnet.stellar.org',
+    rpcUrl: 'https://soroban-testnet.stellar.org',
+    passphrase: Networks.TESTNET,
+    networkPassphrase: Networks.TESTNET,
+    friendbotUrl: 'https://friendbot.stellar.org',
+  },
+  mainnet: {
+    name: 'mainnet',
+    network: 'mainnet',
+    horizonUrl: 'https://horizon.stellar.org',
+    rpcUrl: 'https://soroban.stellar.org',
+    passphrase: Networks.PUBLIC,
+    networkPassphrase: Networks.PUBLIC,
+    friendbotUrl: '',
+  },
+  futurenet: {
+    name: 'futurenet',
+    network: 'futurenet',
+    horizonUrl: 'https://horizon-futurenet.stellar.org',
+    rpcUrl: 'https://rpc-futurenet.stellar.org',
+    passphrase: Networks.FUTURENET,
+    networkPassphrase: Networks.FUTURENET,
+    friendbotUrl: '',
+  },
+};
+
+export const NETWORKS: Readonly<Record<NetworkName, NetworkDefinition>> = DEFAULT_NETWORKS;
+
+function environment(): Record<string, string | undefined> {
+  return typeof process === 'undefined' ? {} : process.env;
+}
+
+/** Resolve a network from the shared defaults and optional environment overrides. */
+export function resolveNetwork(
+  name: NetworkName = (environment().STELLAR_NETWORK as NetworkName) || 'testnet',
+  overrides: NetworkOverrides = {}
+): NetworkDefinition {
+  const base = NETWORKS[name] || NETWORKS.testnet;
+  const env = environment();
+  const resolved = {
+    ...base,
+    horizonUrl: overrides.horizonUrl || env.STELLAR_HORIZON_URL || base.horizonUrl,
+    rpcUrl: overrides.rpcUrl || env.STELLAR_RPC_URL || base.rpcUrl,
+    networkPassphrase:
+      overrides.networkPassphrase || env.STELLAR_NETWORK_PASSPHRASE || base.networkPassphrase,
+    friendbotUrl: overrides.friendbotUrl || env.STELLAR_FRIENDBOT_URL || base.friendbotUrl,
+  };
+  return { ...resolved, passphrase: resolved.networkPassphrase };
+}
 
 /**
  * Network utility class
@@ -19,19 +84,9 @@ export class NetworkUtils {
    * Predefined network configurations
    */
   static readonly NETWORKS = {
-    PUBLIC: {
-      name: 'mainnet',
-      horizonUrl: 'https://horizon.stellar.org',
-      passphrase: Networks.PUBLIC,
-      network: 'mainnet',
-    } as NetworkConfig,
-    TESTNET: {
-      name: 'testnet',
-      horizonUrl: 'https://horizon-testnet.stellar.org',
-      passphrase: Networks.TESTNET,
-      network: 'testnet',
-    } as NetworkConfig,
-  };
+    PUBLIC: NETWORKS.mainnet,
+    TESTNET: NETWORKS.testnet,
+  } as const;
 
   /**
    * Validates if a string is a valid Stellar public key
@@ -65,9 +120,7 @@ export class NetworkUtils {
    * @returns NetworkConfig
    */
   getNetworkConfig(networkName: 'public' | 'testnet'): NetworkConfig {
-    return networkName === 'public'
-      ? NetworkUtils.NETWORKS.PUBLIC
-      : NetworkUtils.NETWORKS.TESTNET;
+    return resolveNetwork(networkName === 'public' ? 'mainnet' : 'testnet');
   }
 
   /**
@@ -86,6 +139,7 @@ export class NetworkUtils {
       horizonUrl,
       passphrase,
       network,
+      networkPassphrase: passphrase,
     };
   }
 
@@ -112,7 +166,7 @@ export class NetworkUtils {
    * @returns string
    */
   getFriendbotUrl(): string {
-    return 'https://friendbot.stellar.org';
+    return resolveNetwork('testnet').friendbotUrl;
   }
 
   /**
