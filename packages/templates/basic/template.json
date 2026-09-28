@@ -70,7 +70,7 @@
       "content": "{\n  \"semi\": true,\n  \"trailingComma\": \"es5\",\n  \"singleQuote\": true,\n  \"printWidth\": 80,\n  \"tabWidth\": 2,\n  \"useTabs\": false\n}\n"
     },
     {
-      "path": "jest.config.js",
+      "path": "jest.config.cjs",
       "content": "const nextJest = require('next/jest')\n\nconst createJestConfig = nextJest({\n  // Provide the path to your Next.js app to load next.config.js and .env files\n  dir: './',\n})\n\n// Add any custom config to be passed to Jest\nconst customJestConfig = {\n  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],\n  moduleNameMapping: {\n    // Handle module aliases (this will be automatically configured for you based on your tsconfig.json paths)\n    '^@/(.*)$': '<rootDir>/src/$1',\n  },\n  testEnvironment: 'jest-environment-jsdom',\n}\n\n// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async\nmodule.exports = createJestConfig(customJestConfig)\n"
     },
     {

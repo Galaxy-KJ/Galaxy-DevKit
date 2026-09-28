@@ -15,7 +15,6 @@ module.exports = {
     ...(runTestnetIntegration ? [] : ["/integration/"]),
     "\\.e2e\\.test\\.[jt]sx?$",
     "MockLedgerTransport\\.ts$",
-    // Jest matches **/__tests__/**/*.ts — exclude helpers and mocks
     "[/\\\\]__tests__[/\\\\]__mocks__[/\\\\]",
     "[/\\\\]__tests__[/\\\\]setup\\.ts$",
     "[/\\\\]packages[/\\\\]frontend[/\\\\]src[/\\\\]__tests__[/\\\\]mock-webauthn\\.ts$",
@@ -44,15 +43,12 @@ module.exports = {
     "^@galaxy/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
-    // Use full index.ts (not browser.ts) to include cache module exports
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/index.ts",
     "^@galaxy-kj/core-invisible-wallet$": "<rootDir>/packages/core/invisible-wallet/index.ts",
+    "^@galaxy-kj/core-invisible-wallet/encryption$": "<rootDir>/packages/core/invisible-wallet/src/utils/encryption.utils.ts",
     "^@galaxy-kj/core-invisible-wallet/(.*)\\.js$": "<rootDir>/packages/core/invisible-wallet/src/$1.ts",
     "^chalk$": "<rootDir>/tools/cli/__tests__/__mocks__/chalk.ts",
     "^ora$": "<rootDir>/tools/cli/__tests__/__mocks__/ora.ts",
-    // Resolve relative .js imports to .ts (ESM-style imports in tools/cli).
-    // Matches both "./foo.js" and "../foo.js" — the third literal dot in the
-    // old pattern made it silently skip single-dot ("./") relative imports.
     "^(\\.\\.?/.*)\\.js$": "$1",
   },
 };
