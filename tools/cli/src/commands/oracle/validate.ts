@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Oracle validate command
  * @description Validate price data for an asset

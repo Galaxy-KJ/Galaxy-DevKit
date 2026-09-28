@@ -149,53 +149,6 @@ curl -X GET https://api.galaxy-devkit.com/api/v1/wallets/wallet123/balance \
   -H "Authorization: Bearer your-api-key"
 ```
 
-### GraphQL Examples
-
-#### Query Wallets
-```graphql
-query GetWallets($userId: String!) {
-  wallets(userId: $userId) {
-    id
-    publicKey
-    balance {
-      asset
-      amount
-    }
-    transactions {
-      hash
-      amount
-      status
-      createdAt
-    }
-  }
-}
-```
-
-#### Mutation: Send Payment
-```graphql
-mutation SendPayment($input: SendPaymentInput!) {
-  sendPayment(input: $input) {
-    id
-    hash
-    status
-    createdAt
-  }
-}
-```
-
-#### Subscription: Real-time Updates
-```graphql
-subscription WalletUpdates($walletId: String!) {
-  walletUpdated(walletId: $walletId) {
-    id
-    balance {
-      asset
-      amount
-    }
-  }
-}
-```
-
 ### WebSocket Examples
 
 #### JavaScript WebSocket Client

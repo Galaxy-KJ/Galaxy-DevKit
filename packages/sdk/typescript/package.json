@@ -15,7 +15,6 @@
     "generate": "node scripts/generate-sdk.js"
   },
   "dependencies": {
-    "@galaxy-kj/api-graphql": "^5.0.0",
     "@galaxy-kj/api-rest": "^5.0.0",
     "@galaxy-kj/api-websocket": "^5.0.0",
     "@galaxy-kj/core-automation": "^5.0.0",

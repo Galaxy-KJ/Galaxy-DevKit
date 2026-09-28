@@ -11,7 +11,7 @@
 - **Oracle Integration**: Price feeds and data oracles for Stellar
 - **Automation Engine**: IFTTT-style automation for DeFi operations
 - **Soroban Smart Contracts**: Rust-based smart contracts
-- **Multi-API Architecture**: REST, GraphQL, WebSocket APIs
+- **Multi-API Architecture**: REST and WebSocket APIs
 - **CLI Tools**: Command-line interface for developers
 - **TypeScript SDK**: Client SDK for easy integration
 
@@ -31,7 +31,6 @@ galaxy-devkit/
 │   │   └── oracles/                  # 🆕 Oracle integrations
 │   ├── api/                          # API layers
 │   │   ├── rest/                     # Express REST API
-│   │   ├── graphql/                  # Apollo GraphQL API
 │   │   └── websocket/                # Socket.io WebSocket API
 │   ├── sdk/                          # Client SDKs
 │   │   └── typescript/               # TypeScript SDK
@@ -55,7 +54,7 @@ Wallets are created with email/password only. Private keys are encrypted (AES-25
 **Files to understand:**
 
 - `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts`
-- `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+- `packages/core/invisible-wallet/src/services/key-management.service.ts`
 - `packages/core/invisible-wallet/src/types/wallet.types.ts`
 - `packages/core/invisible-wallet/src/types/smart-wallet.types.ts` 🆕
 
@@ -1134,7 +1133,7 @@ galaxy [command]
 ### APIs
 
 - `packages/api/rest/src/` - REST API implementation
-- `packages/api/graphql/src/` - GraphQL API implementation
+- GraphQL is intentionally withdrawn; use `packages/api/rest/` and the WebSocket API.
 - `packages/api/websocket/src/` - WebSocket API implementation
 
 ## 🎯 Current Development Focus (Phase System)
@@ -1604,7 +1603,7 @@ Tests use mock transport to simulate Ledger device without hardware:
 import { LedgerWallet } from '../LedgerWallet';
 import { MockLedgerTransport } from '../__tests__/MockLedgerTransport';
 
-// Mock is configured in jest.config.js
+// Mock is configured in jest.config.cjs
 const ledger = new LedgerWallet();
 await ledger.connect(); // Uses mock transport in tests
 

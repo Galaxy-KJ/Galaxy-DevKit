@@ -30,7 +30,7 @@ galaxy create my-app
 - **Basic Usage** - Core concepts and features
 
 ### User Guide
-- **Using APIs** - REST, GraphQL, WebSocket APIs
+- **Using APIs** - REST and WebSocket APIs
 - **Using CLI** - Command line tools
 - **Examples** - Real-world use cases
 - **Troubleshooting** - Common issues and solutions

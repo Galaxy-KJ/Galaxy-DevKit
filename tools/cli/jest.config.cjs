@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   moduleNameMapper: {
@@ -9,9 +9,7 @@ export default {
     '^@galaxy/templates/(.*)$': '<rootDir>/packages/templates/$1/src',
     '^@galaxy/tools/(.*)$': '<rootDir>/tools/$1/src',
     '^@galaxy-kj/core-invisible-wallet/encryption$': '<rootDir>/../../packages/core/invisible-wallet/src/utils/encryption.utils.ts',
-    // Resolve relative .js imports to .ts (ESM-style imports in source)
     '^(\\.\\.?/.*)\\.js$': '$1',
-    // Mock node-cache for tests that load session (e.g. REPL tests)
     '^node-cache$': '<rootDir>/__tests__/__mocks__/node-cache.js',
   },
   transform: {

@@ -4,6 +4,7 @@
 declare module 'node-cache' {
   interface NodeCacheOptions {
     stdTTL?: number;
+    checkperiod?: number;
   }
   class NodeCache {
     constructor(options?: NodeCacheOptions);

@@ -100,7 +100,7 @@ Automate DeFi operations without complex code:
 ### 📊 Multiple API Options
 Choose your preferred interface:
 - **REST API** - Traditional HTTP endpoints
-- **GraphQL API** - Flexible queries and subscriptions
+- **REST and WebSocket APIs** - Supported API surfaces for queries, mutations, and live updates
 - **WebSocket API** - Real-time updates
 
 ---

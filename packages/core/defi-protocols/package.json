@@ -14,7 +14,8 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "type-check:examples": "tsc -p tsconfig.examples.json --noEmit"
   },
   "dependencies": {
     "@blend-capital/blend-sdk": "^3.3.0",

@@ -23,6 +23,7 @@
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
+    "examples",
     "../stellar-sdk/**/*"
   ]
 }

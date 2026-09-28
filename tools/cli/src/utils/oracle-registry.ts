@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Oracle registry utilities for CLI
  * @description Loads oracle sources, registers defaults, and builds aggregators
