@@ -6,10 +6,10 @@
  * @since 2024-01-30
  */
 
-import { SoroswapProtocol } from '../soroswap-protocol.js';
-import { Asset, ProtocolConfig } from '../../../types/defi-types.js';
-import { SOROSWAP_TESTNET_CONFIG } from '../soroswap-config.js';
-import { calculateSoroswapPoolAnalytics } from '../analytics.js';
+import { SoroswapProtocol } from '@galaxy-kj/core-defi-protocols';
+import { Asset, ProtocolConfig } from '@galaxy-kj/core-defi-protocols';
+import { SOROSWAP_TESTNET_CONFIG } from '@galaxy-kj/core-defi-protocols';
+import { calculateSoroswapPoolAnalytics } from '@galaxy-kj/core-defi-protocols';
 
 /**
  * Example: Initialize Soroswap Protocol
@@ -119,10 +119,8 @@ async function poolAnalyticsExample(): Promise<void> {
  * Example: Create via factory
  */
 async function factoryExample(): Promise<void> {
-  // Import registers Soroswap with the factory automatically
-  await import('../soroswap-registration.js');
-
-  const { getProtocolFactory } = await import('../../../services/protocol-factory.js');
+  const { getProtocolFactory, registerSoroswapProtocol } = await import('@galaxy-kj/core-defi-protocols');
+  registerSoroswapProtocol();
   const factory = getProtocolFactory();
 
   console.log('Supported protocols:', factory.getSupportedProtocols());

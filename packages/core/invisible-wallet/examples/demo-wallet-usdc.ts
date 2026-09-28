@@ -13,7 +13,7 @@
  *   4. Swap some XLM → USDC
  *   5. Display final balances (XLM + USDC)
  *
- *   Run: npx ts-node --esm src/demo/demo-wallet-usdc.ts
+ *   Run: npx ts-node --esm examples/demo-wallet-usdc.ts
  *
  * @author Galaxy DevKit Team
  */
