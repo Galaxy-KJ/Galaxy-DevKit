@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Type definitions for liquidity analytics services
+ * @description Unified analytics types for SDEX and AMM liquidity pool analysis.
+ * @author Galaxy DevKit Team
+ * @version 5.0.2
+ */
+
 export interface UnifiedPoolAnalytics {
   protocol: 'sdex' | 'soroswap';
   poolId: string;

@@ -28,8 +28,6 @@
       "@galaxy-kj/core-defi-protocols/*": ["packages/core/defi-protocols/src/*"],
       "@galaxy-kj/core-oracles": ["packages/core/oracles/src/index.ts"],
       "@galaxy-kj/core-oracles/*": ["packages/core/oracles/src/*"],
-      "@galaxy-kj/core-defi": ["packages/core/defi/src/index.ts"],
-      "@galaxy-kj/core-defi/*": ["packages/core/defi/src/*"],
       "@galaxy-kj/core-invisible-wallet": ["packages/core/invisible-wallet/index.ts"],
       "@galaxy-kj/core-invisible-wallet/encryption": ["packages/core/invisible-wallet/src/utils/encryption.utils.ts"],
       "@galaxy-kj/core-invisible-wallet/*": ["packages/core/invisible-wallet/src/*"],

@@ -20,7 +20,6 @@
       "@galaxy-kj/core-stellar-sdk": ["../core/stellar-sdk/src/browser.ts"],
       "@galaxy-kj/core-defi-protocols": ["../core/defi-protocols/src"],
       "@galaxy-kj/core-oracles": ["../core/oracles/src"],
-      "@galaxy-kj/core-defi": ["../core/defi/src"],
       "@galaxy-kj/core-invisible-wallet": ["../core/invisible-wallet/src"],
       "@stellar/stellar-sdk/rpc": ["./node_modules/@stellar/stellar-sdk/lib/rpc/index.d.ts"]
     }

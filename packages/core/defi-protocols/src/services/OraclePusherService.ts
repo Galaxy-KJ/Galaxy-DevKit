@@ -10,16 +10,14 @@
  *                                                    ↑ retry with back-off
  *
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 5.0.2
  */
 
 import {
   Contract,
   Keypair,
   nativeToScVal,
-  Networks,
   rpc as SorobanRpc,
-  scValToNative,
   TransactionBuilder,
   xdr,
 } from '@stellar/stellar-sdk';

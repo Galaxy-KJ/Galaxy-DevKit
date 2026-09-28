@@ -1,11 +1,12 @@
 /**
- * @fileoverview Type definitions for the DEX Aggregator Service
+ * @fileoverview Type definitions for the Horizon DEX Aggregator Service
  * @description Data structures for routing, quotes, and aggregated swap results
+ *   across SDEX and AMM protocols (Soroswap, Aquarius).
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 5.0.2
  */
 
-import { Asset } from '@galaxy-kj/core-defi-protocols';
+import { Asset } from './defi-types.js';
 
 /**
  * Supported liquidity sources the aggregator queries

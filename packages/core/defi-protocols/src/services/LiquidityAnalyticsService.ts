@@ -1,7 +1,19 @@
-import { UnifiedPoolAnalytics, LiquidityAnalyticsConfig } from '../types/analytics.types.js';
+/**
+ * @fileoverview Liquidity Analytics Service
+ * @description Unified analytics façade for SDEX and Soroswap liquidity pools.
+ *   Delegates to SDEXAnalyticsEngine for on-chain SDEX data and accepts an
+ *   optional Soroswap engine dependency for AMM pool analytics.
+ * @author Galaxy DevKit Team
+ * @version 5.0.2
+ */
+
+import {
+  UnifiedPoolAnalytics,
+  LiquidityAnalyticsConfig,
+} from '../types/liquidity-analytics.types.js';
 import { SDEXAnalyticsEngine } from './SDEXAnalyticsEngine.js';
 
-// We import the specific interface from the protocol package if it exports it, 
+// We import the specific interface from the protocol package if it exports it,
 // otherwise we can assume the consumer will inject it, or we define it structurally.
 interface SoroswapEngineLike {
   getPoolAnalytics(poolId: string): Promise<any>;
@@ -16,18 +28,23 @@ export class LiquidityAnalyticsService {
     this.soroswapEngine = soroswapEngine;
   }
 
-  async getPoolAnalytics(protocol: 'sdex' | 'soroswap', poolId: string): Promise<UnifiedPoolAnalytics> {
+  async getPoolAnalytics(
+    protocol: 'sdex' | 'soroswap',
+    poolId: string
+  ): Promise<UnifiedPoolAnalytics> {
     if (protocol === 'sdex') {
       return this.sdexEngine.getPoolAnalytics(poolId);
     }
 
     if (protocol === 'soroswap') {
       if (!this.soroswapEngine) {
-        throw new Error('Soroswap Analytics Engine was not provided to LiquidityAnalyticsService');
+        throw new Error(
+          'Soroswap Analytics Engine was not provided to LiquidityAnalyticsService'
+        );
       }
-      
+
       const soroswapData = await this.soroswapEngine.getPoolAnalytics(poolId);
-      
+
       return {
         protocol: 'soroswap',
         poolId: soroswapData.poolId,
@@ -36,14 +53,16 @@ export class LiquidityAnalyticsService {
         feesEarned24hUSD: soroswapData.feesEarned24hUSD,
         apy7d: soroswapData.apy7d,
         impermanentLossPercent: soroswapData.impermanentLossPercent,
-        fetchedAt: soroswapData.fetchedAt
+        fetchedAt: soroswapData.fetchedAt,
       };
     }
 
     throw new Error(`Unsupported protocol: ${protocol}`);
   }
 
-  async getMultiplePoolsAnalytics(requests: { protocol: 'sdex' | 'soroswap', poolId: string }[]): Promise<UnifiedPoolAnalytics[]> {
-    return Promise.all(requests.map(req => this.getPoolAnalytics(req.protocol, req.poolId)));
+  async getMultiplePoolsAnalytics(
+    requests: { protocol: 'sdex' | 'soroswap'; poolId: string }[]
+  ): Promise<UnifiedPoolAnalytics[]> {
+    return Promise.all(requests.map((req) => this.getPoolAnalytics(req.protocol, req.poolId)));
   }
 }

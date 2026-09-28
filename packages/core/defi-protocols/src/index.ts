@@ -72,3 +72,38 @@ export {
 
 // Errors
 export * from './errors/index.js';
+
+// ---- Merged from @galaxy-kj/core-defi ----
+
+// Horizon DEX Aggregator (quote-first, XDR-returning aggregator across SDEX + Soroswap)
+export { HorizonDexAggregatorService } from './services/HorizonDexAggregatorService.js';
+export type {
+  LiquiditySource,
+  RouteQuote,
+  AggregatedQuote,
+  AggregateQuoteParams,
+  AggregatedSwapResult,
+  AggregateSwapParams,
+  SourcePrice,
+  PriceComparison,
+} from './types/defi-aggregator.types.js';
+
+// Oracle Pusher (off-chain price pusher for the on-chain Soroban Price Oracle)
+export { OraclePusherService } from './services/OraclePusherService.js';
+export type {
+  AssetPair,
+  FetchedPrice,
+  OraclePusherConfig,
+  PriceProvider,
+  PushCycleSummary,
+  PushResult,
+} from './types/oracle-pusher.types.js';
+
+// Liquidity Analytics (unified pool analytics for SDEX and Soroswap)
+export { LiquidityAnalyticsService } from './services/LiquidityAnalyticsService.js';
+export { SDEXAnalyticsEngine } from './services/SDEXAnalyticsEngine.js';
+export type {
+  UnifiedPoolAnalytics,
+  LiquidityAnalyticsConfig,
+  PriceResolver,
+} from './types/liquidity-analytics.types.js';

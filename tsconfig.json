@@ -46,12 +46,6 @@
       "@galaxy-kj/core-defi-protocols/*": [
         "packages/core/defi-protocols/src/*"
       ],
-      "@galaxy-kj/core-defi": [
-        "packages/core/defi/src"
-      ],
-      "@galaxy-kj/core-defi/*": [
-        "packages/core/defi/src/*"
-      ],
       "@galaxy-kj/core-oracles": [
         "packages/core/oracles/src"
       ],

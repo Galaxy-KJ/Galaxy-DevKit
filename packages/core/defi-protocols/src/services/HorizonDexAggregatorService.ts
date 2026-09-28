@@ -1,20 +1,24 @@
 /**
- * @fileoverview DEX Aggregator Service
+ * @fileoverview Horizon DEX Aggregator Service
  * @description Coordinates price discovery across SDEX (Horizon path payments) and
  *   AMM protocols (Soroswap, Aquarius) to find the best swap route for any asset pair.
  *   Returns unsigned XDR for client-side signing.
+ *
+ *   This service queries real Horizon endpoints for SDEX routes and delegates AMM
+ *   routes to the Soroswap protocol adapter. It differs from DexAggregatorService
+ *   (which uses split-routing against protocol adapters) in that it accepts a raw
+ *   Horizon.Server instance and exposes a quote-first, execute-second API with
+ *   explicit slippage helpers.
+ *
  * @author Galaxy DevKit Team
- * @version 1.0.0
+ * @version 5.0.2
  */
 
 import BigNumber from 'bignumber.js';
 import { Asset as StellarAsset, Horizon } from '@stellar/stellar-sdk';
-import {
-  ProtocolFactory,
-  ProtocolConfig,
-  Asset,
-} from '@galaxy-kj/core-defi-protocols';
 
+import { Asset, ProtocolConfig } from '../types/defi-types.js';
+import { ProtocolFactory } from './protocol-factory.js';
 import {
   LiquiditySource,
   RouteQuote,
@@ -24,7 +28,7 @@ import {
   AggregateSwapParams,
   PriceComparison,
   SourcePrice,
-} from '../types/aggregator.types.js';
+} from '../types/defi-aggregator.types.js';
 
 /** Price impact threshold above which a high-impact warning is raised (%) */
 const HIGH_IMPACT_THRESHOLD = 5;
@@ -33,7 +37,7 @@ const HIGH_IMPACT_THRESHOLD = 5;
 const DEFAULT_SLIPPAGE = 0.05;
 
 /**
- * DEX Aggregator Service
+ * Horizon DEX Aggregator Service
  *
  * Queries SDEX via Horizon path payments and Soroswap AMM to find the best
  * execution price for a given asset pair. Aquarius support is stubbed and
@@ -41,7 +45,7 @@ const DEFAULT_SLIPPAGE = 0.05;
  *
  * @example
  * ```ts
- * const aggregator = new DexAggregatorService(horizonServer, soroswapConfig);
+ * const aggregator = new HorizonDexAggregatorService(horizonServer, soroswapConfig);
  *
  * const quote = await aggregator.getAggregatedQuote({
  *   assetIn: { code: 'XLM', type: 'native' },
@@ -53,7 +57,7 @@ const DEFAULT_SLIPPAGE = 0.05;
  * console.log(quote.bestRoute.amountOut);
  * ```
  */
-export class DexAggregatorService {
+export class HorizonDexAggregatorService {
   private horizonServer: Horizon.Server;
   private soroswapConfig: ProtocolConfig;
 
@@ -80,7 +84,7 @@ export class DexAggregatorService {
     const quotePromises = sources.map((source) =>
       this.fetchQuoteFromSource(source, params).catch((err) => {
         // Swallow individual source errors — partial results are still useful
-        console.warn(`[DexAggregator] ${source} quote failed: ${err?.message ?? err}`);
+        console.warn(`[HorizonDexAggregator] ${source} quote failed: ${err?.message ?? err}`);
         return null;
       })
     );
@@ -95,7 +99,7 @@ export class DexAggregatorService {
     }
 
     // Sort: highest amountOut first
-    routes.sort((a, b) => new BigNumber(b.amountOut).comparedTo(a.amountOut));
+    routes.sort((a, b) => new BigNumber(b.amountOut).comparedTo(a.amountOut) ?? 0);
 
     const bestRoute = routes[0];
 
