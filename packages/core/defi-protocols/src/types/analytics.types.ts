@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Analytics Types
+ * @description Shared types for SDEX and Soroswap liquidity analytics.
+ * @author Galaxy DevKit Team
+ */
+
 export interface UnifiedPoolAnalytics {
   protocol: 'sdex' | 'soroswap';
   poolId: string;

@@ -4,8 +4,8 @@
  *   and the full push cycle.
  */
 
-import { OraclePusherService } from '../src/services/OraclePusherService.js';
-import type { OraclePusherConfig } from '../src/types/oracle-pusher.types.js';
+import { OraclePusherService } from '../../src/services/OraclePusherService.js';
+import type { OraclePusherConfig } from '../../src/types/oracle-pusher.types.js';
 
 // ---------------------------------------------------------------------------
 // Mocks

@@ -3,7 +3,6 @@
  * @description Data structures for the off-chain price-pusher service that
  *   feeds prices from external APIs into the on-chain Soroban Price Oracle.
  * @author Galaxy DevKit Team
- * @version 1.0.0
  */
 
 // ---------------------------------------------------------------------------
