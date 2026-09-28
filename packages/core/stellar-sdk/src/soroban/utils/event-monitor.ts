@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Contract Event Monitor
  * @description Monitor and subscribe to Soroban contract events
@@ -15,6 +14,10 @@ import {
   ContractEventDetail,
   EventSubscription,
 } from '../types/contract-types.js';
+
+function topicStringFilter(value: unknown): SorobanRpc.TopicString {
+  return { type: 'string', value };
+}
 
 export class ContractEventMonitor {
   private server: SorobanRpc.Server;
@@ -83,7 +86,7 @@ export class ContractEventMonitor {
         filters.push({
           type: 'contract',
           contractIds: [contractId],
-          topics: eventTypes.map(type => ({ type: 'string', value: type })),
+          topics: eventTypes.map(type => topicStringFilter(type)),
         });
       } else {
         filters.push({
@@ -96,10 +99,9 @@ export class ContractEventMonitor {
       if (topics && topics.length > 0) {
         filters[0].topics = [
           ...(filters[0].topics || []),
-          ...topics.map(topic => ({
-            type: 'string',
-            value: ScValConverter.fromScVal(topic),
-          })),
+          ...topics.map(topic =>
+            topicStringFilter(ScValConverter.fromScVal(topic))
+          ),
         ];
       }
 

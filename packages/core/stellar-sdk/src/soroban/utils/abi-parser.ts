@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview ABI Parser
  * @description Parse and work with Soroban contract ABIs
@@ -9,6 +7,7 @@
  */
 
 import {
+  AbiType,
   ContractAbi,
   ContractFunction,
   ContractEvent,
@@ -26,6 +25,24 @@ export class AbiParser {
       functions: this.parseFunctions(spec.functions || []),
       types: this.parseTypes(spec.types || []),
     };
+  }
+
+  /**
+   * Parse types from ABI
+   */
+  static parseTypes(types: any[]): AbiType[] {
+    return types.map(type => ({
+      name: type.name || '',
+      kind: type.kind || 'struct',
+      fields: Array.isArray(type.fields)
+        ? type.fields.map((field: any) => ({
+            name: field.name || '',
+            type: field.type || '',
+            ...(field.doc ? { doc: field.doc } : {}),
+          }))
+        : undefined,
+      generics: Array.isArray(type.generics) ? type.generics : undefined,
+    }));
   }
 
   /**

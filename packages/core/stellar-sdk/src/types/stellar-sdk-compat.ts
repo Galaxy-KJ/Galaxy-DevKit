@@ -4,6 +4,7 @@
  */
 
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { xdr } from '@stellar/stellar-sdk';
 
 // Re-export everything from stellar-sdk
 export * from '@stellar/stellar-sdk';
@@ -51,9 +52,39 @@ export namespace SorobanRpc {
     latestLedger: number;
   }
 
+  export interface TopicString {
+    type: 'string';
+    value: unknown;
+  }
+
+  /**
+   * A single topic in a filter. Each entry is either a plain string or the
+   * legacy `{ type, value }` object form.
+   */
+  export type TopicFilter = string | TopicString;
+
   export interface EventFilter {
     contractIds?: string[];
-    topics?: Array<string[]>;
+    topics?: TopicFilter[];
     type?: string;
+  }
+
+  /**
+   * Legacy Soroban RPC event shape consumed by the SDK's event utilities.
+   * The v14 RpcServer returns `rpc.Api.EventResponse`, but this bridge keeps
+   * the field names (`topics`, `data`, `timestamp`) the public API relies on.
+   */
+  export namespace Api {
+    export interface GetEventsResponseEvent {
+      id?: string;
+      contractId?: string;
+      type: string;
+      topics: xdr.ScVal[];
+      data: xdr.ScVal;
+      timestamp?: number;
+      ledger?: number;
+      txHash?: string;
+      inSuccessfulContractCall?: boolean;
+    }
   }
 }
