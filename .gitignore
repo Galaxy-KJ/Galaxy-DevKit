@@ -213,5 +213,15 @@ test-results/
 playwright-report/
 playwright-results.json
 
+# TypeScript compiled artifacts in src/ directories
+# Prevent committing .js, .js.map, .d.ts, .d.ts.map that have .ts siblings
+packages/**/src/**/*.js
+packages/**/src/**/*.js.map
+packages/**/src/**/*.d.ts.map
+packages/**/src/**/*.d.ts
+# Allow legitimate ambient declaration files (no .ts sibling)
+!packages/api/rest/src/types/express.d.ts
+!tools/cli/src/types/node-cache.d.ts
+
 # TypeScript incremental build cache
 *.tsbuildinfo
