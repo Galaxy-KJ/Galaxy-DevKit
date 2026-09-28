@@ -30,8 +30,8 @@ Comprehensive architecture documentation for Galaxy DevKit.
 │                        Galaxy DevKit                            │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │   REST API  │  │ GraphQL API │  │ WebSocket   │            │
-│  │   Server    │  │   Server    │  │   Server    │            │
+│  │   REST API  │  │ WebSocket   │                         │
+│  │   Server    │  │   Server    │                         │
 │  └─────────────┘  └─────────────┘  └─────────────┘            │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
@@ -54,7 +54,7 @@ Comprehensive architecture documentation for Galaxy DevKit.
 ### API Layer
 
 - **REST API** - HTTP-based endpoints
-- **GraphQL API** - Flexible query language
+- GraphQL is not shipped; use REST for queries and WebSocket for live updates.
 - **WebSocket API** - Real-time communication
 
 ### Core Services

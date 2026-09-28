@@ -6,7 +6,6 @@ Complete API documentation for Galaxy DevKit services.
 
 - [API Reference](./api-reference.md) - Complete API documentation
 - [REST API](./rest-api.md) - REST endpoints documentation
-- [GraphQL API](./graphql-api.md) - GraphQL schema and queries
 - [WebSocket API](./websocket-api.md) - Real-time WebSocket API
 - [SDK Examples](./sdk-examples.md) - SDK usage examples
 
@@ -36,10 +35,8 @@ Authorization: Bearer your-api-key
 - **Smart Contracts API** - Deploy and interact with contracts
 - **Automation API** - Create and manage automation rules
 
-### GraphQL API
-- **Queries** - Fetch data with flexible queries
-- **Mutations** - Create, update, and delete operations
-- **Subscriptions** - Real-time data updates
+GraphQL is not shipped by this repository. Use the REST and WebSocket API
+documentation for supported integrations.
 
 ### WebSocket API
 - **Real-time Updates** - Live wallet and transaction updates

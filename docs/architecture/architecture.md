@@ -17,7 +17,7 @@ This document maps the current Galaxy DevKit codebase to the Soroban smart walle
 flowchart LR
     Apps["Apps and SDK consumers"] --> Wallet["Smart wallet service and auth"]
     Apps --> Defi["DeFi protocol and routing layer"]
-    Apps --> Api["REST / GraphQL / WebSocket APIs"]
+    Apps --> Api["REST / WebSocket APIs"]
 
     Wallet --> Auth["WebAuthn provider and session key manager"]
     Wallet --> Contracts["Soroban smart wallet contracts"]
@@ -56,7 +56,6 @@ flowchart TD
     Rest --> Defi
     Rest --> Automation
 
-    Graphql["packages/api/graphql"] --> WalletCore
     Websocket["packages/api/websocket"] --> WalletCore
     Websocket --> Automation
 ```
