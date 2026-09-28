@@ -22,7 +22,8 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "type-check:examples": "tsc -p tsconfig.examples.json --noEmit"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^14.5.0",

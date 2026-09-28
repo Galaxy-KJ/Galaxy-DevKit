@@ -24,7 +24,7 @@ All implementation tasks have been successfully completed with **zero linter err
 - Fixed circular reference in auth getter
 
 ### 4. Configuration Updates
-- Created proper `.eslintrc.js` with `root: true` to override global config
+- Moved websocket-specific lint rules into the root ESLint flat config
 - Updated `tsconfig.json` to exclude test files
 - Updated package.json scripts for proper linting and type checking
 
@@ -59,10 +59,11 @@ packages/api/websocket/
 ├── dist/                               ✅ Successfully built
 ├── package.json                        ✅ Updated with correct dependencies
 ├── tsconfig.json                       ✅ Properly configured
-├── jest.config.js                      ✅ Test configuration
-├── .eslintrc.js                        ✅ Linter configuration
+├── jest.config.cjs                     ✅ Test configuration
 └── README.md                           ✅ Complete documentation
 ```
+
+Websocket linting uses the root `eslint.config.mjs`; no package-local legacy ESLint config is required.
 
 ## 🎯 Key Features Implemented
 
