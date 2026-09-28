@@ -222,3 +222,6 @@ packages/**/src/**/*.d.ts
 # Allow legitimate ambient declaration files (no .ts sibling)
 !packages/api/rest/src/types/express.d.ts
 !tools/cli/src/types/node-cache.d.ts
+
+# TypeScript incremental build cache
+*.tsbuildinfo
