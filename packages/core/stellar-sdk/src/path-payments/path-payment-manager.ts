@@ -468,27 +468,6 @@ export class PathPaymentManager {
       Number.isFinite(Number(path.priceImpact));
   }
 
-  private buildPathFromCustom(
-    sendAsset: Asset,
-    destAsset: Asset,
-    customPath: Asset[],
-    amount: string,
-    type: SwapType
-  ): PaymentPath {
-    const placeholderDest = type === 'strict_send' ? amount : '0';
-    const placeholderSrc = type === 'strict_receive' ? amount : '0';
-    return {
-      source_asset: sendAsset,
-      destination_asset: destAsset,
-      path: customPath,
-      source_amount: type === 'strict_send' ? amount : placeholderSrc,
-      destination_amount: type === 'strict_receive' ? amount : placeholderDest,
-      price: '0',
-      priceImpact: '0',
-      pathDepth: customPath.length,
-    };
-  }
-
   private estimateSwapFromPath(path: PaymentPath, params: SwapParams): SwapEstimate {
     const baseSlippage = params.maxSlippage ?? 1;
     const historicalVolatility = this.calculateHistoricalVolatility(this.getPairKey(path.source_asset, path.destination_asset));
