@@ -5,7 +5,7 @@ created: '2026-02-08'
 status: 'ready-for-dev'
 stepsCompleted: [1, 2, 3, 4]
 tech_stack: ['node:crypto', 'argon2@^0.44.0', '@stellar/stellar-sdk@^14.5.0', 'bip39@^3.1.0', 'ed25519-hd-key@^1.3.0', 'jest@^30.2.0', 'ts-jest@^29.4.6 (verify compat with Jest 30)', 'typescript@^5.9.3']
-files_to_modify: ['packages/core/invisible-wallet/src/utils/encryption.utils.ts', 'packages/core/invisible-wallet/src/services/key-managment.service.ts', 'packages/core/invisible-wallet/src/services/invisible-wallet.service.ts', 'packages/core/stellar-sdk/src/utils/encryption.utils.ts', 'packages/core/stellar-sdk/src/services/stellar-service.ts', 'packages/core/stellar-sdk/src/claimable-balances/claimable-balance-manager.ts', 'packages/core/stellar-sdk/src/liquidity-pools/liquidity-pool-manager.ts', 'packages/core/stellar-sdk/src/path-payments/path-payment-manager.ts', 'packages/core/stellar-sdk/src/test/encryption.test.ts', 'packages/core/invisible-wallet/src/test/invisible.test.ts', 'packages/core/invisible-wallet/src/test/key-management.test.ts', 'packages/core/invisible-wallet/src/backup/test/encryption.test.ts']
+files_to_modify: ['packages/core/invisible-wallet/src/utils/encryption.utils.ts', 'packages/core/invisible-wallet/src/services/key-management.service.ts', 'packages/core/invisible-wallet/src/services/invisible-wallet.service.ts', 'packages/core/stellar-sdk/src/utils/encryption.utils.ts', 'packages/core/stellar-sdk/src/services/stellar-service.ts', 'packages/core/stellar-sdk/src/claimable-balances/claimable-balance-manager.ts', 'packages/core/stellar-sdk/src/liquidity-pools/liquidity-pool-manager.ts', 'packages/core/stellar-sdk/src/path-payments/path-payment-manager.ts', 'packages/core/stellar-sdk/src/test/encryption.test.ts', 'packages/core/invisible-wallet/src/test/invisible.test.ts', 'packages/core/invisible-wallet/src/test/key-management.test.ts', 'packages/core/invisible-wallet/src/backup/test/encryption.test.ts']
 code_patterns: ['AES-256-GCM authenticated encryption', 'PBKDF2 key derivation (100k iterations)', 'decrypt-on-demand pattern for transaction signing', 'Supabase as remote storage backend', 'in-memory Map for session caching', 'BIP39/BIP44 key derivation (m/44p/148p/np)', 'timing-safe comparison for secrets']
 test_patterns: ['jest with ts-jest', 'unit tests in src/test/ directories', 'integration tests with .integration.test.ts suffix', 'mocking of decryptPrivateKey in service tests', '30+ existing encryption test cases in stellar-sdk']
 ---
@@ -74,7 +74,7 @@ Fix all identified vulnerabilities: replace insecure RNG, fix session and passwo
 | File | Purpose |
 | ---- | ------- |
 | `packages/core/invisible-wallet/src/utils/encryption.utils.ts` | Main encryption utils — 14 exported functions including encrypt/decrypt, password validation, session tokens, HMAC |
-| `packages/core/invisible-wallet/src/services/key-managment.service.ts` | Key management, session management, wallet backup — has `createSession` bug (L124-163), `changePassword` bug (L306-310). **Note:** Filename contains a typo ("managment" → should be "management"). Do NOT rename in this spec — it would break imports across the codebase. Track as a separate cleanup task. |
+| `packages/core/invisible-wallet/src/services/key-management.service.ts` | Key management, session management, wallet backup — has `createSession` bug (L124-163), `changePassword` bug (L306-310). **Note:** Filename has been corrected from the previous misspelling. This spec now references the corrected filename. |
 | `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts` | Wallet lifecycle — consumes KeyManagementService, calls validatePassword |
 | `packages/core/stellar-sdk/src/utils/encryption.utils.ts` | Duplicated encrypt/decrypt (60 lines) — consumed by 4 stellar-sdk modules |
 | `packages/core/stellar-sdk/src/services/stellar-service.ts` | Uses `decryptPrivateKey` in sendPayment (L326), createAccount (L406), addTrustline (L615) |
@@ -177,7 +177,7 @@ Tasks are ordered by dependency — lowest-level changes first, consumers last.
   - Notes: All decrypt consumers should migrate to this pattern. The callback receives a Buffer; for Stellar operations, convert to string inside the callback scope: `const keypair = Keypair.fromSecret(keyBuffer.toString('utf8'))`. **Error uniformity**: If the callback throws (e.g., `Keypair.fromSecret()` rejects a corrupted key string), `withDecryptedKey` must catch the error, zero the buffer in `finally`, and re-throw a uniform error: `"Invalid password or corrupted key data"`. This prevents Stellar SDK internal error messages from leaking crypto state. Implementation: wrap the callback invocation in try/catch, and in the catch block, re-throw the uniform error message (preserving the original as `cause` for debugging).
 
 - [ ] **Task 4: Add rate-limiting to `KeyManagementService`**
-  - File: `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+  - File: `packages/core/invisible-wallet/src/services/key-management.service.ts`
   - Action:
     1. Add private property: `private rateLimiter: Map<string, { attempts: number; lockedUntil: Date | null }> = new Map()`
     2. Add constants: `MAX_ATTEMPTS = 5`, `LOCKOUT_DURATION = 15 * 60 * 1000` (15 minutes)
@@ -191,7 +191,7 @@ Tasks are ordered by dependency — lowest-level changes first, consumers last.
   - Notes: **CRITICAL — The rate limiter Map stores ONLY walletId → { attempts, lockedUntil }. NEVER store passwords, keys, encrypted data, or any key material in this Map.**
 
 - [ ] **Task 5: Fix `createSession()` — save to in-memory Map + handle persistence failures**
-  - File: `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+  - File: `packages/core/invisible-wallet/src/services/key-management.service.ts`
   - Action:
     1. In `createSession()` method (L124-163), add `this.activeSessions.set(sessionToken, session)` immediately after creating the session object (after L140, before the Supabase insert). This ensures the session is available for `validateSession()` lookups.
     2. If the Supabase insert fails, log a warning but keep the session in the in-memory Map (the Map is the primary validation source; Supabase is for persistence/recovery). The existing session cleanup timer will eventually purge expired sessions from both.
@@ -199,12 +199,12 @@ Tasks are ordered by dependency — lowest-level changes first, consumers last.
   - Notes: This dual approach ensures: (a) the createSession bug is fixed, (b) sessions always work even if Supabase is temporarily unavailable, (c) Supabase doesn't accumulate orphaned expired rows.
 
 - [ ] **Task 6: Fix `changePassword()` — correct Supabase table name**
-  - File: `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+  - File: `packages/core/invisible-wallet/src/services/key-management.service.ts`
   - Action: In `changePassword()` method (L306-310), change `.from('wallets')` to `.from('invisible_wallets')`. Also change the column name from `privateKey` to `encrypted_private_key` to match the actual schema used in `invisible-wallet.service.ts`.
   - Notes: The current code silently fails because the `wallets` table either doesn't exist or has no matching rows.
 
 - [ ] **Task 7: Hash session tokens before Supabase storage**
-  - File: `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+  - File: `packages/core/invisible-wallet/src/services/key-management.service.ts`
   - Action:
     1. Add helper: `private hashToken(token: string): string { return crypto.createHash('sha256').update(token).digest('hex'); }`
     2. In `createSession()`: store `this.hashToken(sessionToken)` as `session_token` in Supabase (not the raw token)
@@ -215,7 +215,7 @@ Tasks are ordered by dependency — lowest-level changes first, consumers last.
   - Notes: This means the raw token is only ever in memory. If Supabase is compromised, attackers get hashed tokens which cannot be used to authenticate.
 
 - [ ] **Task 8: Make `KeyManagementService` methods async for Argon2id**
-  - File: `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+  - File: `packages/core/invisible-wallet/src/services/key-management.service.ts`
   - Action:
     1. `storePrivateKey()` → `async storePrivateKey()` with `await encryptPrivateKey()`
     2. `retrievePrivateKey()` → `async retrievePrivateKey()` with `await decryptPrivateKey()`
@@ -405,7 +405,7 @@ Tasks are ordered by dependency — lowest-level changes first, consumers last.
 
 - Migration to Argon2id uses format versioning: v1 = PBKDF2, v2 = Argon2id. Decryption detects version automatically. Re-encryption from v1→v2 is triggered on `unlockWallet()` (best-effort, see Task 9 step 3). Password change and backup export also produce v2 format since `encryptPrivateKey` always uses v2.
 - Zero-trust principle: private keys must never exist in memory longer than needed for a single operation.
-- `changePassword()` bug at key-managment.service.ts:306-310 writes to wrong Supabase table — must be fixed to `invisible_wallets` with column `encrypted_private_key`.
+- `changePassword()` bug at key-management.service.ts:306-310 writes to wrong Supabase table — must be fixed to `invisible_wallets` with column `encrypted_private_key`.
 - `stellar-service.ts:648` also uses `Math.random()` for wallet ID generation — same pattern as `invisible-wallet.service.ts:817`. Not a security issue for IDs but worth noting for future cleanup.
 - 8 files consume `decryptPrivateKey` across the codebase — all updated to async + withDecryptedKey pattern.
 - Argon2id encryption is async — all consumer methods must use `await`.

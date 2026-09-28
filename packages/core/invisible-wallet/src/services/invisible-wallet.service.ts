@@ -16,7 +16,7 @@
  */
 
 import crypto from 'crypto';
-import { KeyManagementService } from './key-managment.service.js';
+import { KeyManagementService } from './key-management.service.js';
 import {
   StellarService,
   NetworkUtils,
