@@ -1604,7 +1604,7 @@ Tests use mock transport to simulate Ledger device without hardware:
 import { LedgerWallet } from '../LedgerWallet';
 import { MockLedgerTransport } from '../__tests__/MockLedgerTransport';
 
-// Mock is configured in jest.config.js
+// Mock is configured in jest.config.cjs
 const ledger = new LedgerWallet();
 await ledger.connect(); // Uses mock transport in tests
 
