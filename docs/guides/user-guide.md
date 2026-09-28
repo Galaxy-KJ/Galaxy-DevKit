@@ -147,37 +147,8 @@ curl -X POST https://api.galaxy-devkit.com/api/v1/payments \
   }'
 ```
 
-### GraphQL API
-
-#### Endpoint
-```
-https://api.galaxy-devkit.com/graphql
-```
-
-#### Query Wallets
-```graphql
-query GetWallets($userId: String!) {
-  wallets(userId: $userId) {
-    id
-    publicKey
-    balance {
-      asset
-      amount
-    }
-  }
-}
-```
-
-#### Send Payment
-```graphql
-mutation SendPayment($input: SendPaymentInput!) {
-  sendPayment(input: $input) {
-    id
-    hash
-    status
-  }
-}
-```
+GraphQL is not shipped by this repository. Use the REST API for request and
+response operations or the WebSocket API for real-time updates.
 
 ### WebSocket API
 

@@ -36,7 +36,6 @@ graph TB
 
     subgraph "API Layer"
         REST[REST API]
-        GraphQL[GraphQL API]
         WS[WebSocket API]
     end
 
@@ -61,15 +60,12 @@ graph TB
     Scripts --> PySdk
 
     TSSDK --> REST
-    TSSDK --> GraphQL
     TSSDK --> WS
     PySdk --> REST
 
     REST --> IW
     REST --> SS
     REST --> AE
-    GraphQL --> IW
-    GraphQL --> DP
     WS --> OS
 
     IW --> Supabase
@@ -1159,7 +1155,7 @@ The DeFi protocols package (`@galaxy/core-defi-protocols`) provides a unified in
 graph TD
     subgraph "Application Layer"
         App[Application Code]
-        API[REST/GraphQL APIs]
+        API[REST APIs]
     end
 
     subgraph "DeFi Protocols Package"
