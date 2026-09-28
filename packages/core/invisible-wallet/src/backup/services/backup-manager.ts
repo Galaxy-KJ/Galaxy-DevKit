@@ -193,6 +193,9 @@ export class BackupManager {
   }
 
   private walletToBackupData(wallet: InvisibleWallet): WalletBackupData {
+    if (!wallet.encryptedPrivateKey) {
+      throw new Error('Wallet has no encrypted private key to back up');
+    }
     return {
       id: wallet.id,
       publicKey: wallet.publicKey,
