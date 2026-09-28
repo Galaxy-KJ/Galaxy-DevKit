@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Oracle monitoring command
  * @description Polls oracle prices on a timer and, when configured with a liquidity
@@ -11,7 +10,7 @@ import chalk from 'chalk';
 import { TerminalUI } from '../../utils/terminal-ui.js';
 import { createOracleAggregator } from '../../utils/oracle-registry.js';
 import { MedianStrategy } from '@galaxy-kj/core-oracles';
-import { getBlendConfig } from '../../utils/protocol-registry.js';
+import { getBlendConfig } from '@galaxy-kj/core-defi-protocols';
 import { timer, defer, of, from } from 'rxjs';
 import { switchMap, catchError, timeout, retry } from 'rxjs/operators';
 
@@ -198,7 +197,7 @@ async function runSseOracleWatch(
     const pool = await streamManager
       .getServer()
       .liquidityPools()
-      .liquidityPool(poolId)
+      .liquidityPoolId(poolId)
       .call();
 
     const reserves = (pool.reserves ?? []) as Array<{ asset: string; amount: string }>;
