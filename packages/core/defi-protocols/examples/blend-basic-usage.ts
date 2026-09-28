@@ -6,8 +6,8 @@
  * @since 2024-01-29
  */
 
-import { BlendProtocol } from '../blend-protocol.js';
-import { Asset, ProtocolConfig } from '../../../types/defi-types.js';
+import { BlendProtocol } from '@galaxy-kj/core-defi-protocols';
+import { Asset, ProtocolConfig } from '@galaxy-kj/core-defi-protocols';
 
 /**
  * Example: Initialize Blend Protocol

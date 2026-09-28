@@ -81,7 +81,7 @@ my-project/
 ├── next.config.js
 ├── tailwind.config.js
 ├── tsconfig.json
-├── jest.config.js
+├── jest.config.cjs
 └── README.md
 ```
 

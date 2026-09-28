@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Oracle output formatter
  * @description Formats oracle command output as tables or JSON

@@ -19,7 +19,7 @@ const rootDir = path.resolve(__dirname, '..');
 const SEARCH_DIRS = ['packages', 'tools'];
 const TEST_FILE_REGEX = /\.(test|spec)\.[jt]sx?$/;
 
-// Patterns explicitly ignored by Jest (derived from jest.config.js to prevent false positives)
+// Patterns explicitly ignored by Jest (derived from jest.config.cjs to prevent false positives)
 const JEST_IGNORE_PATTERNS = [
   /\/node_modules\//,
   /\/e2e\//,
@@ -112,7 +112,7 @@ function checkOrphans() {
     for (const orphan of orphanedFiles) {
       console.error(`   - ${orphan}`);
     }
-    console.error('\nPlease update jest.config.js or playwright.config.ts or rename the files.\n');
+    console.error('\nPlease update jest.config.cjs or playwright.config.ts or rename the files.\n');
     process.exit(1);
   }
 

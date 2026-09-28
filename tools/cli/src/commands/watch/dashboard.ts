@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @fileoverview Dashboard view command
  * @description Combined multi-panel view for real-time network, oracle, and transaction monitoring

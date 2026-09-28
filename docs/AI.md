@@ -55,7 +55,7 @@ Wallets are created with email/password only. Private keys are encrypted (AES-25
 **Files to understand:**
 
 - `packages/core/invisible-wallet/src/services/invisible-wallet.service.ts`
-- `packages/core/invisible-wallet/src/services/key-managment.service.ts`
+- `packages/core/invisible-wallet/src/services/key-management.service.ts`
 - `packages/core/invisible-wallet/src/types/wallet.types.ts`
 - `packages/core/invisible-wallet/src/types/smart-wallet.types.ts` 🆕
 
@@ -1604,7 +1604,7 @@ Tests use mock transport to simulate Ledger device without hardware:
 import { LedgerWallet } from '../LedgerWallet';
 import { MockLedgerTransport } from '../__tests__/MockLedgerTransport';
 
-// Mock is configured in jest.config.js
+// Mock is configured in jest.config.cjs
 const ledger = new LedgerWallet();
 await ledger.connect(); // Uses mock transport in tests
 

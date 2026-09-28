@@ -45,6 +45,13 @@ export default tseslint.config(
         },
     },
     {
+        files: ['packages/api/websocket/**/*.ts'],
+        rules: {
+            '@typescript-eslint/no-unused-vars': 'off',
+            'no-console': 'off',
+        },
+    },
+    {
         files: ['packages/core/wallet/src/smart-wallet.service.ts'],
         languageOptions: {
             parserOptions: {
@@ -64,7 +71,6 @@ export default tseslint.config(
             '**/coverage/**',
             '**/*.d.ts',
             '**/*.tsbuildinfo',
-            '.eslintrc.js.bak',
         ],
     }
 );
