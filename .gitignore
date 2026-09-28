@@ -225,3 +225,9 @@ packages/**/src/**/*.d.ts
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# One-off scratch files and PR artefacts (issue #435)
+scratch/
+status.txt
+FEATURE_*_DESCRIPTION.md
+IMPLEMENTATION_*_SUMMARY.md
