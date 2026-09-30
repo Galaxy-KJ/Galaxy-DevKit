@@ -2,12 +2,53 @@
  * @jest-environment jsdom
  */
 
-import { WalletConnectorService, ImportedWalletInfo } from '../services/wallet-connector';
+import { WalletConnectorService } from '../services/wallet-connector';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { setupWebAuthnMock } from './mock-webauthn';
 import { Buffer } from 'buffer';
-import { StrKey, Networks } from '@stellar/stellar-sdk';
-import { Server } from '@stellar/stellar-sdk/rpc';
+import { StrKey, Networks, xdr } from '@stellar/stellar-sdk';
+
+function rpcEntry(value: xdr.ScVal) {
+  return {
+    val: {
+      contractData: () => ({
+        val: () => value,
+      }),
+    },
+  };
+}
+
+function rpcInstanceEntry(signerIndex: xdr.ScVal) {
+  return {
+    val: {
+      contractData: () => ({
+        val: () => ({
+          instance: () => ({
+            storage: () => [{
+              key: () => xdr.ScVal.scvSymbol('signers'),
+              val: () => signerIndex,
+            }],
+          }),
+        }),
+      }),
+    },
+  };
+}
+
+function signerIndexEntry(credentialId: string, kind: 'Admin' | 'Session'): xdr.ScVal {
+  return xdr.ScVal.scvVec([
+    xdr.ScVal.scvBytes(Buffer.from(credentialId)),
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+  ]);
+}
+
+function signerRecord(publicKey: Uint8Array, kind: 'Admin' | 'Session'): xdr.ScVal {
+  return xdr.ScVal.scvVec([
+    xdr.ScVal.scvBytes(Buffer.from(publicKey)),
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+    xdr.ScVal.scvU32(0),
+  ]);
+}
 
 jest.mock('@stellar/stellar-sdk', () => {
   const original = jest.requireActual('@stellar/stellar-sdk');
@@ -39,6 +80,18 @@ describe('WalletConnectorService', () => {
       'https://soroban-testnet.stellar.org',
       Networks.TESTNET
     );
+
+    const mockServer = (connectorService as any).server;
+    mockServer.getLedgerEntries.mockImplementation(async (...keys: xdr.LedgerKey[]) => {
+      const key = keys[0].contractData().key();
+      if (
+        key.switch() === xdr.ScValType.scvSymbol() &&
+        key.sym().toString() === 'Instance'
+      ) {
+        return { entries: [rpcInstanceEntry(xdr.ScVal.scvVec([]))] };
+      }
+      return { entries: [rpcEntry(xdr.ScVal.scvVec([]))] };
+    });
   });
 
   describe('validateContractAddress', () => {
@@ -118,16 +171,53 @@ describe('WalletConnectorService', () => {
   });
 
   describe('fetchSigners', () => {
-    it('should return empty array initially (implementation placeholder)', async () => {
+    it('decodes multiple signers from the wallet signer index and contract storage', async () => {
+      const mockServer = (connectorService as any).server;
+      const adminId = 'admin-credential';
+      const sessionId = 'session-credential';
+      const adminKey = new Uint8Array(65).fill(7);
+      const sessionKey = new Uint8Array(32).fill(9);
+      mockServer.getLedgerEntries
+        .mockResolvedValueOnce({
+          entries: [
+            rpcInstanceEntry(xdr.ScVal.scvVec([
+              signerIndexEntry(adminId, 'Admin'),
+              signerIndexEntry(sessionId, 'Session'),
+            ])),
+          ],
+        })
+        .mockResolvedValueOnce({ entries: [rpcEntry(signerRecord(adminKey, 'Admin'))] })
+        .mockResolvedValueOnce({ entries: [rpcEntry(signerRecord(sessionKey, 'Session'))] });
+
       const signers = await connectorService.fetchSigners(testContractAddress);
-      expect(Array.isArray(signers)).toBe(true);
-      expect(signers.length).toBe(0);
+      expect(signers).toEqual([
+        {
+          id: Buffer.from(adminId).toString('base64url'),
+          type: 'admin',
+          publicKey: Buffer.from(adminKey).toString('hex'),
+          isActive: true,
+        },
+        {
+          id: Buffer.from(sessionId).toString('base64url'),
+          type: 'session',
+          publicKey: Buffer.from(sessionKey).toString('hex'),
+          isActive: true,
+        },
+      ]);
     });
 
-    it('should not throw on valid contract address', async () => {
+    it('returns an empty array when the on-chain signer index is empty', async () => {
       await expect(
         connectorService.fetchSigners(testContractAddress)
-      ).resolves.toEqual(expect.any(Array));
+      ).resolves.toEqual([]);
+    });
+
+    it('reports when the contract does not expose a signer index', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getLedgerEntries.mockResolvedValueOnce({ entries: [] });
+
+      await expect(connectorService.fetchSigners(testContractAddress))
+        .rejects.toThrow('Signer index is not available');
     });
   });
 

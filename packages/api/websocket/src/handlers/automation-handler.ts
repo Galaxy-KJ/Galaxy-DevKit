@@ -844,15 +844,35 @@ export class AutomationHandler {
    * 
    * @returns Object - Automation statistics
    */
-  public getAutomationStats(): {
+  public async getAutomationStats(): Promise<{
     totalSubscriptions: number;
     activeAutomations: number;
     totalAutomations: number;
-  } {
+  }> {
+    const [totalResult, activeResult] = await Promise.all([
+      this.supabase
+        .from('automations')
+        .select('id', { count: 'exact', head: true }),
+      this.supabase
+        .from('automations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'active'),
+    ]);
+
+    if (totalResult.error) {
+      throw new Error(`Failed to count automations: ${totalResult.error.message}`);
+    }
+    if (activeResult.error) {
+      throw new Error(`Failed to count active automations: ${activeResult.error.message}`);
+    }
+    if (totalResult.count === null || activeResult.count === null) {
+      throw new Error('Automation count query did not return exact counts');
+    }
+
     return {
       totalSubscriptions: this.automationSubscriptions.size,
-      activeAutomations: this.activeAutomations.size,
-      totalAutomations: 0 // TODO: Implement total automation count
+      activeAutomations: activeResult.count,
+      totalAutomations: totalResult.count
     };
   }
 

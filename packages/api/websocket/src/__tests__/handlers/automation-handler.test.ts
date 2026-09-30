@@ -54,9 +54,35 @@ function createQuery(result: { data: unknown; error: unknown }) {
 }
 
 function createSupabase(automations: StoredAutomation[]) {
-  const query = createQuery({ data: automations, error: null });
   return {
-    from: jest.fn(() => query),
+    from: jest.fn((table: string) => {
+      const query = createQuery({ data: automations, error: null });
+      let countQuery = false;
+      let statusFilter: string | undefined;
+      query.select = jest.fn((_columns: string, options?: { head?: boolean }) => {
+        countQuery = options?.head === true;
+        return query;
+      });
+      query.eq = jest.fn((column: string, value: string) => {
+        if (column === 'status') {
+          statusFilter = value;
+        }
+        return query;
+      });
+      query.then = (
+        onFulfilled: (value: { data: unknown; error: unknown; count?: number }) => unknown,
+        onRejected?: (reason: unknown) => unknown
+      ) => {
+        const filteredAutomations = statusFilter
+          ? automations.filter(automation => automation.status === statusFilter)
+          : automations;
+        const value = countQuery
+          ? { data: null, error: null, count: table === 'automations' ? filteredAutomations.length : 0 }
+          : { data: automations, error: null };
+        return Promise.resolve(value).then(onFulfilled, onRejected);
+      };
+      return query;
+    }),
     channel: jest.fn(() => ({
       on: jest.fn().mockReturnThis(),
       subscribe: jest.fn(),
@@ -200,6 +226,20 @@ describe('AutomationHandler poll loop', () => {
 
     expect(runtime.executePersistedAutomation).not.toHaveBeenCalled();
     expect(emitted).toEqual([]);
+  });
+
+  it('reports total and active automation counts from the store', async () => {
+    const { handler } = createContext([
+      storedAutomation({ id: 'active-1' }),
+      storedAutomation({ id: 'paused-1', status: 'paused' }),
+      storedAutomation({ id: 'completed-1', status: 'completed' }),
+    ]);
+
+    await expect(handler.getAutomationStats()).resolves.toEqual({
+      totalSubscriptions: 0,
+      activeAutomations: 1,
+      totalAutomations: 3,
+    });
   });
 
   it('emits executed with the real error and no fake hash on failure', async () => {
