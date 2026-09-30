@@ -2,6 +2,7 @@ import { SmartWalletClient } from './smart-wallet.client';
 import { Address, StrKey, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
 import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
+import { Buffer } from 'buffer';
 
 /**
  * Represents information about an imported smart wallet
@@ -22,6 +23,11 @@ export interface WalletSigner {
   type: 'admin' | 'session' | 'unknown';
   publicKey?: string;
   isActive: boolean;
+}
+
+function isByteArray(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === '[object Uint8Array]';
 }
 
 /**
@@ -75,7 +81,7 @@ export class WalletConnectorService {
       const response = await this.server.getLedgerEntries(ledgerKey);
 
       return !!(response && response.entries && response.entries.length > 0);
-    } catch (error) {
+    } catch {
       // Return false on any network or parsing error
       return false;
     }
@@ -141,11 +147,6 @@ export class WalletConnectorService {
       }
       result.isSmartWallet = true;
 
-      // Step 3: Attempt to fetch signers from the contract
-      // Note: This is a placeholder for now as reading contract state requires
-      // more sophisticated RPC interactions. In production, you would:
-      // 1. Query the contract's persistent storage for signers
-      // 2. Parse the returned data to extract signer IDs and types
       const signers = await this.fetchSigners(contractAddress);
       result.signers = signers;
 
@@ -164,21 +165,91 @@ export class WalletConnectorService {
    */
   async fetchSigners(contractAddress: string): Promise<WalletSigner[]> {
     try {
-      // This is a placeholder implementation
-      // In a production system, you would:
-      // 1. Make an RPC call to read the contract's stored state
-      // 2. Parse the storage entries to extract signer information
-      // 3. Return structured WalletSigner data
-      
-      // For now, we return an empty list as the full implementation
-      // requires deeper Soroban RPC integration
+      const contract = new Address(contractAddress).toScAddress();
+      const signerIndexKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+        contract,
+        key: xdr.ScVal.scvSymbol('Instance'),
+        durability: xdr.ContractDataDurability.persistent(),
+      }));
+      const indexResponse = await this.server.getLedgerEntries(signerIndexKey);
+      const indexEntry = indexResponse.entries[0];
+      if (!indexEntry) {
+        throw new Error(
+          'Signer index is not available for this wallet contract; deploy or upgrade the wallet contract to enable signer discovery'
+        );
+      }
+
+      const contractInstance = indexEntry.val.contractData().val().instance();
+      const signerIndexEntry = Array.from(contractInstance.storage() ?? []).find(entry => (
+        entry.key().switch() === xdr.ScValType.scvSymbol() &&
+        entry.key().sym().toString() === 'signers'
+      ));
+      if (!signerIndexEntry) {
+        throw new Error(
+          'Signer index is not available for this wallet contract; deploy or upgrade the wallet contract to enable signer discovery'
+        );
+      }
+
+      const indexValue = scValToNative(signerIndexEntry.val());
+      if (!Array.isArray(indexValue)) {
+        throw new Error('Wallet signer index has an invalid format');
+      }
+
       const signers: WalletSigner[] = [];
-      
-      // TODO: Implement actual signer fetching using:
-      // - server.getLedgerEntries() for contract data
-      // - Parse xdr.ContractDataEntry to extract signer storage
-      // - Return structured WalletSigner[] with id, type, and isActive flags
-      
+      for (const indexEntryValue of indexValue) {
+        if (!Array.isArray(indexEntryValue) || indexEntryValue.length !== 2) {
+          throw new Error('Wallet signer index contains an invalid entry');
+        }
+
+        const [credentialIdValue, kindValue] = indexEntryValue;
+        if (!isByteArray(credentialIdValue)) {
+          throw new Error('Wallet signer index contains an invalid credential ID');
+        }
+        const kind = Array.isArray(kindValue) ? kindValue[0] : kindValue;
+        if (kind !== 'Admin' && kind !== 'Session') {
+          throw new Error('Wallet signer index contains an unknown signer type');
+        }
+
+        const signerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+          contract,
+          key: xdr.ScVal.scvVec([
+            xdr.ScVal.scvSymbol('Signer'),
+            xdr.ScVal.scvBytes(Buffer.from(credentialIdValue)),
+          ]),
+          durability: kind === 'Admin'
+            ? xdr.ContractDataDurability.persistent()
+            : xdr.ContractDataDurability.temporary(),
+        }));
+        const signerResponse = await this.server.getLedgerEntries(signerKey);
+        const signerEntry = signerResponse.entries[0];
+        if (!signerEntry) {
+          continue;
+        }
+
+        const signerValue = scValToNative(signerEntry.val.contractData().val());
+        if (!Array.isArray(signerValue) || signerValue.length !== 3) {
+          throw new Error('Wallet signer record has an invalid format');
+        }
+
+        const [publicKeyValue, signerKindValue] = signerValue;
+        if (!isByteArray(publicKeyValue)) {
+          throw new Error('Wallet signer record contains an invalid public key');
+        }
+        const signerKind = Array.isArray(signerKindValue)
+          ? signerKindValue[0]
+          : signerKindValue;
+        if (signerKind !== kind) {
+          throw new Error('Wallet signer record does not match the signer index');
+        }
+
+        signers.push({
+          id: Buffer.from(credentialIdValue).toString('base64url'),
+          type: kind === 'Admin' ? 'admin' : 'session',
+          publicKey: Buffer.from(publicKeyValue).toString('hex'),
+          isActive: true,
+        });
+      }
+
       return signers;
     } catch (error) {
       console.error('Error fetching signers from contract:', error);

@@ -77,6 +77,15 @@ pub struct Signer {
     pub ttl_ledgers: u32,
 }
 
+/// Signer metadata indexed from instance storage so clients can discover the
+/// credential IDs needed to read each signer's persistent or temporary entry.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SignerIndexEntry {
+    pub credential_id: Bytes,
+    pub kind: SignerKind,
+}
+
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
 #[contracttype]

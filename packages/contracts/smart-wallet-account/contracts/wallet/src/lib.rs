@@ -3,11 +3,11 @@ use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
     contract, contractimpl,
     crypto::Hash,
-    Bytes, BytesN, Env, Vec,
+    symbol_short, Bytes, BytesN, Env, Symbol, Vec,
 };
 
 use smart_wallet_account_common::{
-    AccountSignature, Signer, SignerKind, WalletDataKey, WalletError,
+    AccountSignature, Signer, SignerIndexEntry, SignerKind, WalletDataKey, WalletError,
 };
 
 /// TTL constants for admin signers (in ledgers). ~1 ledger ≈ 5 seconds.
@@ -47,6 +47,7 @@ impl SmartWallet {
         env.storage()
             .persistent()
             .set(&WalletDataKey::Signer(credential_id.clone()), &signer);
+        register_signer(&env, &credential_id, SignerKind::Admin);
 
         env.storage().persistent().extend_ttl(
             &WalletDataKey::Signer(credential_id),
@@ -101,6 +102,7 @@ impl SmartWallet {
         env.storage()
             .instance()
             .set(&WalletDataKey::AdminSignerCount, &(count + 1));
+        register_signer(&env, &credential_id, SignerKind::Admin);
         env.storage()
             .instance()
             .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
@@ -157,6 +159,7 @@ impl SmartWallet {
         env.storage()
             .temporary()
             .extend_ttl(&key, ttl_ledgers / 2, ttl_ledgers);
+        register_signer(&env, &credential_id, SignerKind::Session);
 
         Ok(())
     }
@@ -168,7 +171,7 @@ impl SmartWallet {
     pub fn remove_signer(env: Env, credential_id: Bytes) -> Result<(), WalletError> {
         env.current_contract_address().require_auth();
 
-        let key = WalletDataKey::Signer(credential_id);
+        let key = WalletDataKey::Signer(credential_id.clone());
 
         if env.storage().persistent().has(&key) {
             let signer: Signer = env.storage().persistent().get(&key).unwrap();
@@ -189,15 +192,47 @@ impl SmartWallet {
                     .extend_ttl(ADMIN_TTL_THRESHOLD, ADMIN_TTL_EXTEND);
             }
             env.storage().persistent().remove(&key);
+            unregister_signer(&env, &credential_id);
             return Ok(());
         }
         if env.storage().temporary().has(&key) {
             env.storage().temporary().remove(&key);
+            unregister_signer(&env, &credential_id);
             return Ok(());
         }
 
         Err(WalletError::SignerNotFound)
     }
+}
+
+fn signer_index_key() -> Symbol {
+    symbol_short!("signers")
+}
+
+fn register_signer(env: &Env, credential_id: &Bytes, kind: SignerKind) {
+    let key = signer_index_key();
+    let mut entries: Vec<SignerIndexEntry> =
+        env.storage().instance().get(&key).unwrap_or(Vec::new(env));
+    entries.push_back(SignerIndexEntry {
+        credential_id: credential_id.clone(),
+        kind,
+    });
+    env.storage().instance().set(&key, &entries);
+}
+
+fn unregister_signer(env: &Env, credential_id: &Bytes) {
+    let key = signer_index_key();
+    let entries: Vec<SignerIndexEntry> =
+        env.storage().instance().get(&key).unwrap_or(Vec::new(env));
+    let mut remaining = Vec::new(env);
+
+    for entry in entries.iter() {
+        if entry.credential_id != *credential_id {
+            remaining.push_back(entry);
+        }
+    }
+
+    env.storage().instance().set(&key, &remaining);
 }
 
 // ────────────────────────────────────────────────────────

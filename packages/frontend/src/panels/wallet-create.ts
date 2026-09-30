@@ -274,7 +274,7 @@ export class WalletCreatePanel {
       signersHeader.appendChild(signersList);
       resultsContainer.appendChild(signersHeader);
     } else if (walletInfo.isSmartWallet) {
-      createItem('Signers', 'No signers fetched (implementation pending)');
+      createItem('Signers', 'No active signers found on-chain');
     }
   }
 
@@ -285,4 +285,3 @@ export class WalletCreatePanel {
     }
   }
 }
-

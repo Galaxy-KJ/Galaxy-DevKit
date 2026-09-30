@@ -73,9 +73,13 @@ class WebSocketServer {
     });
 
     // Metrics endpoint
-    this.app.get('/metrics', (req, res) => {
-      const stats = this.getServerStats();
-      res.json(stats);
+    this.app.get('/metrics', async (req, res) => {
+      try {
+        res.json(await this.getServerStats());
+      } catch (error) {
+        console.error('Failed to collect server metrics:', error);
+        res.status(503).json({ error: 'Server metrics are temporarily unavailable' });
+      }
     });
 
     // Root endpoint
@@ -292,12 +296,14 @@ class WebSocketServer {
   /**
    * Get server statistics
    */
-  public getServerStats(): any {
+  public async getServerStats(): Promise<any> {
     const connectionStats = this.connectionHandler.getConnectionStats();
     const roomStats = this.roomManager.getAllRoomStats();
     const queueStats = this.eventBroadcaster.getQueueStats();
-    const automationStats = this.automationHandler.getAutomationStats();
-    const transactionStats = this.transactionHandler.getTransactionStats();
+    const [automationStats, transactionStats] = await Promise.all([
+      this.automationHandler.getAutomationStats(),
+      this.transactionHandler.getTransactionStats(),
+    ]);
 
     return {
       server: {
