@@ -19,8 +19,8 @@
     "seed:teams": "ts-node scripts/seed-teams-test-users.ts"
   },
   "dependencies": {
-    "@galaxy-kj/core-stellar-sdk": "*",
-    "@galaxy-kj/core-wallet": "*",
+    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
+    "@galaxy-kj/core-wallet": "^5.0.0",
     "@stellar/stellar-sdk": "^14.4.3",
     "@supabase/supabase-js": "^2.38.0",
     "bcryptjs": "^2.4.3",
@@ -44,17 +44,14 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
     "@types/helmet": "^0.0.48",
-    "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/lru-cache": "^7.10.9",
     "@types/morgan": "^1.9.10",
-    "@types/node": "^20.19.43",
+    "@types/node": "^20.0.0",
     "@types/supertest": "^6.0.3",
     "ioredis-mock": "^8.13.1",
-    "jest": "^30.2.0",
     "supertest": "^6.3.4",
-    "ts-jest": "^29.4.6",
-    "typescript": "^5.8.3"
+    "supertest": "^6.3.4"
   },
   "keywords": [
     "stellar",

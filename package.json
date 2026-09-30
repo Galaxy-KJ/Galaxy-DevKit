@@ -6,14 +6,15 @@
   "workspaces": [
     "packages/*",
     "packages/*/*",
+    "packages/*/*/*",
     "tools/*"
   ],
   "scripts": {
     "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
-    "lint": "npm run lint --prefix packages/core/wallet/auth && lerna run lint",
-    "lint:fix": "npm run lint:fix --prefix packages/core/wallet/auth && lerna run lint:fix --if-present",
+    "lint": "lerna run lint",
+    "lint:fix": "lerna run lint:fix --if-present",
     "type-check": "lerna run type-check --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "clean": "lerna run clean",
     "bootstrap": "lerna bootstrap",
@@ -41,6 +42,7 @@
     "babel-plugin-istanbul": "^8.0.0",
     "concurrently": "^8.0.0",
     "eslint": "^9.0.0",
+    "eslint-config-next": "^16.3.6",
     "globals": "^15.0.0",
     "http-server": "^14.1.1",
     "jest": "^30.2.0",
@@ -80,6 +82,8 @@
     "node-cron": "^4.2.1"
   },
   "overrides": {
+    "@stellar/stellar-sdk": "14.4.3",
+    "@blend-capital/blend-sdk": "~3.2.2",
     "diff": "^8.0.1",
     "handlebars": "4.7.9",
     "shell-quote": "^1.9.0",
