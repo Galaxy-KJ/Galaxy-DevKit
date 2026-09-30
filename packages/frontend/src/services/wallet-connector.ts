@@ -168,7 +168,7 @@ export class WalletConnectorService {
       const contract = new Address(contractAddress).toScAddress();
       const signerIndexKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
         contract,
-        key: xdr.ScVal.scvSymbol('Instance'),
+        key: xdr.ScVal.scvLedgerKeyContractInstance(),
         durability: xdr.ContractDataDurability.persistent(),
       }));
       const indexResponse = await this.server.getLedgerEntries(signerIndexKey);
