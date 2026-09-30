@@ -25,6 +25,18 @@ export interface WalletSigner {
 }
 
 /**
+ * Thrown when signer storage exists on-chain but is in a shape this client
+ * doesn't know how to parse, instead of silently returning an empty list
+ * that looks identical to "wallet genuinely has no signers".
+ */
+export class UnsupportedSignerStorageError extends Error {
+  constructor(contractAddress: string, reason: string) {
+    super(`Unsupported signer storage format on contract ${contractAddress}: ${reason}`);
+    this.name = 'UnsupportedSignerStorageError';
+  }
+}
+
+/**
  * Service for importing and managing existing smart wallet connections
  */
 export class WalletConnectorService {
@@ -63,7 +75,7 @@ export class WalletConnectorService {
 
       // Convert to ScAddress for the RPC call
       const contractScAddress = new Address(contractAddress).toScAddress();
-      
+
       // Query the ledger for the contract's instance entry
       // In Soroban, a contract exists if it has an instance entry
       const ledgerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
@@ -94,14 +106,14 @@ export class WalletConnectorService {
       }
 
       // To verify it's a smart wallet, we check if it implements the required interface.
-      // We do this by attempting to simulate a call to a read-only method that 
+      // We do this by attempting to simulate a call to a read-only method that
       // all our smart wallets should have, or by checking the contract spec.
-      
+
       // For this implementation, we'll check for the 'add_signer' method in the interface
       // by attempting to get the contract code and checking its exported functions
       // (Simplified for this version - in a full implementation we'd use a spec check)
-      
-      return true; // Assume true if verifyContractExists passes for now, 
+
+      return true; // Assume true if verifyContractExists passes for now,
                    // as full interface check requires WASM inspection
     } catch (error) {
       console.error('Error checking if contract is smart wallet:', error);
@@ -141,11 +153,7 @@ export class WalletConnectorService {
       }
       result.isSmartWallet = true;
 
-      // Step 3: Attempt to fetch signers from the contract
-      // Note: This is a placeholder for now as reading contract state requires
-      // more sophisticated RPC interactions. In production, you would:
-      // 1. Query the contract's persistent storage for signers
-      // 2. Parse the returned data to extract signer IDs and types
+      // Step 3: Fetch signers from the contract's persistent storage
       const signers = await this.fetchSigners(contractAddress);
       result.signers = signers;
 
@@ -158,29 +166,88 @@ export class WalletConnectorService {
   }
 
   /**
-   * Fetches the list of signers registered on a smart wallet contract
+   * Fetches the list of signers registered on a smart wallet contract.
+   *
+   * Reads the contract's persistent storage entry stored under the symbol
+   * "Signers" (a Map<BytesN<32> | Address, SignerInfo>) using the same
+   * getLedgerEntries()/LedgerKeyContractData pattern as verifyContractExists().
+   *
    * @param contractAddress - The smart wallet contract address
    * @returns Array of WalletSigner objects
    */
   async fetchSigners(contractAddress: string): Promise<WalletSigner[]> {
     try {
-      // This is a placeholder implementation
-      // In a production system, you would:
-      // 1. Make an RPC call to read the contract's stored state
-      // 2. Parse the storage entries to extract signer information
-      // 3. Return structured WalletSigner data
-      
-      // For now, we return an empty list as the full implementation
-      // requires deeper Soroban RPC integration
-      const signers: WalletSigner[] = [];
-      
-      // TODO: Implement actual signer fetching using:
-      // - server.getLedgerEntries() for contract data
-      // - Parse xdr.ContractDataEntry to extract signer storage
-      // - Return structured WalletSigner[] with id, type, and isActive flags
-      
+      const contractScAddress = new Address(contractAddress).toScAddress();
+
+      const ledgerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+        contract: contractScAddress,
+        key: xdr.ScVal.scvSymbol('Signers'),
+        durability: xdr.ContractDataDurability.persistent(),
+      }));
+
+      const response = await this.server.getLedgerEntries(ledgerKey);
+
+      if (!response || !response.entries || response.entries.length === 0) {
+        // No "Signers" entry yet is a legitimate state for a freshly
+        // deployed wallet — not an error.
+        return [];
+      }
+
+      const entry = response.entries[0];
+      const contractDataEntry = entry.val.contractData();
+      const storedValue = contractDataEntry.val();
+
+      const signerMap = storedValue.map();
+      if (!signerMap) {
+        // Storage exists but isn't a map — don't silently report "no
+        // signers" for a shape we don't understand.
+        throw new UnsupportedSignerStorageError(
+          contractAddress,
+          `expected an ScMap, got ScVal switch "${storedValue.switch().name}"`
+        );
+      }
+
+      const signers: WalletSigner[] = signerMap.map((mapEntry) => {
+        const rawId = scValToNative(mapEntry.key());
+        const id =
+          typeof rawId === 'string'
+            ? rawId
+            : Buffer.isBuffer(rawId)
+              ? rawId.toString('hex')
+              : String(rawId);
+
+        const signerData = scValToNative(mapEntry.val()) as {
+          signer_type?: string;
+          type?: string;
+          public_key?: Buffer | string;
+          active?: boolean;
+        };
+
+        const rawType = signerData?.signer_type ?? signerData?.type;
+        const type: WalletSigner['type'] =
+          rawType === 'admin' || rawType === 'session' ? rawType : 'unknown';
+
+        const publicKey =
+          signerData?.public_key !== undefined
+            ? Buffer.isBuffer(signerData.public_key)
+              ? signerData.public_key.toString('hex')
+              : String(signerData.public_key)
+            : undefined;
+
+        return {
+          id,
+          type,
+          publicKey,
+          // Absence of an explicit `active` flag means active by default.
+          isActive: signerData?.active !== false,
+        };
+      });
+
       return signers;
     } catch (error) {
+      if (error instanceof UnsupportedSignerStorageError) {
+        throw error;
+      }
       console.error('Error fetching signers from contract:', error);
       throw new Error(`Failed to fetch signers: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -224,7 +291,7 @@ export class WalletConnectorService {
 
       // Import and verify the wallet
       const walletInfo = await this.importWallet(contractAddress);
-      
+
       if (!walletInfo.isSmartWallet) {
         throw new Error(
           walletInfo.errorMessage || 'Failed to verify contract is a smart wallet'
@@ -233,7 +300,7 @@ export class WalletConnectorService {
 
       // Store the connection info for later use
       this.storeWalletConnection(contractAddress, walletInfo);
-      
+
       return true;
     } catch (error) {
       console.error('Error connecting to wallet:', error);
@@ -249,7 +316,7 @@ export class WalletConnectorService {
   private storeWalletConnection(contractAddress: string, walletInfo: ImportedWalletInfo): void {
     try {
       const connections = this.getStoredConnections();
-      
+
       // Update or add the connection
       const index = connections.findIndex(c => c.address === contractAddress);
       const connectionRecord = {
