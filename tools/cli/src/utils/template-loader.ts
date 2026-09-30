@@ -27,7 +27,7 @@ export class TemplateLoader {
   }
 
   constructor(templatesDir?: string) {
-    this.templatesDir = templatesDir || process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../packages/templates');
+    this.templatesDir = templatesDir || process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../../packages/templates');
   }
 
   /**

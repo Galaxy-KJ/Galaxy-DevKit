@@ -205,6 +205,28 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+  # Smoke-test the generated project outside the workspace.
+  template-smoke:
+    name: Basic Template Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Scaffold, install, and type-check the basic template
+        run: npm run test:template-basic --workspace=@galaxy-kj/cli
+
   # Job 5: Security audit
   security:
     name: Security Audit
@@ -255,7 +277,7 @@ jobs:
   all-checks-passed:
     name: All Checks Passed ✅
     runs-on: ubuntu-latest
-    needs: [quality-checks, build, test, security, e2e]
+    needs: [quality-checks, build, test, security, e2e, template-smoke]
     if: always()
 
     steps:
@@ -269,6 +291,7 @@ jobs:
              [ "${{ needs.build.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
              [ "${{ needs.e2e.result }}" != "success" ] || \
+             [ "${{ needs.template-smoke.result }}" != "success" ] || \
              [ "$SECURITY" = "cancelled" ]; then
             echo "❌ Some checks failed"
             exit 1

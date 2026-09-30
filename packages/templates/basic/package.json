@@ -14,9 +14,8 @@
     "clean": "rm -rf .next dist"
   },
   "dependencies": {
-    "@galaxy-kj/core-invisible-wallet": "^5.0.0",
-    "@galaxy-kj/core-stellar-sdk": "^5.0.0",
-    "@galaxy-kj/sdk-typescript": "^5.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
+    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
     "axios": "^1.6.2",
     "framer-motion": "^12.5.0",
     "next": "^16.3.6",
