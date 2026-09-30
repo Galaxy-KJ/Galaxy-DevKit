@@ -8,7 +8,6 @@
 
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { SorobanContractManager } from '../soroban-contract-manager.js';
-import { ScValConverter } from '../utils/scval-converter.js';
 import { predictContractAddress } from '../utils/contract-address.js';
 import {
   ContractFactoryConfig,
@@ -58,16 +57,13 @@ export class ContractFactory {
    */
   async deployWithSalt(
     deployer: Keypair,
-    salt: string | xdr.ScVal
+    salt: string | Buffer | xdr.ScVal
   ): Promise<ContractDeploymentResult> {
-    const scSalt =
-      typeof salt === 'string' ? ScValConverter.toScVal(salt) : salt;
-
     return await this.manager.deployContract({
       wasm: this.wasm,
       deployer,
       networkPassphrase: this.networkPassphrase,
-      salt: scSalt,
+      salt,
     });
   }
 

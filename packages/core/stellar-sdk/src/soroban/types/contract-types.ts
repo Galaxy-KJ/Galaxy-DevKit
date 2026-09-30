@@ -56,7 +56,7 @@ export interface ContractDeploymentParams {
   wasm: Buffer;
   deployer: Keypair;
   networkPassphrase: string;
-  salt?: xdr.ScVal;
+  salt?: string | Buffer | xdr.ScVal;
 }
 
 export interface ContractInvocationParams {
@@ -114,7 +114,7 @@ export interface ContractEventDetail {
   contractId: string;
   type: string;
   topics: xdr.ScVal[];
-  data: xdr.ScVal[];
+  data: xdr.ScVal;
   timestamp: number;
   ledger: number;
   txHash: string;
@@ -135,7 +135,7 @@ export interface EventSubscription {
 export interface ContractAbi {
   name: string;
   version: string;
-  functions: AbiFunction[];
+  functions: ContractFunction[];
   types: AbiType[];
 }
 

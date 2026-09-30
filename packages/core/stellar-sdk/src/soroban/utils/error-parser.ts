@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Error Parser
  * @description Parse and handle Soroban contract errors
@@ -100,11 +98,14 @@ export class ErrorParser {
         if (result.result().switch() === xdr.TransactionResultCode.txFailed()) {
           const operations = result.result().results() || [];
           for (const op of operations) {
-            if (
-              op.tr()?.switch() ===
-              xdr.TransactionResultResultCode.txInternalError()
-            ) {
-              return this.parseError(op.tr().value());
+            if (op.switch() !== xdr.OperationResultCode.opInner()) {
+              const operationType =
+                op.tr()?.switch().name ?? 'UnknownOperation';
+              return new SorobanError(
+                `Operation failed (${operationType})`,
+                -1,
+                'OperationFailed'
+              );
             }
           }
         }
@@ -259,7 +260,7 @@ export class ErrorParser {
         return result.str().toString();
 
       case xdr.ScValType.scvSymbol():
-        return result.symbol().toString();
+        return result.sym().toString();
 
       case xdr.ScValType.scvMap():
         const map = new Map();
@@ -283,7 +284,7 @@ export class ErrorParser {
       case xdr.ScValType.scvVoid():
         return null;
       case xdr.ScValType.scvBool():
-        return scVal.bool();
+        return scVal.b();
       case xdr.ScValType.scvU32():
         return scVal.u32();
       case xdr.ScValType.scvI32():
@@ -291,7 +292,7 @@ export class ErrorParser {
       case xdr.ScValType.scvString():
         return scVal.str().toString();
       case xdr.ScValType.scvSymbol():
-        return scVal.symbol().toString();
+        return scVal.sym().toString();
       default:
         return scVal;
     }
@@ -319,19 +320,15 @@ export class ErrorParser {
       );
     }
 
-    // Check for diagnostic events that might contain error information
-    for (const event of sorobanMeta.events()) {
-      if (event.type().equals(xdr.ContractEventType.contractError())) {
-        return this.parseError(event.data());
+    // Diagnostic events carry the contract error that caused the failure
+    for (const diagEvent of sorobanMeta.diagnosticEvents()) {
+      const contractEvent = diagEvent.event();
+      if (contractEvent.type() !== xdr.ContractEventType.contract()) {
+        continue;
       }
-    }
-
-    // Check for exceptions
-    const ext = v3.ext();
-    if (ext.switch() === xdr.TransactionMetaExtension.v1()) {
-      const v1Ext = ext.v1();
-      if (v1Ext.sorobanMeta()) {
-        // Additional error parsing logic could go here
+      const data = contractEvent.body().v0().data();
+      if (data.switch() === xdr.ScValType.scvError()) {
+        return this.parseError(data);
       }
     }
 

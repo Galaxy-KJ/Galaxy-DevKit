@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 /**
  * @fileoverview Function Signature Builder
@@ -11,6 +10,33 @@
 import { xdr } from '@stellar/stellar-sdk';
 import { ScValConverter } from './scval-converter.js';
 import { ContractFunction, ScType } from '../types/contract-types.js';
+
+const VALID_SC_TYPES: ReadonlySet<string> = new Set([
+  'void',
+  'bool',
+  'u32',
+  'i32',
+  'u64',
+  'i64',
+  'u128',
+  'i128',
+  'u256',
+  'i256',
+  'bytes',
+  'string',
+  'symbol',
+  'address',
+  'option',
+  'result',
+  'vec',
+  'map',
+  'set',
+  'tuple',
+]);
+
+function isScType(value: string): value is ScType {
+  return VALID_SC_TYPES.has(value);
+}
 
 export class FunctionSignatureBuilder {
   /**
@@ -123,7 +149,13 @@ export class FunctionSignatureBuilder {
 
     let inputTypes: ScType[] = [];
     if (inputTypesStr.trim()) {
-      inputTypes = inputTypesStr.split(',').map(type => type.trim());
+      inputTypes = inputTypesStr.split(',').map(type => {
+        const trimmed = type.trim();
+        if (!isScType(trimmed)) {
+          throw new Error(`Unsupported ScType in signature: ${trimmed}`);
+        }
+        return trimmed;
+      });
     }
 
     return { name, inputTypes };
@@ -298,10 +330,6 @@ export class FunctionSignatureBuilder {
         return 'u256';
       case xdr.ScValType.scvI256():
         return 'i256';
-      case xdr.ScValType.scvF32():
-        return 'f32';
-      case xdr.ScValType.scvF64():
-        return 'f64';
       case xdr.ScValType.scvBytes():
         return 'bytes';
       case xdr.ScValType.scvString():

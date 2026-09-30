@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Soroban type conversion utilities
  * @description Convert between JavaScript types and Soroban ScVal
@@ -8,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { xdr, ScInt, Address } from '@stellar/stellar-sdk';
+import { xdr, ScInt, Address, scValToBigInt } from '@stellar/stellar-sdk';
 import { ScType } from '../types/contract-types.js';
 
 export class ScValConverter {
@@ -33,14 +31,14 @@ export class ScValConverter {
       if (Number.isInteger(value)) {
         return xdr.ScVal.scvI32(value);
       }
-      return xdr.ScVal.scvI64(new ScInt(value).toI64());
+      return new ScInt(value).toI64();
     }
 
     if (typeof value === 'bigint') {
       if (value >= 0) {
-        return xdr.ScVal.scvU64(new ScInt(value).toU64());
+        return new ScInt(value).toU64();
       }
-      return xdr.ScVal.scvI64(new ScInt(value).toI64());
+      return new ScInt(value).toI64();
     }
 
     if (typeof value === 'string') {
@@ -110,28 +108,28 @@ export class ScValConverter {
         return xdr.ScVal.scvI32(Number(value));
 
       case 'u64':
-        return xdr.ScVal.scvU64(new ScInt(value).toU64());
+        return new ScInt(value).toU64();
 
       case 'i64':
-        return xdr.ScVal.scvI64(new ScInt(value).toI64());
+        return new ScInt(value).toI64();
 
       case 'u128':
-        return xdr.ScVal.scvU128(new ScInt(value).toU128());
+        return new ScInt(value).toU128();
 
       case 'i128':
-        return xdr.ScVal.scvI128(new ScInt(value).toI128());
+        return new ScInt(value).toI128();
 
       case 'u256':
-        return xdr.ScVal.scvU256(new ScInt(value).toU256());
+        return new ScInt(value).toU256();
 
       case 'i256':
-        return xdr.ScVal.scvI256(new ScInt(value).toI256());
+        return new ScInt(value).toI256();
 
       case 'f32':
-        return xdr.ScVal.scvF32(new xdr.Float(Number(value)));
-
       case 'f64':
-        return xdr.ScVal.scvF64(new xdr.Double(Number(value)));
+        throw new Error(
+          `ScType '${type}' is not supported: f32/f64 were removed from the Soroban spec and @stellar/stellar-sdk v14`
+        );
 
       case 'bytes':
         return xdr.ScVal.scvBytes(
@@ -208,7 +206,7 @@ export class ScValConverter {
         return null;
 
       case xdr.ScValType.scvBool():
-        return scVal.bool();
+      return scVal.b();
 
       case xdr.ScValType.scvU32():
         return scVal.u32();
@@ -217,28 +215,12 @@ export class ScValConverter {
         return scVal.i32();
 
       case xdr.ScValType.scvU64():
-        return new ScInt(scVal.u64()).toBigInt();
-
       case xdr.ScValType.scvI64():
-        return new ScInt(scVal.i64()).toBigInt();
-
       case xdr.ScValType.scvU128():
-        return new ScInt(scVal.u128()).toBigInt();
-
       case xdr.ScValType.scvI128():
-        return new ScInt(scVal.i128()).toBigInt();
-
       case xdr.ScValType.scvU256():
-        return new ScInt(scVal.u256()).toBigInt();
-
       case xdr.ScValType.scvI256():
-        return new ScInt(scVal.i256()).toBigInt();
-
-      case xdr.ScValType.scvF32():
-        return scVal.f32();
-
-      case xdr.ScValType.scvF64():
-        return scVal.f64();
+        return scValToBigInt(scVal);
 
       case xdr.ScValType.scvBytes():
         return scVal.bytes();
@@ -247,35 +229,32 @@ export class ScValConverter {
         return scVal.str().toString();
 
       case xdr.ScValType.scvSymbol():
-        return scVal.symbol().toString();
+        return scVal.sym().toString();
 
       case xdr.ScValType.scvAddress():
         return Address.fromScVal(scVal).toString();
 
-      case xdr.ScValType.scvVec():
-        return scVal.vec().map(item => this.fromScVal(item));
+      case xdr.ScValType.scvVec(): {
+        const vec = scVal.vec();
+        return vec ? vec.map(item => this.fromScVal(item)) : [];
+      }
 
-      case xdr.ScValType.scvMap():
+      case xdr.ScValType.scvMap(): {
         const map = new Map();
-        for (const entry of scVal.map()) {
-          map.set(this.fromScVal(entry.key()), this.fromScVal(entry.val()));
+        const entries = scVal.map();
+        if (entries) {
+          for (const entry of entries) {
+            map.set(this.fromScVal(entry.key()), this.fromScVal(entry.val()));
+          }
         }
         return map;
+      }
 
       case xdr.ScValType.scvContractInstance():
         return scVal.instance();
 
       case xdr.ScValType.scvLedgerKeyNonce():
         return scVal.nonceKey();
-
-      case xdr.ScValType.scvLedgerKeyContractCode():
-        return scVal.contractCode();
-
-      case xdr.ScValType.scvLedgerKeyContractData():
-        return scVal.contractData();
-
-      case xdr.ScValType.scvLedgerKeyState():
-        return scVal.state();
 
       default:
         throw new Error(`Unsupported ScVal type: ${scVal.switch().name}`);
@@ -315,7 +294,7 @@ export class ScValConverter {
         return null;
 
       case 'bool':
-        return scVal.switch() === xdr.ScValType.scvBool() ? scVal.bool() : null;
+        return scVal.switch() === xdr.ScValType.scvBool() ? scVal.b() : null;
 
       case 'u32':
         return scVal.switch() === xdr.ScValType.scvU32() ? scVal.u32() : null;
@@ -332,10 +311,10 @@ export class ScValConverter {
         return this.fromScVal(scVal);
 
       case 'f32':
-        return scVal.switch() === xdr.ScValType.scvF32() ? scVal.f32() : null;
-
       case 'f64':
-        return scVal.switch() === xdr.ScValType.scvF64() ? scVal.f64() : null;
+        throw new Error(
+          `ScType '${type}' is not supported: f32/f64 were removed from the Soroban spec and @stellar/stellar-sdk v14`
+        );
 
       case 'bytes':
         return scVal.switch() === xdr.ScValType.scvBytes()
@@ -349,7 +328,7 @@ export class ScValConverter {
 
       case 'symbol':
         return scVal.switch() === xdr.ScValType.scvSymbol()
-          ? scVal.symbol().toString()
+          ? scVal.sym().toString()
           : null;
 
       case 'address':

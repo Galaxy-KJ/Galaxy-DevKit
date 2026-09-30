@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * @fileoverview Business logic for Stellar operations
  * @description Contains all Stellar-related business logic and API calls

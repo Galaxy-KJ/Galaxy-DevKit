@@ -1,11 +1,9 @@
-// @ts-nocheck
 /**
  * @fileoverview Soroban Contract Manager
  * @description Main class for Soroban contract operations
  * @author Galaxy DevKit Team
  * @version 1.0.0
  * @since 2024-12-01
- * @note Type checking disabled due to Stellar SDK v14 compatibility issues
  */
 
 import {
@@ -15,9 +13,15 @@ import {
   Contract,
   BASE_FEE,
   Address,
+  Account,
+  StrKey,
+  hash,
+  Operation,
 } from '@stellar/stellar-sdk';
+import { randomBytes } from 'node:crypto';
 import { resolveNetwork } from '../utils/network-utils.js';
 import { ScValConverter } from './utils/scval-converter.js';
+import { normalizeSalt } from './utils/contract-address.js';
 import {
   ContractDeploymentParams,
   ContractInvocationParams,
@@ -29,7 +33,7 @@ import {
   ContractEventDetail,
   ContractUpgradeParams,
   ContractUpgradeResult,
-} from '../types/contract-types.js';
+} from './types/contract-types.js';
 
 export class SorobanContractManager {
   private rpcUrl: string;
@@ -52,23 +56,24 @@ export class SorobanContractManager {
       // Get account information
       const account = await this.server.getAccount(deployer.publicKey());
 
-      const operation = xdr.HostFunction.hostFunctionTypeCreateContract({
-        contractIdPreimage:
-          xdr.ContractIdPreimage.contractIdPreimageFromAddress(
-            new Address(deployer.publicKey()).toScAddress(),
-            salt || xdr.ScVal.scvVoid()
-          ),
-        executable: xdr.ContractExecutable.contractExecutableWasm(wasm),
-      });
+      const hostFunction = xdr.HostFunction.hostFunctionTypeCreateContract(
+        new xdr.CreateContractArgs({
+          contractIdPreimage:
+            xdr.ContractIdPreimage.contractIdPreimageFromAddress(
+              new xdr.ContractIdPreimageFromAddress({
+                address: new Address(deployer.publicKey()).toScAddress(),
+                salt: salt ? normalizeSalt(salt) : randomBytes(32),
+              })
+            ),
+          executable: xdr.ContractExecutable.contractExecutableWasm(wasm),
+        })
+      );
 
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
         networkPassphrase,
       })
-        .addOperation({
-          type: 'invokeHostFunction',
-          hostFunction: operation,
-        })
+        .addOperation(Operation.invokeHostFunction({ func: hostFunction }))
         .setTimeout(30)
         .build();
 
@@ -79,7 +84,7 @@ export class SorobanContractManager {
       }
 
       // Prepare transaction
-      const preparedTx = SorobanRpc.Api.prepareTransaction(tx, simulation);
+      const preparedTx = await this.server.prepareTransaction(tx);
 
       // Sign transaction
       preparedTx.sign(deployer);
@@ -94,8 +99,8 @@ export class SorobanContractManager {
       // Wait for transaction completion
       const result = await this.server.getTransaction(response.hash);
 
-      if (!SorobanRpc.Api.isGetTransactionSuccess(result)) {
-        throw new Error(`Transaction execution failed: ${result.resultXdr}`);
+      if (result.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+        throw new Error(`Transaction execution failed: ${result.status}`);
       }
 
       // Extract contract ID
@@ -159,7 +164,7 @@ export class SorobanContractManager {
       }
 
       // Prepare transaction
-      const preparedTx = SorobanRpc.Api.prepareTransaction(tx, simulation);
+      const preparedTx = await this.server.prepareTransaction(tx);
 
       // Sign transaction
       preparedTx.sign(caller);
@@ -174,17 +179,16 @@ export class SorobanContractManager {
       // Wait for transaction completion
       const result = await this.server.getTransaction(response.hash);
 
-      if (!SorobanRpc.Api.isGetTransactionSuccess(result)) {
-        throw new Error(`Transaction execution failed: ${result.resultXdr}`);
+      if (result.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+        throw new Error(`Transaction execution failed: ${result.status}`);
       }
 
       // Parse results
-      const txMeta = result.resultMetaXdr;
-      const events = this.parseEvents(txMeta);
+      const events = this.parseEvents(result.resultMetaXdr);
       const auth = this.parseAuth(result.returnValue);
 
       return {
-        result: result.returnValue,
+        result: result.returnValue || xdr.ScVal.scvVoid(),
         transactionHash: response.hash,
         ledger: result.ledger || 0,
         events,
@@ -212,9 +216,8 @@ export class SorobanContractManager {
       // Use provided account or create a mock account
       const sourceAccount = account
         ? await this.server.getAccount(account)
-        : new SorobanRpc.Api.Account(
-            account ||
-              'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        : new Account(
+            'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
             '1'
           );
 
@@ -240,15 +243,18 @@ export class SorobanContractManager {
         throw new Error(`Simulation failed: ${simulation.error}`);
       }
 
+      const result = simulation.result;
+      const events = this.parseDiagnosticEvents(simulation.events);
+
       return {
-        result: simulation.result!,
-        events: this.parseEvents(simulation.result),
-        auth: this.parseAuth(simulation.result),
-        cpuInstructions: simulation.cpuInstructions || 0,
-        memoryBytes: simulation.memoryBytes || 0,
-        transactionData: simulation.transactionData!,
-        minResourceFee: simulation.minResourceFee || '0',
-        cost: simulation.cost!,
+        result: result?.retval || xdr.ScVal.scvVoid(),
+        events,
+        auth: result?.auth || [],
+        cpuInstructions: 0,
+        memoryBytes: 0,
+        transactionData: simulation.transactionData.build(),
+        minResourceFee: simulation.minResourceFee,
+        cost: undefined,
       };
     } catch (error) {
       throw new Error(
@@ -264,28 +270,16 @@ export class SorobanContractManager {
     const { contractId, key } = params;
 
     try {
-      const contract = new Contract(contractId);
-
       // Convert key to ScVal if it's a string
       const scKey = typeof key === 'string' ? ScValConverter.toScVal(key) : key;
 
-      // Get ledger key
-      const ledgerKey = contract.getFootprint().toLedgerKey(scKey);
+      const response = await this.server.getContractData(contractId, scKey);
 
-      // Get ledger entries
-      const response = await this.server.getLedgerEntries(ledgerKey);
-
-      if (!response.entries || response.entries.length === 0) {
-        return null;
-      }
-
-      const entry = response.entries[0];
-      if (!entry.val) {
-        return null;
-      }
-
-      // Convert from ScVal
-      return ScValConverter.fromScVal(entry.val);
+      return {
+        key: scKey,
+        value: ScValConverter.fromScVal(response.val.contractData().val()),
+        lastModifiedLedgerSeq: response.lastModifiedLedgerSeq,
+      };
     } catch (error) {
       throw new Error(
         `Contract state query failed: ${error instanceof Error ? error.message : String(error)}`
@@ -308,16 +302,13 @@ export class SorobanContractManager {
 
     try {
       // Build event filters
-      const filters: SorobanRpc.EventFilter[] = [];
+      const filters: SorobanRpc.Api.EventFilter[] = [];
 
       if (eventTypes && eventTypes.length > 0) {
         filters.push({
           type: 'contract',
           contractIds: [contractId],
-          topics: eventTypes.map((type: string) => ({
-            type: 'string' as const,
-            value: type,
-          })),
+          topics: eventTypes.map(type => [type]),
         });
       } else {
         filters.push({
@@ -328,20 +319,19 @@ export class SorobanContractManager {
 
       // Get events
       const events = await this.server.getEvents({
-        startLedger,
-        endLedger,
         filters,
+        startLedger: startLedger || 0,
+        ...(endLedger !== undefined ? { endLedger } : {}),
       });
 
       return events.events.map(event => ({
         contractId: event.contractId?.toString() || '',
-        type: event.type.toString(),
-        topics: event.topics || [],
-        data: event.data || xdr.ScVal.scvVoid(),
-        timestamp: event.timestamp || 0,
-        ledger: event.ledger || 0,
-        txHash: event.txHash || '',
-        ...event,
+        type: event.type,
+        topics: event.topic,
+        data: event.value,
+        timestamp: 0,
+        ledger: event.ledger,
+        txHash: event.txHash,
       }));
     } catch (error) {
       throw new Error(
@@ -366,23 +356,25 @@ export class SorobanContractManager {
       const uploadOp =
         xdr.HostFunction.hostFunctionTypeUploadContractWasm(newWasm);
 
-      // Create upgrade operation
-      const upgradeOp = xdr.HostFunction.hostFunctionTypeCreateContract({
-        contractIdPreimage:
-          xdr.ContractIdPreimage.contractIdPreimageFromAddress(
-            new Address(contractId).toScAddress(),
-            xdr.ScVal.scvVoid()
-          ),
-        executable: xdr.ContractExecutable.contractExecutableStellarAsset(),
-      });
+      // Upgrade the contract to the new wasm via the built-in __update_wasm
+      // function. The RPC's prepareTransaction attaches the required auth and
+      // footprint from the simulation before signing.
+      const upgradeOp =
+        xdr.HostFunction.hostFunctionTypeInvokeContract(
+          new xdr.InvokeContractArgs({
+            contractAddress: new Address(contractId).toScAddress(),
+            functionName: '__update_wasm',
+            args: [xdr.ScVal.scvBytes(hash(newWasm))],
+          })
+        );
 
       // Build transaction
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
         networkPassphrase,
       })
-        .addOperation({ type: 'invokeHostFunction', hostFunction: uploadOp })
-        .addOperation({ type: 'invokeHostFunction', hostFunction: upgradeOp })
+        .addOperation(Operation.invokeHostFunction({ func: uploadOp }))
+        .addOperation(Operation.invokeHostFunction({ func: upgradeOp }))
         .setTimeout(30)
         .build();
 
@@ -394,7 +386,7 @@ export class SorobanContractManager {
       }
 
       // Prepare transaction
-      const preparedTx = SorobanRpc.Api.prepareTransaction(tx, simulation);
+      const preparedTx = await this.server.prepareTransaction(tx);
 
       // Sign transaction
       preparedTx.sign(admin);
@@ -409,8 +401,8 @@ export class SorobanContractManager {
       // Wait for transaction completion
       const result = await this.server.getTransaction(response.hash);
 
-      if (!SorobanRpc.Api.isGetTransactionSuccess(result)) {
-        throw new Error(`Transaction execution failed: ${result.resultXdr}`);
+      if (result.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+        throw new Error(`Transaction execution failed: ${result.status}`);
       }
 
       // Get new WASM hash
@@ -433,22 +425,35 @@ export class SorobanContractManager {
    * Extract contract ID from transaction result
    */
   private extractContractId(
-    result: SorobanRpc.Api.GetTransactionResponse
+    result: SorobanRpc.Api.GetSuccessfulTransactionResponse
   ): string {
     // This is a simplified implementation
     // In practice, you'd parse the transaction meta to get the contract ID
-    return result.returnValue?.toString() || '';
+    const returnValue = result.returnValue;
+    if (!returnValue) return '';
+
+    try {
+      return Address.fromScVal(returnValue).toString();
+    } catch {
+      return ScValConverter.fromScVal(returnValue).toString();
+    }
   }
 
   /**
    * Extract WASM hash from transaction result
    */
   private extractWasmHash(
-    result: SorobanRpc.Api.GetTransactionResponse
+    result: SorobanRpc.Api.GetSuccessfulTransactionResponse
   ): string {
     // This is a simplified implementation
     // In practice, you'd parse the transaction meta to get the WASM hash
-    return result.returnValue?.toString() || '';
+    const returnValue = result.returnValue;
+    if (!returnValue) return '';
+
+    const decoded = ScValConverter.fromScVal(returnValue);
+    return Buffer.isBuffer(decoded)
+      ? decoded.toString('hex')
+      : String(decoded);
   }
 
   /**
@@ -457,24 +462,39 @@ export class SorobanContractManager {
   private parseEvents(meta?: xdr.TransactionMeta): ContractEventDetail[] {
     if (!meta) return [];
 
-    const events: ContractEventDetail[] = [];
     const sorobanMeta = meta.v3()?.sorobanMeta();
+    if (!sorobanMeta) return [];
 
-    if (sorobanMeta) {
-      for (const event of sorobanMeta.events()) {
-        events.push({
-          contractId: event.contractId?.toString() || '',
-          type: event.type.toString(),
-          topics: event.topics(),
-          data: event.data(),
-          timestamp: 0,
-          ledger: 0,
-          txHash: '',
-        });
-      }
-    }
+    return sorobanMeta.events().map(event => this.parseContractEvent(event));
+  }
 
-    return events;
+  /**
+   * Parse diagnostic events from a simulation response
+   */
+  private parseDiagnosticEvents(
+    diagnostics: xdr.DiagnosticEvent[]
+  ): ContractEventDetail[] {
+    return diagnostics.map(diagnostic =>
+      this.parseContractEvent(diagnostic.event())
+    );
+  }
+
+  /**
+   * Map a single contract event to the shared event detail shape
+   */
+  private parseContractEvent(event: xdr.ContractEvent): ContractEventDetail {
+    const contractId = event.contractId();
+    return {
+      contractId: contractId
+        ? StrKey.encodeContract(Buffer.from(contractId as unknown as Uint8Array))
+        : '',
+      type: event.type().name,
+      topics: event.body().v0().topics(),
+      data: event.body().v0().data(),
+      timestamp: 0,
+      ledger: 0,
+      txHash: '',
+    };
   }
 
   /**
@@ -490,14 +510,14 @@ export class SorobanContractManager {
    * Convert simulation result to invocation result
    */
   private convertSimulationToResult(
-    simulation: SorobanRpc.Api.SimulateTransactionResponse
+    simulation: SorobanRpc.Api.SimulateTransactionSuccessResponse
   ): InvocationResult {
     return {
-      result: simulation.result!,
+      result: simulation.result?.retval || xdr.ScVal.scvVoid(),
       transactionHash: '',
       ledger: 0,
-      events: this.parseEvents(simulation.result),
-      auth: this.parseAuth(simulation.result),
+      events: this.parseDiagnosticEvents(simulation.events),
+      auth: simulation.result?.auth || [],
     };
   }
 
