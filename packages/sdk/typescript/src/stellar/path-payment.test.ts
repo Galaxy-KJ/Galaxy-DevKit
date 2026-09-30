@@ -62,6 +62,10 @@ describe('path payment quotes', () => {
     const url = new URL(String((global.fetch as jest.Mock).mock.calls[0][0]));
     expect(url.pathname).toContain('/paths/strict-send');
     expect(url.searchParams.get('source_amount')).toBe('100');
+    expect(url.searchParams.get('source_asset_type')).toBe('native');
+    expect(url.searchParams.get('destination_assets')).toBe(`USDC:${issuer}`);
+    expect(url.searchParams.has('destination_asset_type')).toBe(false);
+    expect(url.searchParams.has('destination_account')).toBe(false);
     expect(url.searchParams.has('amount')).toBe(false);
   });
 
@@ -86,6 +90,33 @@ describe('path payment quotes', () => {
     expect(url.pathname).toContain('/paths/strict-receive');
     expect(url.searchParams.get('destination_amount')).toBe('25');
     expect(url.searchParams.get('source_account')).toBe(source);
+    expect(url.searchParams.has('source_assets')).toBe(false);
+    expect(url.searchParams.has('source_asset_type')).toBe(false);
+    expect(url.searchParams.get('destination_asset_type')).toBe('credit_alphanum4');
+    expect(url.searchParams.has('amount')).toBe(false);
+  });
+
+  it('queries strict receive assets as source_assets when no account is given', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(200, pathBody([{
+      source_amount: '40',
+      destination_amount: '25',
+      path: [],
+    }])));
+
+    await findOptimalPath({
+      sourceAsset: usdc,
+      destinationAsset: Asset.native(),
+      amount: '25',
+      mode: 'strict-receive',
+      horizonUrl: HORIZON,
+    });
+
+    const url = new URL(String((global.fetch as jest.Mock).mock.calls[0][0]));
+    expect(url.searchParams.get('destination_amount')).toBe('25');
+    expect(url.searchParams.get('destination_asset_type')).toBe('native');
+    expect(url.searchParams.get('source_assets')).toBe(`USDC:${issuer}`);
+    expect(url.searchParams.has('source_asset_type')).toBe(false);
+    expect(url.searchParams.has('source_account')).toBe(false);
     expect(url.searchParams.has('amount')).toBe(false);
   });
 

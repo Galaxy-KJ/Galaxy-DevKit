@@ -62,6 +62,11 @@ function assetToParams(asset: Asset, prefix: string): Record<string, string> {
   };
 }
 
+function assetToListValue(asset: Asset): string {
+  if (asset.isNative()) return 'native';
+  return `${asset.getCode()}:${asset.getIssuer()}`;
+}
+
 function recordToAsset(record: {
   asset_type: string;
   asset_code?: string;
@@ -95,16 +100,27 @@ function selectBestPath(
 // ─── Route finder ─────────────────────────────────────────────────────────────
 
 function buildQuery(options: RouteFinderOptions): URLSearchParams {
-  const params = new URLSearchParams({
-    ...assetToParams(options.sourceAsset, 'source'),
-    ...assetToParams(options.destinationAsset, 'destination'),
-  });
+  const params = new URLSearchParams();
   if (options.mode === 'strict-send') {
+    for (const [key, value] of Object.entries(assetToParams(options.sourceAsset, 'source'))) {
+      params.set(key, value);
+    }
     params.set('source_amount', options.amount);
-    if (options.destinationAccount) params.set('destination_account', options.destinationAccount);
+    if (options.destinationAccount) {
+      params.set('destination_account', options.destinationAccount);
+    } else {
+      params.set('destination_assets', assetToListValue(options.destinationAsset));
+    }
   } else {
+    for (const [key, value] of Object.entries(assetToParams(options.destinationAsset, 'destination'))) {
+      params.set(key, value);
+    }
     params.set('destination_amount', options.amount);
-    if (options.sourceAccount) params.set('source_account', options.sourceAccount);
+    if (options.sourceAccount) {
+      params.set('source_account', options.sourceAccount);
+    } else {
+      params.set('source_assets', assetToListValue(options.sourceAsset));
+    }
   }
   return params;
 }
