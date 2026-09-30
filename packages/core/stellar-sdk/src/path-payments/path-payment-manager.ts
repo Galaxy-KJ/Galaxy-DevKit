@@ -28,6 +28,7 @@ import {
   PathCacheEntry,
   PathPaymentManagerOptions,
   HIGH_PRICE_IMPACT_THRESHOLD,
+  PathPaymentError,
 } from './types.js';
 import { Wallet } from '../types/stellar-types.js';
 import { decryptPrivateKeyToString } from '../utils/encryption.utils.js';
@@ -37,6 +38,10 @@ const DEFAULT_PATH_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_PATH_CACHE_MAX_ENTRIES = 100;
 const DEFAULT_VOLATILITY_LOOKBACK = 20;
 const DEFAULT_LARGE_SWAP_AMOUNT_THRESHOLD = '10000';
+const MAX_SLIPPAGE_PERCENT = 50;
+const DEFAULT_SLIPPAGE_PERCENT = 1;
+
+export { PathPaymentError };
 
 /**
  * Path Payment Manager – find paths, rank by price, execute swaps with slippage protection
@@ -77,9 +82,20 @@ export class PathPaymentManager {
     amount: string;
     type: 'strict_send' | 'strict_receive';
     limit?: number;
+    destinationAccount?: string;
+    sourceAccount?: string;
   }): Promise<PaymentPath[]> {
+    this.assertAmount(params.amount);
     const limit = params.limit ?? 15;
-    const cacheKey = this.getPathCacheKey(params.sourceAsset, params.destAsset, params.amount, params.type, limit);
+    const cacheKey = this.getPathCacheKey(
+      params.sourceAsset,
+      params.destAsset,
+      params.amount,
+      params.type,
+      limit,
+      params.destinationAccount,
+      params.sourceAccount,
+    );
     const cached = this.getCachedPaths(cacheKey);
     if (cached) return cached;
 
@@ -93,12 +109,14 @@ export class PathPaymentManager {
             sourceAsset: params.sourceAsset,
             sourceAmount: params.amount,
             destinationAsset: params.destAsset,
+            destinationAccount: params.destinationAccount,
             limit,
           })
           : await this.fetchStrictReceivePaths({
             sourceAsset: params.sourceAsset,
             destinationAsset: params.destAsset,
             destinationAmount: params.amount,
+            sourceAccount: params.sourceAccount,
             limit,
           });
 
@@ -132,6 +150,7 @@ export class PathPaymentManager {
     password: string,
     sourceAccountId: string
   ): Promise<SwapResult> {
+    this.assertSwapParams(params);
     const paths = params.customPath
       ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
@@ -146,7 +165,7 @@ export class PathPaymentManager {
       : await this.getBestPath(paths, params.type);
 
     if (!bestPath) {
-      throw new Error('No payment path found');
+      throw new PathPaymentError('No payment path found', 'NO_LIQUIDITY');
     }
 
     const estimate = this.estimateSwapFromPath(bestPath, params);
@@ -187,7 +206,25 @@ export class PathPaymentManager {
       .build();
 
     tx.sign(keypair);
-    const result = await this.server.submitTransaction(tx);
+    let result: { hash: string };
+    try {
+      result = await this.server.submitTransaction(tx);
+    } catch (err) {
+      this.recordSwapAnalytics({
+        path: estimate.path,
+        inputAmount: params.type === 'strict_send' ? params.amount : bestPath.source_amount,
+        outputAmount: params.type === 'strict_send' ? bestPath.destination_amount : params.amount,
+        price: bestPath.price,
+        priceImpact: bestPath.priceImpact,
+        transactionHash: '',
+        slippageApplied: (estimate.volatilityAdjustedSlippage ?? params.maxSlippage ?? DEFAULT_SLIPPAGE_PERCENT).toFixed(2),
+      }, false);
+      throw new PathPaymentError(
+        `Path payment submission failed: ${err instanceof Error ? err.message : String(err)}`,
+        'SUBMIT_FAILED',
+        { cause: err },
+      );
+    }
 
     const swapResult: SwapResult = {
       path: [params.sendAsset, ...pathAssets, params.destAsset],
@@ -209,6 +246,7 @@ export class PathPaymentManager {
    * Estimate swap output/input and price impact (no execution)
    */
   async estimateSwap(params: SwapParams): Promise<SwapEstimate> {
+    this.assertSwapParams(params);
     const paths = params.customPath
       ? [await this.resolveCustomPath(params)]
       : await this.findPaths({
@@ -220,7 +258,7 @@ export class PathPaymentManager {
 
     const bestPath = params.customPath ? paths[0] : await this.getBestPath(paths, params.type);
     if (!bestPath) {
-      throw new Error('No payment path found for estimate');
+      throw new PathPaymentError('No payment path found for estimate', 'NO_LIQUIDITY');
     }
     return this.estimateSwapFromPath(bestPath, params);
   }
@@ -294,11 +332,39 @@ export class PathPaymentManager {
     dest: Asset,
     amount: string,
     type: string,
-    limit: number
+    limit: number,
+    destinationAccount?: string,
+    sourceAccount?: string,
   ): string {
     const s = this.assetToString(source);
     const d = this.assetToString(dest);
-    return `${type}:${s}:${d}:${amount}:${limit}`;
+    return `${type}:${s}:${d}:${amount}:${limit}:${destinationAccount ?? '-'}:${sourceAccount ?? '-'}`;
+  }
+
+  private assertAmount(amount: string): void {
+    if (!/^\d+(\.\d+)?$/.test(amount) || !new BigNumber(amount).isGreaterThan(0)) {
+      throw new PathPaymentError(
+        `amount must be a positive decimal string (received "${amount}")`,
+        'INVALID_AMOUNT',
+      );
+    }
+  }
+
+  private assertSlippage(slippage: number): void {
+    if (!Number.isFinite(slippage) || slippage < 0 || slippage > MAX_SLIPPAGE_PERCENT) {
+      throw new PathPaymentError(
+        `maxSlippage must be a percent between 0 and ${MAX_SLIPPAGE_PERCENT} (received ${slippage})`,
+        'INVALID_SLIPPAGE',
+      );
+    }
+  }
+
+  private assertSwapParams(params: SwapParams): void {
+    this.assertAmount(params.amount);
+    this.assertSlippage(params.maxSlippage ?? DEFAULT_SLIPPAGE_PERCENT);
+    if (params.sendAsset.equals(params.destAsset)) {
+      throw new PathPaymentError('Send and destination assets must be different', 'SAME_ASSET');
+    }
   }
 
   private assetToString(asset: Asset): string {
@@ -350,60 +416,42 @@ export class PathPaymentManager {
   private async fetchStrictSendPaths(
     params: StrictSendPathParams
   ): Promise<PaymentPath[]> {
-    const base = (this.server as any).serverURL ?? (this.server as any).url;
-    const baseUrl = typeof base === 'string' ? base : (base?.toString?.() ?? '');
-    const sourceAsset = this.toHorizonAsset(params.sourceAsset);
-    const destAsset = this.toHorizonAsset(params.destinationAsset);
-    const q = new URLSearchParams({
-      source_asset_type: sourceAsset.asset_type,
-      source_amount: params.sourceAmount,
-      destination_asset_type: destAsset.asset_type,
-      limit: String(params.limit ?? 15),
-    });
-    if (sourceAsset.asset_code) q.set('source_asset_code', sourceAsset.asset_code);
-    if (sourceAsset.asset_issuer) q.set('source_asset_issuer', sourceAsset.asset_issuer);
-    if (destAsset.asset_code) q.set('destination_asset_code', destAsset.asset_code);
-    if (destAsset.asset_issuer) q.set('destination_asset_issuer', destAsset.asset_issuer);
-    const url = `${baseUrl.replace(/\/$/, '')}/paths/strict-send?${q.toString()}`;
-    const response = await fetch(url);
-    if (!response.ok) return [];
-    const json = await response.json();
-    const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_send'));
+    const destination = params.destinationAccount ?? [params.destinationAsset];
+    try {
+      const response = await this.server
+        .strictSendPaths(params.sourceAsset, params.sourceAmount, destination)
+        .limit(params.limit ?? 15)
+        .call();
+      return this.recordsToPaths(response.records ?? [], 'strict_send');
+    } catch (err) {
+      if (err instanceof PathPaymentError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new PathPaymentError(`Horizon strict-send query failed: ${message}`, 'HORIZON_ERROR');
+    }
   }
 
   private async fetchStrictReceivePaths(
     params: StrictReceivePathParams
   ): Promise<PaymentPath[]> {
-    const base = (this.server as any).serverURL ?? (this.server as any).url;
-    const baseUrl = typeof base === 'string' ? base : (base?.toString?.() ?? '');
-    const sourceAsset = this.toHorizonAsset(params.sourceAsset);
-    const destAsset = this.toHorizonAsset(params.destinationAsset);
-    const q = new URLSearchParams({
-      source_asset_type: sourceAsset.asset_type,
-      destination_asset_type: destAsset.asset_type,
-      destination_amount: params.destinationAmount,
-      limit: String(params.limit ?? 15),
-    });
-    if (sourceAsset.asset_code) q.set('source_asset_code', sourceAsset.asset_code);
-    if (sourceAsset.asset_issuer) q.set('source_asset_issuer', sourceAsset.asset_issuer);
-    if (destAsset.asset_code) q.set('destination_asset_code', destAsset.asset_code);
-    if (destAsset.asset_issuer) q.set('destination_asset_issuer', destAsset.asset_issuer);
-    const url = `${baseUrl.replace(/\/$/, '')}/paths/strict-receive?${q.toString()}`;
-    const response = await fetch(url);
-    if (!response.ok) return [];
-    const json = await response.json();
-    const records = json._embedded?.records ?? json.records ?? [];
-    return records.map((r: any) => this.horizonPathToPaymentPath(r, 'strict_receive'));
+    const source = params.sourceAccount ?? [params.sourceAsset];
+    try {
+      const response = await this.server
+        .strictReceivePaths(source, params.destinationAsset, params.destinationAmount)
+        .limit(params.limit ?? 15)
+        .call();
+      return this.recordsToPaths(response.records ?? [], 'strict_receive');
+    } catch (err) {
+      if (err instanceof PathPaymentError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new PathPaymentError(`Horizon strict-receive query failed: ${message}`, 'HORIZON_ERROR');
+    }
   }
 
-  private toHorizonAsset(asset: Asset): { asset_type: string; asset_code?: string; asset_issuer?: string } {
-    if (asset.isNative()) return { asset_type: 'native' };
-    return {
-      asset_type: 'credit_alphanum4',
-      asset_code: asset.getCode(),
-      asset_issuer: asset.getIssuer(),
-    };
+  private recordsToPaths(records: unknown[], type: SwapType): PaymentPath[] {
+    if (records.length === 0) {
+      throw new PathPaymentError('No payment path found', 'NO_LIQUIDITY');
+    }
+    return records.map((record) => this.horizonPathToPaymentPath(record, type));
   }
 
   private horizonAssetToSdk(rec: any): Asset {
@@ -414,8 +462,16 @@ export class PathPaymentManager {
   private horizonPathToPaymentPath(rec: any, type: SwapType): PaymentPath {
     const pathRecs = rec.path || [];
     const path = pathRecs.map((p: any) => this.horizonAssetToSdk(typeof p === 'object' ? p : { asset_type: p }));
-    const src = rec.source_asset ?? (rec.source_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.source_asset_code, asset_issuer: rec.source_asset_issuer });
-    const dst = rec.destination_asset ?? (rec.destination_asset_type === 'native' ? { asset_type: 'native' } : { asset_type: 'credit_alphanum4', asset_code: rec.destination_asset_code, asset_issuer: rec.destination_asset_issuer });
+    const src = rec.source_asset ?? {
+      asset_type: rec.source_asset_type,
+      asset_code: rec.source_asset_code,
+      asset_issuer: rec.source_asset_issuer,
+    };
+    const dst = rec.destination_asset ?? {
+      asset_type: rec.destination_asset_type,
+      asset_code: rec.destination_asset_code,
+      asset_issuer: rec.destination_asset_issuer,
+    };
     const sourceAsset = this.horizonAssetToSdk(src);
     const destAsset = this.horizonAssetToSdk(dst);
     const sourceAmount = rec.source_amount ?? '0';
@@ -438,10 +494,11 @@ export class PathPaymentManager {
 
   private rankPathsByPrice(paths: PaymentPath[], type: SwapType): PaymentPath[] {
     return [...paths].sort((a, b) => {
-      if (type === 'strict_send') {
-        return new BigNumber(b.destination_amount).comparedTo(a.destination_amount) as number;
-      }
-      return new BigNumber(a.source_amount).comparedTo(b.source_amount) as number;
+      const byAmount = type === 'strict_send'
+        ? new BigNumber(b.destination_amount).comparedTo(a.destination_amount)
+        : new BigNumber(a.source_amount).comparedTo(b.source_amount);
+      if (byAmount) return byAmount;
+      return a.path.length - b.path.length;
     });
   }
 
@@ -456,7 +513,7 @@ export class PathPaymentManager {
     const match = paths.find((candidate) => candidate.path.length === requested.length &&
       candidate.path.every((asset, index) => asset.equals(requested[index])));
     if (!match || !this.hasUsableQuote(match, params.type)) {
-      throw new Error('Unable to obtain a safe Horizon quote for the custom payment path');
+      throw new PathPaymentError('Unable to obtain a safe Horizon quote for the custom payment path', 'NO_LIQUIDITY');
     }
     return match;
   }
@@ -478,10 +535,15 @@ export class PathPaymentManager {
     const adjustedSlippage = new BigNumber(baseSlippage).plus(volatilityBuffer);
     const minReceived = new BigNumber(path.destination_amount)
       .times(new BigNumber(1).minus(adjustedSlippage.dividedBy(100)))
+      .decimalPlaces(7, BigNumber.ROUND_DOWN)
       .toFixed(7);
     const maxCost = new BigNumber(path.source_amount)
       .times(new BigNumber(1).plus(adjustedSlippage.dividedBy(100)))
+      .decimalPlaces(7, BigNumber.ROUND_UP)
       .toFixed(7);
+    if (!new BigNumber(minReceived).isGreaterThan(0) || !new BigNumber(maxCost).isGreaterThan(0)) {
+      throw new PathPaymentError('Slippage leaves a non-positive bound', 'INVALID_SLIPPAGE');
+    }
     const highImpact = parseFloat(path.priceImpact) >= HIGH_PRICE_IMPACT_THRESHOLD;
     const suggestedMaxSlippage = BigNumber.maximum(
       new BigNumber(baseSlippage),
@@ -506,7 +568,7 @@ export class PathPaymentManager {
   }
 
   private validateSlippageProtection(params: SwapParams, estimate: SwapEstimate): void {
-    const maxSlippage = params.maxSlippage ?? 1;
+    this.assertSlippage(params.maxSlippage ?? DEFAULT_SLIPPAGE_PERCENT);
     const requiredAmount = params.type === 'strict_send' ? estimate.minimumReceived : estimate.maximumCost;
     if (!requiredAmount || !Number.isFinite(Number(requiredAmount)) || new BigNumber(requiredAmount).isLessThanOrEqualTo(0)) {
       throw new Error('Slippage protection: quote has no usable counter-amount');
