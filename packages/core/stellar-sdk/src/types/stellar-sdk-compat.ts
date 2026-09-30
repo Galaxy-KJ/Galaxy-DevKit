@@ -74,6 +74,7 @@ export namespace SorobanRpc {
    * The v14 RpcServer returns `rpc.Api.EventResponse`, but this bridge keeps
    * the field names (`topics`, `data`, `timestamp`) the public API relies on.
    */
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   export namespace Api {
     export interface GetEventsResponseEvent {
       id?: string;
