@@ -197,11 +197,11 @@ export class WalletConnectorService {
 
       const signers: WalletSigner[] = [];
       for (const indexEntryValue of indexValue) {
-        if (!Array.isArray(indexEntryValue) || indexEntryValue.length !== 2) {
+        if (!indexEntryValue || typeof indexEntryValue !== 'object' || Array.isArray(indexEntryValue)) {
           throw new Error('Wallet signer index contains an invalid entry');
         }
 
-        const [credentialIdValue, kindValue] = indexEntryValue;
+        const { credential_id: credentialIdValue, kind: kindValue } = indexEntryValue as Record<string, unknown>;
         if (!isByteArray(credentialIdValue)) {
           throw new Error('Wallet signer index contains an invalid credential ID');
         }
@@ -227,11 +227,11 @@ export class WalletConnectorService {
         }
 
         const signerValue = scValToNative(signerEntry.val.contractData().val());
-        if (!Array.isArray(signerValue) || signerValue.length !== 3) {
+        if (!signerValue || typeof signerValue !== 'object' || Array.isArray(signerValue)) {
           throw new Error('Wallet signer record has an invalid format');
         }
 
-        const [publicKeyValue, signerKindValue] = signerValue;
+        const { public_key: publicKeyValue, kind: signerKindValue } = signerValue as Record<string, unknown>;
         if (!isByteArray(publicKeyValue)) {
           throw new Error('Wallet signer record contains an invalid public key');
         }
