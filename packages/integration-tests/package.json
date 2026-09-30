@@ -15,10 +15,5 @@
     "@blend-capital/blend-sdk": "^3.2.2"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^20.0.0",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.5",
-    "typescript": "^5.9.3"
   }
 }

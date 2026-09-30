@@ -24,6 +24,7 @@
     "test:integration": "jest --config packages/integration-tests/jest.config.cjs",
     "test:e2e": "playwright test",
     "test:check-orphans": "node scripts/check-orphaned-tests.mjs",
+    "deps:check": "node scripts/check-dependency-versions.mjs",
     "contracts:deploy": "bash scripts/deploy-contracts.sh",
     "contracts:init": "bash scripts/init-contracts.sh",
     "contracts:deploy-and-init": "npm run contracts:deploy && npm run contracts:init",
@@ -82,8 +83,7 @@
     "node-cron": "^4.2.1"
   },
   "overrides": {
-    "@stellar/stellar-sdk": "14.4.3",
-    "@blend-capital/blend-sdk": "~3.2.2",
+    "@blend-capital/blend-sdk": "^3.2.2",
     "diff": "^8.0.1",
     "handlebars": "4.7.9",
     "shell-quote": "^1.9.0",
