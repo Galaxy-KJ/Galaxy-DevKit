@@ -7,6 +7,7 @@
  */
 
 import { Asset } from '@stellar/stellar-sdk';
+import { PathPaymentError } from './path-payment-error';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,13 @@ export interface RouteFinderOptions {
   mode: 'strict-send' | 'strict-receive';
   horizonUrl: string;
   sourceAccount?: string;
+  destinationAccount?: string;
+}
+
+export interface QuotedRoute {
+  path: Asset[];
+  sourceAmount: string;
+  destinationAmount: string;
 }
 
 export interface HorizonPathRecord {
@@ -86,87 +94,71 @@ function selectBestPath(
 
 // ─── Route finder ─────────────────────────────────────────────────────────────
 
-/**
- * Query Horizon's /paths endpoint and return the optimal intermediate asset path.
- * Returns empty array for a direct swap. Returns empty array when no path found.
- */
-export async function findOptimalPath(options: RouteFinderOptions): Promise<Asset[]> {
-  const { sourceAsset, destinationAsset, amount, mode, horizonUrl, sourceAccount } = options;
-
+function buildQuery(options: RouteFinderOptions): URLSearchParams {
   const params = new URLSearchParams({
-    ...assetToParams(sourceAsset, 'source'),
-    ...assetToParams(destinationAsset, 'destination'),
-    amount,
+    ...assetToParams(options.sourceAsset, 'source'),
+    ...assetToParams(options.destinationAsset, 'destination'),
   });
-
-  if (mode === 'strict-receive' && sourceAccount) {
-    params.set('source_account', sourceAccount);
+  if (options.mode === 'strict-send') {
+    params.set('source_amount', options.amount);
+    if (options.destinationAccount) params.set('destination_account', options.destinationAccount);
+  } else {
+    params.set('destination_amount', options.amount);
+    if (options.sourceAccount) params.set('source_account', options.sourceAccount);
   }
+  return params;
+}
 
-  const endpoint = mode === 'strict-send'
-    ? `${horizonUrl}/paths/strict-send`
-    : `${horizonUrl}/paths/strict-receive`;
-
+async function fetchPathRecords(options: RouteFinderOptions): Promise<HorizonPathRecord[]> {
+  const endpoint = options.mode === 'strict-send'
+    ? `${options.horizonUrl}/paths/strict-send`
+    : `${options.horizonUrl}/paths/strict-receive`;
   let response: Response;
   try {
-    response = await fetch(`${endpoint}?${params.toString()}`, {
+    response = await fetch(`${endpoint}?${buildQuery(options).toString()}`, {
       headers: { Accept: 'application/json' },
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Horizon request failed: ${msg}`);
+    throw new PathPaymentError(`Horizon request failed: ${msg}`, 'NETWORK_ERROR');
   }
-
-  if (response.status === 404) return [];
-
+  if (response.status === 404) {
+    throw new PathPaymentError('No swap path found', 'NO_PATH_FOUND');
+  }
   if (!response.ok) {
-    throw new Error(`Horizon /paths returned HTTP ${response.status}: ${response.statusText}`);
+    throw new PathPaymentError(
+      `Horizon /paths returned HTTP ${response.status}: ${response.statusText}`,
+      'NETWORK_ERROR',
+    );
   }
+  const data = (await response.json()) as { _embedded?: { records?: HorizonPathRecord[] } };
+  return data?._embedded?.records ?? [];
+}
 
-  const data = (await response.json()) as {
-    _embedded?: { records?: HorizonPathRecord[] };
+/**
+ * Query Horizon's strict path endpoints and return the best quoted route.
+ */
+export async function findOptimalPath(options: RouteFinderOptions): Promise<QuotedRoute> {
+  const records = await fetchPathRecords(options);
+  const best = selectBestPath(records, options.mode);
+  if (!best) {
+    throw new PathPaymentError('No swap path found', 'NO_PATH_FOUND');
+  }
+  return {
+    path: best.path.map(recordToAsset),
+    sourceAmount: best.source_amount,
+    destinationAmount: best.destination_amount,
   };
-
-  const records = data?._embedded?.records ?? [];
-  const best = selectBestPath(records, mode);
-  if (!best) return [];
-
-  return best.path.map(recordToAsset);
 }
 
 /**
  * Fetch all available paths. Useful for showing users multiple route options.
  */
 export async function findAllPaths(options: RouteFinderOptions): Promise<RouteResult[]> {
-  const { sourceAsset, destinationAsset, amount, mode, horizonUrl, sourceAccount } = options;
-
-  const params = new URLSearchParams({
-    ...assetToParams(sourceAsset, 'source'),
-    ...assetToParams(destinationAsset, 'destination'),
-    amount,
-  });
-
-  if (mode === 'strict-receive' && sourceAccount) {
-    params.set('source_account', sourceAccount);
-  }
-
-  const endpoint = mode === 'strict-send'
-    ? `${horizonUrl}/paths/strict-send`
-    : `${horizonUrl}/paths/strict-receive`;
-
-  const response = await fetch(`${endpoint}?${params.toString()}`, {
-    headers: { Accept: 'application/json' },
-  });
-
-  if (!response.ok) return [];
-
-  const data = (await response.json()) as {
-    _embedded?: { records?: HorizonPathRecord[] };
-  };
-
-  return (data?._embedded?.records ?? []).map((record) => ({
-    path:              record.path.map(recordToAsset),
-    sourceAmount:      record.source_amount,
+  const records = await fetchPathRecords(options);
+  return records.map((record) => ({
+    path: record.path.map(recordToAsset),
+    sourceAmount: record.source_amount,
     destinationAmount: record.destination_amount,
   }));
 }
