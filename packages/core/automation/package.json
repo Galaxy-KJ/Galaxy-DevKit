@@ -17,18 +17,13 @@
   },
   "dependencies": {
     "@galaxy-kj/core-invisible-wallet": "^5.0.0",
-    "@galaxy-kj/core-oracles": "*",
+    "@galaxy-kj/core-oracles": "^5.0.0",
     "@galaxy-kj/core-stellar-sdk": "^5.0.0",
     "@supabase/supabase-js": "^2.38.0",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
-    "jest": "^30.0.5",
-    "ts-jest": "^29.0.0",
-    "typescript": "^5.8.3"
   },
   "keywords": [
     "stellar",

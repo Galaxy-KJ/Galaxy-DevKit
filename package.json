@@ -6,6 +6,7 @@
   "workspaces": [
     "packages/*",
     "packages/*/*",
+    "packages/*/*/*",
     "tools/*"
   ],
   "scripts": {
@@ -74,9 +75,9 @@
   "license": "MIT",
   "dependencies": {
     "@blend-capital/blend-sdk": "^3.2.2",
-    "@galaxy-kj/core-defi-protocols": "^5.0.2",
-    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
-    "@stellar/stellar-sdk": "^14.4.3",
+    "@galaxy-kj/core-defi-protocols": "^5.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^5.0.0",
+    "@stellar/stellar-sdk": "^14.6.1",
     "node-cron": "^4.2.1"
   },
   "overrides": {

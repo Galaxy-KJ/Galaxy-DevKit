@@ -11,5 +11,5 @@
       "npmClientArgs": ["--no-package-lock"]
     }
   },
-  "packages": ["packages/*", "packages/*/*", "tools/*"]
+  "packages": ["packages/*", "packages/*/*", "packages/*/*/*", "tools/*"]
 }
