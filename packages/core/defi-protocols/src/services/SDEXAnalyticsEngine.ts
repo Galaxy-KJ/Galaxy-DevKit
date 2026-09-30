@@ -1,3 +1,10 @@
+/**
+ * @fileoverview SDEX Analytics Engine
+ * @description Computes TVL, 24 h/7 d volume, fees, and APY for SDEX
+ *   (Stellar DEX) liquidity pools by querying the Horizon API.
+ * @author Galaxy DevKit Team
+ */
+
 import { Horizon } from '@stellar/stellar-sdk';
 import { UnifiedPoolAnalytics, LiquidityAnalyticsConfig } from '../types/analytics.types.js';
 
@@ -12,16 +19,17 @@ export class SDEXAnalyticsEngine {
   private priceResolver?: (asset: string) => Promise<number>;
 
   constructor(config: LiquidityAnalyticsConfig = {}) {
-    this.horizon = new Horizon.Server(config.horizonUrl || 'https://horizon.stellar.org');
+    this.horizon = new Horizon.Server(config.horizonUrl ?? 'https://horizon.stellar.org');
     this.cacheTtlMs = config.cacheTtlMs ?? 60_000;
     this.priceResolver = config.priceResolver;
   }
 
-  private async resolvePrice(assetObj: any): Promise<number> {
+  private async resolvePrice(assetObj: { asset: string }): Promise<number> {
     if (!this.priceResolver) {
       throw new Error('A priceResolver is required to calculate SDEX analytics in USD.');
     }
-    const assetString = assetObj.asset === 'native' ? 'native' : `${assetObj.asset.split(':')[0]}:${assetObj.asset.split(':')[1]}`;
+    const [code, issuer] = assetObj.asset.split(':');
+    const assetString = assetObj.asset === 'native' ? 'native' : `${code}:${issuer}`;
     return this.priceResolver(assetString);
   }
 
@@ -33,12 +41,12 @@ export class SDEXAnalyticsEngine {
 
     // 1. Fetch Pool info for TVL
     const pool = await this.horizon.liquidityPools().liquidityPoolId(poolId).call();
-    
+
     let tvlUSD = 0;
     if (pool.reserves && pool.reserves.length === 2) {
-      const priceA = await this.resolvePrice(pool.reserves[0]);
-      const priceB = await this.resolvePrice(pool.reserves[1]);
-      
+      const priceA = await this.resolvePrice({ asset: pool.reserves[0].asset });
+      const priceB = await this.resolvePrice({ asset: pool.reserves[1].asset });
+
       const valA = parseFloat(pool.reserves[0].amount) * priceA;
       const valB = parseFloat(pool.reserves[1].amount) * priceB;
       tvlUSD = valA + valB;
@@ -49,9 +57,14 @@ export class SDEXAnalyticsEngine {
     const sevenDaysAgo = new Date(Date.now() - 7 * MS_PER_DAY);
     let volume24hUSD = 0;
     let volume7dUSD = 0;
-    
-    // We traverse until 7 days ago
-    let page = await this.horizon.liquidityPools().liquidityPoolId(poolId).trades().order('desc').limit(200).call();
+
+    // Traverse until 7 days ago
+    let page = await this.horizon
+      .trades()
+      .forLiquidityPool(poolId)
+      .order('desc')
+      .limit(200)
+      .call();
     let keepGoing = true;
 
     while (keepGoing && page.records.length > 0) {
@@ -62,12 +75,14 @@ export class SDEXAnalyticsEngine {
           break;
         }
 
-        // Calculate trade value in USD
-        // We find which asset was bought/sold and use its price.
-        // It's safer to price the base asset.
-        const basePrice = await this.resolvePrice({ asset: trade.base_asset_type === 'native' ? 'native' : `${trade.base_asset_code}:${trade.base_asset_issuer}` });
+        // Price the base asset of the trade
+        const baseAssetString =
+          trade.base_asset_type === 'native'
+            ? 'native'
+            : `${trade.base_asset_code}:${trade.base_asset_issuer}`;
+        const basePrice = await this.resolvePrice({ asset: baseAssetString });
         const tradeValueUSD = parseFloat(trade.base_amount) * basePrice;
-        
+
         volume7dUSD += tradeValueUSD;
         if (tradeDate >= oneDayAgo) {
           volume24hUSD += tradeValueUSD;
@@ -79,9 +94,10 @@ export class SDEXAnalyticsEngine {
       }
     }
 
-    const feesEarned24hUSD = volume24hUSD * (SDEX_FEE_BPS / 10000);
-    const feesEarned7dUSD = volume7dUSD * (SDEX_FEE_BPS / 10000);
-    const apy7d = tvlUSD > 0 ? (feesEarned7dUSD / tvlUSD) * (DAYS_PER_YEAR / 7) * 100 : 0;
+    const feesEarned24hUSD = volume24hUSD * (SDEX_FEE_BPS / 10_000);
+    const feesEarned7dUSD = volume7dUSD * (SDEX_FEE_BPS / 10_000);
+    const apy7d =
+      tvlUSD > 0 ? (feesEarned7dUSD / tvlUSD) * (DAYS_PER_YEAR / 7) * 100 : 0;
 
     const result: UnifiedPoolAnalytics = {
       protocol: 'sdex',
