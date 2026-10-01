@@ -4,7 +4,7 @@
  */
 
 import { Account, Asset, Horizon, Keypair } from '@stellar/stellar-sdk';
-import { PathPaymentManager } from '../path-payments/path-payment-manager.js';
+import { PathPaymentError, PathPaymentManager } from '../path-payments/path-payment-manager.js';
 import { Wallet } from '../types/stellar-types.js';
 
 jest.mock('../utils/encryption.utils', () => ({
@@ -32,28 +32,37 @@ function horizonPathRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const queuedRecords: unknown[][] = [];
+let pathCall: jest.Mock;
+let strictSendPaths: jest.Mock;
+let strictReceivePaths: jest.Mock;
+let sendLimit: jest.Mock;
+let receiveLimit: jest.Mock;
+
 function mockFetchOnce(records: unknown[]) {
-  (global.fetch as jest.Mock).mockResolvedValueOnce({
-    ok: true,
-    json: () => Promise.resolve({ _embedded: { records } }),
-  });
+  queuedRecords.push(records);
 }
 
 describe('PathPaymentManager', () => {
-  let server: jest.Mocked<Pick<Horizon.Server, 'loadAccount' | 'submitTransaction'>>;
+  let server: Horizon.Server;
   let manager: PathPaymentManager;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn();
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('raw horizon url'));
+    queuedRecords.length = 0;
+    pathCall = jest.fn(async () => ({ records: queuedRecords.shift() ?? [] }));
+    sendLimit = jest.fn(() => ({ call: pathCall }));
+    receiveLimit = jest.fn(() => ({ call: pathCall }));
+    strictSendPaths = jest.fn(() => ({ limit: sendLimit }));
+    strictReceivePaths = jest.fn(() => ({ limit: receiveLimit }));
     server = {
       loadAccount: jest.fn(),
       submitTransaction: jest.fn(),
-    } as unknown as typeof server;
-    manager = new PathPaymentManager(
-      server as unknown as Horizon.Server,
-      NETWORK_PASSPHRASE
-    );
+      strictSendPaths,
+      strictReceivePaths,
+    } as unknown as Horizon.Server;
+    manager = new PathPaymentManager(server, NETWORK_PASSPHRASE);
   });
 
   describe('findPaths', () => {
@@ -69,9 +78,9 @@ describe('PathPaymentManager', () => {
 
       expect(paths).toHaveLength(1);
       expect(paths[0].price).toBe('0.9500000');
-      const [url] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(url).toContain('/paths/strict-send');
-      expect(url).toContain('source_amount=100');
+      expect(strictSendPaths).toHaveBeenCalledWith(Asset.native(), '100', [usdc]);
+      expect(sendLimit).toHaveBeenCalledWith(15);
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('queries the strict-receive Horizon endpoint for strict_receive swaps', async () => {
@@ -84,22 +93,76 @@ describe('PathPaymentManager', () => {
         type: 'strict_receive',
       });
 
-      const [url] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(url).toContain('/paths/strict-receive');
-      expect(url).toContain('destination_amount=100');
+      expect(strictReceivePaths).toHaveBeenCalledWith([Asset.native()], usdc, '100');
+      expect(receiveLimit).toHaveBeenCalledWith(15);
     });
 
-    it('returns an empty array when Horizon responds with a non-OK status', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+    it('throws when Horizon rejects the path query and does not cache the failure', async () => {
+      pathCall.mockRejectedValueOnce(new Error('unavailable'));
+      const params = {
+        sourceAsset: Asset.native(),
+        destAsset: usdc,
+        amount: '100',
+        type: 'strict_send' as const,
+      };
+      await expect(manager.findPaths(params)).rejects.toMatchObject({ code: 'HORIZON_ERROR' });
+      pathCall.mockRejectedValueOnce(new Error('unavailable'));
+      await expect(manager.findPaths(params)).rejects.toBeInstanceOf(PathPaymentError);
+      expect(pathCall).toHaveBeenCalledTimes(2);
+    });
 
-      const paths = await manager.findPaths({
+    it('throws no liquidity on an empty book and does not cache that result', async () => {
+      mockFetchOnce([]);
+      mockFetchOnce([]);
+      const params = {
+        sourceAsset: Asset.native(),
+        destAsset: usdc,
+        amount: '100',
+        type: 'strict_send' as const,
+      };
+      await expect(manager.findPaths(params)).rejects.toMatchObject({ code: 'NO_LIQUIDITY' });
+      await expect(manager.findPaths(params)).rejects.toMatchObject({ code: 'NO_LIQUIDITY' });
+      expect(pathCall).toHaveBeenCalledTimes(2);
+    });
+
+    it('passes a 12 character asset to the horizon builder', async () => {
+      const longAsset = new Asset('LONGASSETXXX', usdc.getIssuer());
+      expect(longAsset.getAssetType()).toBe('credit_alphanum12');
+      mockFetchOnce([horizonPathRecord()]);
+      await manager.findPaths({
+        sourceAsset: longAsset,
+        destAsset: usdc,
+        amount: '5',
+        type: 'strict_send',
+      });
+      expect(strictSendPaths).toHaveBeenCalledWith(longAsset, '5', [usdc]);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('sends the destination account when one is provided', async () => {
+      mockFetchOnce([horizonPathRecord()]);
+      const destination = Keypair.random().publicKey();
+      await manager.findPaths({
         sourceAsset: Asset.native(),
         destAsset: usdc,
         amount: '100',
         type: 'strict_send',
+        destinationAccount: destination,
       });
+      expect(strictSendPaths).toHaveBeenCalledWith(Asset.native(), '100', destination);
+    });
 
-      expect(paths).toEqual([]);
+    it('sends the source account for strict receive', async () => {
+      mockFetchOnce([horizonPathRecord()]);
+      const source = Keypair.random().publicKey();
+      await manager.findPaths({
+        sourceAsset: Asset.native(),
+        destAsset: usdc,
+        amount: '95',
+        type: 'strict_receive',
+        sourceAccount: source,
+      });
+      expect(strictReceivePaths).toHaveBeenCalledWith(source, usdc, '95');
     });
 
     it('caches results and does not re-fetch for an identical request', async () => {
@@ -114,7 +177,7 @@ describe('PathPaymentManager', () => {
       await manager.findPaths(params);
       await manager.findPaths(params);
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(pathCall).toHaveBeenCalledTimes(1);
     });
 
     it('coalesces concurrent identical in-flight requests into a single fetch', async () => {
@@ -131,7 +194,7 @@ describe('PathPaymentManager', () => {
         manager.findPaths(params),
       ]);
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(pathCall).toHaveBeenCalledTimes(1);
       expect(first).toEqual(second);
     });
 
@@ -149,7 +212,7 @@ describe('PathPaymentManager', () => {
       manager.clearPathCache();
       await manager.findPaths(params);
 
-      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(pathCall).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -231,7 +294,7 @@ describe('PathPaymentManager', () => {
           amount: '100',
           type: 'strict_send',
         })
-      ).rejects.toThrow('No payment path found for estimate');
+      ).rejects.toMatchObject({ code: 'NO_LIQUIDITY' });
     });
 
     it('applies slippage to compute minimumReceived and maximumCost', async () => {
@@ -268,12 +331,11 @@ describe('PathPaymentManager', () => {
         maxSlippage: 1,
       });
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const [url] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(url).toContain('/paths/strict-send');
+      expect(pathCall).toHaveBeenCalledTimes(1);
+      expect(strictSendPaths).toHaveBeenCalled();
       // minimumReceived must be derived from the real destination_amount, not '0'
       expect(estimate.minimumReceived).not.toBe('0.0000000');
-      expect(estimate.minimumReceived).toBe('92.0700000'); // 93 × (1 − 0.01)
+      expect(estimate.minimumReceived).toBe('92.0700000'); // 93 * (1 - 0.01)
       expect(estimate.price).not.toBe('0');
       expect(estimate.priceImpact).not.toBe(undefined);
     });
@@ -284,7 +346,7 @@ describe('PathPaymentManager', () => {
         horizonPathRecord({
           source_amount: '100',
           destination_amount: '93',
-          path: [], // no intermediate hop — does not match [eurc]
+          path: [], // no intermediate hop, does not match [eurc]
         }),
       ]);
 
@@ -427,7 +489,7 @@ describe('PathPaymentManager', () => {
       mockFetchOnce([horizonPathRecord()]);
       await manager.findPaths(params);
 
-      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(pathCall).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -496,11 +558,10 @@ describe('PathPaymentManager', () => {
       );
 
       // Verify Horizon was queried
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const [url] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(url).toContain('/paths/strict-send');
+      expect(pathCall).toHaveBeenCalledTimes(1);
+      expect(strictSendPaths).toHaveBeenCalled();
 
-      // destMin = 93 × (1 − 0.01) = 92.0700000
+      // destMin = 93 * (1 - 0.01) = 92.0700000
       const tx = getTx();
       const op = tx.operations[0];
       expect(op.type).toBe('pathPaymentStrictSend');
@@ -538,9 +599,8 @@ describe('PathPaymentManager', () => {
         keypair.publicKey()
       );
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const [url] = (global.fetch as jest.Mock).mock.calls[0];
-      expect(url).toContain('/paths/strict-receive');
+      expect(pathCall).toHaveBeenCalledTimes(1);
+      expect(strictReceivePaths).toHaveBeenCalled();
 
       // sendMax = 106 × (1 + 0.01) = 107.0600000
       const tx = getTx();
@@ -552,7 +612,7 @@ describe('PathPaymentManager', () => {
     });
 
     it('throws before submitTransaction when no usable Horizon quote exists for the custom path', async () => {
-      // Horizon returns a path through a different intermediate — no match for [eurc]
+      // Horizon returns a path through a different intermediate, no match for [eurc]
       mockFetchOnce([horizonPathRecord({ path: [] })]);
 
       await expect(
@@ -645,4 +705,99 @@ describe('PathPaymentManager', () => {
       expect(manager.getSwapAnalytics()).toEqual({ history: [], pathRates: [] });
     });
   });
+
+  describe('slippage and submission guards', () => {
+    const password = 'password';
+    let wallet: Wallet;
+    let keypair: Keypair;
+
+    beforeEach(() => {
+      keypair = Keypair.random();
+      wallet = {
+        id: 'wallet_1',
+        publicKey: keypair.publicKey(),
+        privateKey: `encrypted_${keypair.secret()}_with_${password}`,
+        network: {
+          network: 'testnet',
+          horizonUrl: HORIZON_URL,
+          passphrase: NETWORK_PASSPHRASE,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as Wallet;
+      (server.loadAccount as jest.Mock).mockResolvedValue(new Account(keypair.publicKey(), '100'));
+      (server.submitTransaction as jest.Mock).mockResolvedValue({ hash: 'tx-hash-1' });
+    });
+
+    it.each([-1, 50.01, Number.NaN])('rejects slippage %s before calling horizon', async (maxSlippage) => {
+      await expect(manager.estimateSwap({
+        sendAsset: Asset.native(),
+        destAsset: usdc,
+        amount: '100',
+        type: 'strict_send',
+        maxSlippage,
+      })).rejects.toMatchObject({ code: 'INVALID_SLIPPAGE' });
+      expect(pathCall).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '-1', 'abc'])('rejects amount %s before calling horizon', async (amount) => {
+      await expect(manager.estimateSwap({
+        sendAsset: Asset.native(),
+        destAsset: usdc,
+        amount,
+        type: 'strict_send',
+        maxSlippage: 1,
+      })).rejects.toMatchObject({ code: 'INVALID_AMOUNT' });
+      expect(pathCall).not.toHaveBeenCalled();
+    });
+
+    it('rejects a swap into the same asset', async () => {
+      await expect(manager.estimateSwap({
+        sendAsset: usdc,
+        destAsset: usdc,
+        amount: '10',
+        type: 'strict_send',
+        maxSlippage: 1,
+      })).rejects.toMatchObject({ code: 'SAME_ASSET' });
+      expect(pathCall).not.toHaveBeenCalled();
+    });
+
+    it('prefers the shorter path when destination amounts match', async () => {
+      const shared = {
+        source_asset: Asset.native(),
+        destination_asset: usdc,
+        source_amount: '100',
+        destination_amount: '10',
+        price: '0.1',
+        priceImpact: '0',
+      };
+      const best = await manager.getBestPath([
+        { ...shared, path: [eurc, usdc] },
+        { ...shared, path: [] },
+      ], 'strict_send');
+      expect(best?.path).toHaveLength(0);
+    });
+
+    it('records a failed submission and a later success', async () => {
+      mockFetchOnce([horizonPathRecord()]);
+      const horizonError = new Error('tx_failed');
+      (server.submitTransaction as jest.Mock).mockRejectedValueOnce(horizonError);
+      await expect(manager.executeSwap(
+        wallet,
+        { sendAsset: Asset.native(), destAsset: usdc, amount: '100', type: 'strict_send', maxSlippage: 1 },
+        password,
+        keypair.publicKey(),
+      )).rejects.toMatchObject({ code: 'SUBMIT_FAILED', cause: horizonError });
+
+      (server.submitTransaction as jest.Mock).mockResolvedValueOnce({ hash: 'tx-ok' });
+      await manager.executeSwap(
+        wallet,
+        { sendAsset: Asset.native(), destAsset: usdc, amount: '100', type: 'strict_send', maxSlippage: 1 },
+        password,
+        keypair.publicKey(),
+      );
+      expect(manager.getSwapAnalytics().history.map((row) => row.success)).toEqual([false, true]);
+    });
+  });
+
 });

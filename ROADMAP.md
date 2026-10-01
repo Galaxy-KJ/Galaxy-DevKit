@@ -49,7 +49,7 @@ gantt
 - [x] **#11** Add liquidity pool operations (Issue #78 ✅)
 - [x] **#12** Add claimable balances support (Issue #79 ✅)
 - [x] **#13** Add sponsored reserves functionality (Issue #80 ✅)
-- [ ] **#14** Implement path payment (swap) improvements (Issue #267 🔄)
+- [x] **#14** Implement path payment (swap) improvements (Issue #358 ✅)
 - [x] **#15** Add Soroban contract invocation utilities (Issue #82 ✅)
 
 ### CLI Improvements (5 issues)
