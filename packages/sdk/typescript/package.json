@@ -18,18 +18,13 @@
     "@galaxy-kj/api-rest": "^5.0.0",
     "@galaxy-kj/api-websocket": "^5.0.0",
     "@galaxy-kj/core-automation": "^5.0.0",
-    "@galaxy-kj/core-invisible-wallet": "^5.0.0",
-    "@galaxy-kj/core-stellar-sdk": "^5.0.0",
+    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
+    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
     "axios": "^1.6.2",
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^20.19.41",
-    "@types/ws": "^8.5.10",
-    "jest": "^30.4.2",
-    "ts-jest": "^29.4.11",
-    "typescript": "^5.8.3"
+    "@types/ws": "^8.5.10"
   },
   "keywords": [
     "stellar",
