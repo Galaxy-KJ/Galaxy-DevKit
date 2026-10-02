@@ -35,18 +35,37 @@ function rpcInstanceEntry(signerIndex: xdr.ScVal) {
   };
 }
 
+// The Rust `SignerIndexEntry`/`Signer` types are named-field structs
+// (#[contracttype]), which Soroban serializes as an ScMap keyed by field
+// name — NOT a positional ScVec. These fixtures mirror that real shape so
+// `scValToNative()` decodes them the same way it decodes live ledger data.
 function signerIndexEntry(credentialId: string, kind: 'Admin' | 'Session'): xdr.ScVal {
-  return xdr.ScVal.scvVec([
-    xdr.ScVal.scvBytes(Buffer.from(credentialId)),
-    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('credential_id'),
+      val: xdr.ScVal.scvBytes(Buffer.from(credentialId)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('kind'),
+      val: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+    }),
   ]);
 }
 
 function signerRecord(publicKey: Uint8Array, kind: 'Admin' | 'Session'): xdr.ScVal {
-  return xdr.ScVal.scvVec([
-    xdr.ScVal.scvBytes(Buffer.from(publicKey)),
-    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
-    xdr.ScVal.scvU32(0),
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('public_key'),
+      val: xdr.ScVal.scvBytes(Buffer.from(publicKey)),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('kind'),
+      val: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol('ttl_ledgers'),
+      val: xdr.ScVal.scvU32(0),
+    }),
   ]);
 }
 
@@ -84,6 +103,13 @@ describe('WalletConnectorService', () => {
     const mockServer = (connectorService as any).server;
     mockServer.getLedgerEntries.mockImplementation(async (...keys: xdr.LedgerKey[]) => {
       const key = keys[0].contractData().key();
+      // fetchSigners() reads the real "instance" storage slot via
+      // scvLedgerKeyContractInstance() — a distinct ScVal switch from the
+      // plain scvSymbol('Instance') placeholder verifyContractExists() uses
+      // just to probe existence. Route each to the shape its caller expects.
+      if (key.switch() === xdr.ScValType.scvLedgerKeyContractInstance()) {
+        return { entries: [rpcInstanceEntry(xdr.ScVal.scvVec([]))] };
+      }
       if (
         key.switch() === xdr.ScValType.scvSymbol() &&
         key.sym().toString() === 'Instance'

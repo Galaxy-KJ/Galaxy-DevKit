@@ -159,10 +159,7 @@ export class WalletConnectorService {
       }
       result.isSmartWallet = true;
 
-<<<<<<< HEAD
-      // Step 3: Fetch signers from the contract's persistent storage
-=======
->>>>>>> 4cdc971376a9a0c523677eafa77d70dca1e24f29
+      // Step 3: Fetch signers from the contract's instance-stored signer index
       const signers = await this.fetchSigners(contractAddress);
       result.signers = signers;
 
@@ -177,82 +174,17 @@ export class WalletConnectorService {
   /**
    * Fetches the list of signers registered on a smart wallet contract.
    *
-   * Reads the contract's persistent storage entry stored under the symbol
-   * "Signers" (a Map<BytesN<32> | Address, SignerInfo>) using the same
-   * getLedgerEntries()/LedgerKeyContractData pattern as verifyContractExists().
+   * Reads the contract's instance-storage signer index (a `Vec<SignerIndexEntry>`
+   * keyed by the symbol "signers", maintained by `register_signer`/`unregister_signer`
+   * in the Rust contract), then resolves each indexed credential ID to its full
+   * signer record in persistent (admin) or temporary (session) storage, using the
+   * same getLedgerEntries()/LedgerKeyContractData pattern as verifyContractExists().
    *
    * @param contractAddress - The smart wallet contract address
    * @returns Array of WalletSigner objects
    */
   async fetchSigners(contractAddress: string): Promise<WalletSigner[]> {
     try {
-<<<<<<< HEAD
-      const contractScAddress = new Address(contractAddress).toScAddress();
-
-      const ledgerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
-        contract: contractScAddress,
-        key: xdr.ScVal.scvSymbol('Signers'),
-        durability: xdr.ContractDataDurability.persistent(),
-      }));
-
-      const response = await this.server.getLedgerEntries(ledgerKey);
-
-      if (!response || !response.entries || response.entries.length === 0) {
-        // No "Signers" entry yet is a legitimate state for a freshly
-        // deployed wallet — not an error.
-        return [];
-      }
-
-      const entry = response.entries[0];
-      const contractDataEntry = entry.val.contractData();
-      const storedValue = contractDataEntry.val();
-
-      const signerMap = storedValue.map();
-      if (!signerMap) {
-        // Storage exists but isn't a map — don't silently report "no
-        // signers" for a shape we don't understand.
-        throw new UnsupportedSignerStorageError(
-          contractAddress,
-          `expected an ScMap, got ScVal switch "${storedValue.switch().name}"`
-        );
-      }
-
-      const signers: WalletSigner[] = signerMap.map((mapEntry) => {
-        const rawId = scValToNative(mapEntry.key());
-        const id =
-          typeof rawId === 'string'
-            ? rawId
-            : Buffer.isBuffer(rawId)
-              ? rawId.toString('hex')
-              : String(rawId);
-
-        const signerData = scValToNative(mapEntry.val()) as {
-          signer_type?: string;
-          type?: string;
-          public_key?: Buffer | string;
-          active?: boolean;
-        };
-
-        const rawType = signerData?.signer_type ?? signerData?.type;
-        const type: WalletSigner['type'] =
-          rawType === 'admin' || rawType === 'session' ? rawType : 'unknown';
-
-        const publicKey =
-          signerData?.public_key !== undefined
-            ? Buffer.isBuffer(signerData.public_key)
-              ? signerData.public_key.toString('hex')
-              : String(signerData.public_key)
-            : undefined;
-
-        return {
-          id,
-          type,
-          publicKey,
-          // Absence of an explicit `active` flag means active by default.
-          isActive: signerData?.active !== false,
-        };
-      });
-=======
       const contract = new Address(contractAddress).toScAddress();
       const signerIndexKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
         contract,
@@ -280,22 +212,34 @@ export class WalletConnectorService {
 
       const indexValue = scValToNative(signerIndexEntry.val());
       if (!Array.isArray(indexValue)) {
-        throw new Error('Wallet signer index has an invalid format');
+        throw new UnsupportedSignerStorageError(
+          contractAddress,
+          'signer index entry is not a list'
+        );
       }
 
       const signers: WalletSigner[] = [];
       for (const indexEntryValue of indexValue) {
         if (!indexEntryValue || typeof indexEntryValue !== 'object' || Array.isArray(indexEntryValue)) {
-          throw new Error('Wallet signer index contains an invalid entry');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer index contains an invalid entry'
+          );
         }
 
         const { credential_id: credentialIdValue, kind: kindValue } = indexEntryValue as Record<string, unknown>;
         if (!isByteArray(credentialIdValue)) {
-          throw new Error('Wallet signer index contains an invalid credential ID');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer index entry has an invalid credential ID'
+          );
         }
         const kind = Array.isArray(kindValue) ? kindValue[0] : kindValue;
         if (kind !== 'Admin' && kind !== 'Session') {
-          throw new Error('Wallet signer index contains an unknown signer type');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer index entry has an unknown signer type'
+          );
         }
 
         const signerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
@@ -316,18 +260,27 @@ export class WalletConnectorService {
 
         const signerValue = scValToNative(signerEntry.val.contractData().val());
         if (!signerValue || typeof signerValue !== 'object' || Array.isArray(signerValue)) {
-          throw new Error('Wallet signer record has an invalid format');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer record has an invalid format'
+          );
         }
 
         const { public_key: publicKeyValue, kind: signerKindValue } = signerValue as Record<string, unknown>;
         if (!isByteArray(publicKeyValue)) {
-          throw new Error('Wallet signer record contains an invalid public key');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer record contains an invalid public key'
+          );
         }
         const signerKind = Array.isArray(signerKindValue)
           ? signerKindValue[0]
           : signerKindValue;
         if (signerKind !== kind) {
-          throw new Error('Wallet signer record does not match the signer index');
+          throw new UnsupportedSignerStorageError(
+            contractAddress,
+            'signer record does not match the signer index'
+          );
         }
 
         signers.push({
@@ -337,7 +290,6 @@ export class WalletConnectorService {
           isActive: true,
         });
       }
->>>>>>> 4cdc971376a9a0c523677eafa77d70dca1e24f29
 
       return signers;
     } catch (error) {
