@@ -1,11 +1,12 @@
 extern crate std;
 
 use soroban_sdk::{
+    symbol_short,
     testutils::{storage::Instance as _, storage::Temporary as _, Ledger},
-    Bytes, BytesN, Env,
+    Bytes, BytesN, Env, Vec,
 };
 
-use smart_wallet_account_common::{WalletDataKey, WalletError};
+use smart_wallet_account_common::{SignerIndexEntry, SignerKind, WalletDataKey, WalletError};
 
 use crate::{SmartWallet, SmartWalletClient, ADMIN_TTL_EXTEND, ADMIN_TTL_THRESHOLD};
 
@@ -60,6 +61,45 @@ fn test_add_signer_explicitly_extends_instance_ttl_at_boundary() {
 
     let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
     assert_eq!(ttl, ADMIN_TTL_EXTEND);
+}
+
+#[test]
+fn test_signer_index_tracks_admin_and_session_signers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let client = setup(&env);
+    let admin_cred = Bytes::from_array(&env, &[1u8; 4]);
+    let second_admin_cred = Bytes::from_array(&env, &[2u8; 4]);
+    let session_cred = Bytes::from_array(&env, &[3u8; 4]);
+
+    client.init(&admin_cred, &admin_public_key(&env, 0xAA));
+    client.add_signer(&second_admin_cred, &admin_public_key(&env, 0xBB));
+    client.add_session_signer(&session_cred, &BytesN::from_array(&env, &[7u8; 32]), &1_000);
+
+    let entries: Vec<SignerIndexEntry> = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("signers"))
+            .unwrap()
+    });
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries.get(0).unwrap().credential_id, admin_cred);
+    assert!(matches!(entries.get(0).unwrap().kind, SignerKind::Admin));
+    assert_eq!(entries.get(1).unwrap().credential_id, second_admin_cred);
+    assert!(matches!(entries.get(1).unwrap().kind, SignerKind::Admin));
+    assert_eq!(entries.get(2).unwrap().credential_id, session_cred);
+    assert!(matches!(entries.get(2).unwrap().kind, SignerKind::Session));
+
+    client.remove_signer(&second_admin_cred);
+    let entries: Vec<SignerIndexEntry> = env.as_contract(&client.address, || {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("signers"))
+            .unwrap()
+    });
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries.get(0).unwrap().credential_id, admin_cred);
+    assert_eq!(entries.get(1).unwrap().credential_id, session_cred);
 }
 
 #[test]

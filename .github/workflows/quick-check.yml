@@ -53,6 +53,13 @@ jobs:
           find . -name "package.json" -not -path "*/node_modules/*" -exec node -e "JSON.parse(require('fs').readFileSync('{}'))" \;
           echo "✅ All package.json files are valid"
 
+      - name: Check dependency version drift
+        run: |
+          # Fails if typescript/jest/ts-jest/@types/*/eslint/@stellar/stellar-sdk
+          # or internal @galaxy-kj/* packages drift out of sync across workspaces.
+          # See .syncpackrc.json for exact scope (issue #448).
+          npm run deps:check
+
       - name: Check for console.log
         run: |
           # Warn about console.log in source files
