@@ -12,6 +12,11 @@ import { RoomManager } from '../services/room-manager';
 import { EventBroadcaster } from '../services/event-broadcaster';
 import { config } from '../config';
 
+export interface TransactionHandlerOptions {
+  supabase?: SupabaseClient;
+  setupRealtime?: boolean;
+}
+
 /**
  * Transaction Handler Class
  */
@@ -22,13 +27,20 @@ export class TransactionHandler {
   private supabase: SupabaseClient;
   private transactionSubscriptions = new Map<string, any>();
 
-  constructor(server: Server, roomManager: RoomManager, eventBroadcaster: EventBroadcaster) {
+  constructor(
+    server: Server,
+    roomManager: RoomManager,
+    eventBroadcaster: EventBroadcaster,
+    options: TransactionHandlerOptions = {}
+  ) {
     this.server = server;
     this.roomManager = roomManager;
     this.eventBroadcaster = eventBroadcaster;
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.supabase = options.supabase ?? createClient(config.supabase.url, config.supabase.serviceRoleKey);
     this.setupTransactionHandlers();
-    this.setupSupabaseRealtime();
+    if (options.setupRealtime !== false) {
+      this.setupSupabaseRealtime();
+    }
   }
 
   /**
@@ -424,13 +436,25 @@ export class TransactionHandler {
    * 
    * @returns Object - Transaction statistics
    */
-  public getTransactionStats(): {
+  public async getTransactionStats(): Promise<{
     totalSubscriptions: number;
     activeTransactions: number;
-  } {
+  }> {
+    const { count, error } = await this.supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    if (error) {
+      throw new Error(`Failed to count active transactions: ${error.message}`);
+    }
+    if (count === null) {
+      throw new Error('Active transaction count query did not return an exact count');
+    }
+
     return {
       totalSubscriptions: this.transactionSubscriptions.size,
-      activeTransactions: 0 // TODO: Implement active transaction tracking
+      activeTransactions: count
     };
   }
 
