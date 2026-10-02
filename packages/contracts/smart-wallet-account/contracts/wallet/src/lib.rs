@@ -211,8 +211,19 @@ fn signer_index_key() -> Symbol {
 
 fn register_signer(env: &Env, credential_id: &Bytes, kind: SignerKind) {
     let key = signer_index_key();
-    let mut entries: Vec<SignerIndexEntry> =
+    let stored: Vec<SignerIndexEntry> =
         env.storage().instance().get(&key).unwrap_or(Vec::new(env));
+    let mut entries = Vec::new(env);
+    for e in stored.iter() {
+        let k = WalletDataKey::Signer(e.credential_id.clone());
+        let live = match e.kind {
+            SignerKind::Admin => env.storage().persistent().has(&k),
+            SignerKind::Session => env.storage().temporary().has(&k),
+        };
+        if live && e.credential_id != *credential_id {
+            entries.push_back(e);
+        }
+    }
     entries.push_back(SignerIndexEntry {
         credential_id: credential_id.clone(),
         kind,
