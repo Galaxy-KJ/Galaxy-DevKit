@@ -36,17 +36,17 @@ function rpcInstanceEntry(signerIndex: xdr.ScVal) {
 }
 
 function signerIndexEntry(credentialId: string, kind: 'Admin' | 'Session'): xdr.ScVal {
-  return xdr.ScVal.scvVec([
-    xdr.ScVal.scvBytes(Buffer.from(credentialId)),
-    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('credential_id'), val: xdr.ScVal.scvBytes(Buffer.from(credentialId)) }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('kind'), val: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]) }),
   ]);
 }
 
 function signerRecord(publicKey: Uint8Array, kind: 'Admin' | 'Session'): xdr.ScVal {
-  return xdr.ScVal.scvVec([
-    xdr.ScVal.scvBytes(Buffer.from(publicKey)),
-    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]),
-    xdr.ScVal.scvU32(0),
+  return xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('kind'), val: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(kind)]) }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('public_key'), val: xdr.ScVal.scvBytes(Buffer.from(publicKey)) }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('ttl_ledgers'), val: xdr.ScVal.scvU32(0) }),
   ]);
 }
 
