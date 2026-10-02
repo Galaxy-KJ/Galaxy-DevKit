@@ -19,7 +19,7 @@
     "test:coverage": "jest --coverage",
     "start": "node dist/src/index.js",
     "start:ts": "tsx src/index.ts",
-    "test:template-basic": "node scripts/test-template-baisc.mjs"
+    "test:template-basic": "node scripts/test-template-basic.mjs"
   },
   "dependencies": {
     "@galaxy-kj/core-defi-protocols": "^5.0.2",
