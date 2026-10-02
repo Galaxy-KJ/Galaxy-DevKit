@@ -14,12 +14,10 @@
     "clean": "rm -rf .next dist"
   },
   "dependencies": {
-    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
-    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
-    "@galaxy-kj/sdk-typescript": "^5.0.0",
+    "@stellar/stellar-sdk": "^14.6.1",
     "axios": "^1.6.2",
     "framer-motion": "^12.5.0",
-    "next": "^16.3.6",
+    "next": "^15.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.0.13",
@@ -29,7 +27,7 @@
   "devDependencies": {
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
-    "eslint-config-next": "^16.3.6",
+    "eslint-config-next": "^15.3.1",
     "prettier": "^3.0.0"
   },
   "keywords": [

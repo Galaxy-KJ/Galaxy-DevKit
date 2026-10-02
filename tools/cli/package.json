@@ -18,7 +18,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "start": "node dist/src/index.js",
-    "start:ts": "tsx src/index.ts"
+    "start:ts": "tsx src/index.ts",
+    "test:template-basic": "node scripts/test-template-basic.mjs"
   },
   "dependencies": {
     "@galaxy-kj/core-defi-protocols": "^5.0.2",

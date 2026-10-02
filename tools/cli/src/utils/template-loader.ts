@@ -27,7 +27,16 @@ export class TemplateLoader {
   }
 
   constructor(templatesDir?: string) {
-    this.templatesDir = templatesDir || process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../../packages/templates');
+    // __dirname here is tools/cli/src/utils (the CLI currently runs from its
+    // TS source via tsx, not a built dist/ - tools/cli's own `build` script
+    // inherits `noEmit: true` from the root tsconfig.json and emits nothing).
+    // Reaching the repo-root packages/templates/ from there takes four
+    // '..' segments (utils -> src -> cli -> tools -> repo root), not three;
+    // three was resolving to the nonexistent tools/packages/templates and
+    // made every `galaxy create` fail with "Invalid template" unless
+    // TEMPLATES_DIR was set manually. TEMPLATES_DIR still overrides this for
+    // any other execution layout (e.g. a real dist/ build in the future).
+    this.templatesDir = templatesDir || process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../../../packages/templates');
   }
 
   /**

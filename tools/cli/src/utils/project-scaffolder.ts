@@ -133,6 +133,19 @@ export class ProjectScaffolder {
     // Process each file in the template
     for (const file of config.files) {
       const filePath = path.join(projectDir, file.path);
+      const existedBeforeProcessing = await fs.pathExists(filePath);
+
+      // `template.json`'s `files[].content` is the source of truth for a
+      // template's generated files (README, hooks, pages, config files,
+      // etc.). Most of them are never materialized on disk under the
+      // template's own directory (fs.copy only copies what actually exists
+      // there, e.g. a placeholder src/index.ts) - without this branch, any
+      // file.content entry whose path isn't already present pre-copy was
+      // silently dropped and the scaffolded project never received it.
+      if (!existedBeforeProcessing) {
+        await fs.ensureDir(path.dirname(filePath));
+        await fs.writeFile(filePath, file.content ?? '', 'utf-8');
+      }
 
       if (await fs.pathExists(filePath)) {
         let content = await fs.readFile(filePath, 'utf-8');
