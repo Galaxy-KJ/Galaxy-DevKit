@@ -16,7 +16,10 @@ import {
   TransactionBuilder,
   BASE_FEE,
 } from '@stellar/stellar-sdk';
-import { findOptimalPath, type RouteFinderOptions } from './route-finder';
+import { findOptimalPath, type QuotedRoute, type RouteFinderOptions } from './route-finder';
+import { PathPaymentError } from './path-payment-error';
+
+export { PathPaymentError };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -40,6 +43,8 @@ export interface PathPaymentOptions {
   destination?: string;
   network?: NetworkType;
   path?: Asset[];
+  quotedSourceAmount?: string;
+  quotedDestinationAmount?: string;
 }
 
 export interface FeeEstimate {
@@ -57,22 +62,6 @@ export interface PathPaymentResult {
   network: NetworkType;
 }
 
-export class PathPaymentError extends Error {
-  constructor(
-    message: string,
-    public readonly code:
-      | 'INVALID_SLIPPAGE'
-      | 'INVALID_AMOUNT'
-      | 'NO_PATH_FOUND'
-      | 'SAME_ASSET'
-      | 'BUILD_FAILED'
-      | 'NETWORK_ERROR',
-  ) {
-    super(message);
-    this.name = 'PathPaymentError';
-  }
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getHorizonUrl(network: NetworkType): string {
@@ -83,17 +72,64 @@ function getNetworkPassphrase(network: NetworkType): string {
   return network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 }
 
-function applySlippage(
-  amount: string,
-  slippage: number,
-  mode: 'strict-send' | 'strict-receive',
-): string {
-  const value = parseFloat(amount);
-  const adjusted =
-    mode === 'strict-send'
-      ? value * (1 - slippage)
-      : value * (1 + slippage);
-  return adjusted.toFixed(7);
+function adjustQuotedAmount(amount: string, slippage: number, direction: 'down' | 'up'): string {
+  const [whole, frac = ''] = amount.split('.');
+  if (!/^\d+$/.test(whole) || (frac !== '' && !/^\d+$/.test(frac))) {
+    throw new PathPaymentError(`quoted amount is not a decimal string (received "${amount}")`, 'INVALID_AMOUNT');
+  }
+  const scale = 10n ** 7n;
+  const digits = (frac + '0000000').slice(0, 7);
+  const base = BigInt(whole) * scale + BigInt(digits);
+  const bps = BigInt(Math.round(slippage * 1_000_000));
+  const moved = direction === 'down'
+    ? (base * (1_000_000n - bps)) / 1_000_000n
+    : (base * (1_000_000n + bps) + 1_000_000n - 1n) / 1_000_000n;
+  if (moved <= 0n) {
+    throw new PathPaymentError('Slippage leaves a non-positive bound', 'INVALID_SLIPPAGE');
+  }
+  const w = moved / scale;
+  const f = (moved % scale).toString().padStart(7, '0');
+  return `${w}.${f}`;
+}
+
+async function resolveQuote(
+  options: PathPaymentOptions,
+  horizonUrl: string,
+): Promise<QuotedRoute> {
+  if (options.path) {
+    if (!options.quotedSourceAmount || !options.quotedDestinationAmount) {
+      throw new PathPaymentError(
+        'explicit path requires a quoted destinationAmount and sourceAmount',
+        'NO_PATH_FOUND',
+      );
+    }
+    return {
+      path: options.path,
+      sourceAmount: options.quotedSourceAmount,
+      destinationAmount: options.quotedDestinationAmount,
+    };
+  }
+  try {
+    return await findOptimalPath({
+      sourceAsset: options.sourceAsset,
+      destinationAsset: options.destinationAsset,
+      amount: options.amount,
+      mode: options.mode,
+      horizonUrl,
+    } as RouteFinderOptions);
+  } catch (err) {
+    if (err instanceof PathPaymentError) throw err;
+    throw new PathPaymentError(
+      `Route discovery failed: ${err instanceof Error ? err.message : String(err)}`,
+      'NETWORK_ERROR',
+    );
+  }
+}
+
+function protectedAmount(quote: QuotedRoute, slippage: number, mode: PathPaymentOptions['mode']): string {
+  return mode === 'strict-send'
+    ? adjustQuotedAmount(quote.destinationAmount, slippage, 'down')
+    : adjustQuotedAmount(quote.sourceAmount, slippage, 'up');
 }
 
 function validateSlippage(slippage: number): void {
@@ -144,25 +180,12 @@ export async function estimatePathPayment(
     );
   }
 
-  if (options.path === null) {
-    throw new PathPaymentError('No swap path found', 'NO_PATH_FOUND');
-  }
-
-  const network    = options.network ?? 'testnet';
-  const horizonUrl = getHorizonUrl(network);
-
-  const path = options.path ?? await findOptimalPath({
-    sourceAsset:      options.sourceAsset,
-    destinationAsset: options.destinationAsset,
-    amount:           options.amount,
-    mode:             options.mode,
-    horizonUrl,
-  } as RouteFinderOptions);
-
-  const slippageAdjustedAmount = applySlippage(options.amount, slippage, options.mode);
+  const network = options.network ?? 'testnet';
+  const quote = await resolveQuote(options, getHorizonUrl(network));
+  const slippageAdjustedAmount = protectedAmount(quote, slippage, options.mode);
   const feeEstimate = buildFeeEstimate(BASE_FEE);
 
-  return { slippageAdjustedAmount, feeEstimate, path };
+  return { slippageAdjustedAmount, feeEstimate, path: quote.path };
 }
 
 export async function executePathPayment(
@@ -185,23 +208,9 @@ export async function executePathPayment(
   const passphrase  = getNetworkPassphrase(network);
   const destination = options.destination ?? keypair.publicKey();
 
-  let path: Asset[];
-  try {
-    path = options.path ?? await findOptimalPath({
-      sourceAsset:      options.sourceAsset,
-      destinationAsset: options.destinationAsset,
-      amount:           options.amount,
-      mode:             options.mode,
-      horizonUrl,
-    } as RouteFinderOptions);
-  } catch (err) {
-    throw new PathPaymentError(
-      `Route discovery failed: ${err instanceof Error ? err.message : String(err)}`,
-      'NETWORK_ERROR',
-    );
-  }
-
-  const slippageAdjustedAmount = applySlippage(options.amount, slippage, options.mode);
+  const quote = await resolveQuote(options, horizonUrl);
+  const path = quote.path;
+  const slippageAdjustedAmount = protectedAmount(quote, slippage, options.mode);
 
   let account: Horizon.AccountResponse;
   try {

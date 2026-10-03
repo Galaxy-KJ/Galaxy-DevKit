@@ -38,5 +38,4 @@ module.exports = {
     // Resolve relative .js imports to .ts (ESM-style imports in TS source)
     '^(\\.\\.?/.*)\\.js$': '$1',
   },
-  resolver: 'ts-jest/resolver',
 };

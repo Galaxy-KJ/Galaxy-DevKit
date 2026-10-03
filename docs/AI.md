@@ -159,7 +159,7 @@ const balance = await service.getClaimableBalance(balanceId);
 ```
 
 **Path Payments (Path Finding & Swap):**
-- **PathPaymentManager** – find paths (strict send / strict receive), get best path, execute swaps, estimate output, slippage protection, price impact, path cache, swap analytics.
+- **PathPaymentManager** – find paths (strict send / strict receive), get best path, execute swaps, estimate output, slippage protection, price impact, path cache, swap analytics. Queries use `Horizon.Server.strictSendPaths` and `strictReceivePaths`. `maxSlippage` is a percent from 0 to 50 (default 1). `PathPaymentError.code` is `INVALID_SLIPPAGE`, `INVALID_AMOUNT`, `SAME_ASSET`, `NO_LIQUIDITY`, `HORIZON_ERROR`, or `SUBMIT_FAILED`. Empty books are not cached.
 - **Strict send**: Fixed source amount; Horizon returns paths with varying destination amount.
 - **Strict receive**: Fixed destination amount; Horizon returns paths with varying source amount.
 - **Path ranking**: Best path by price (max destination for strict send, min source for strict receive).

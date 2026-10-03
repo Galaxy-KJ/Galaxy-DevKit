@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-export { PathPaymentManager } from './path-payment-manager.js';
+export { PathPaymentManager, PathPaymentError } from './path-payment-manager.js';
 export type {
   PaymentPath,
   SwapParams,

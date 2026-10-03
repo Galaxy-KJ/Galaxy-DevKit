@@ -18,6 +18,7 @@ import {
   AlertEventPayload,
   AlertStatus,
   AlertType,
+  ChannelConfig,
   CreateMonitoringAlertInput,
   ListAlertsFilter,
   MonitoringAlert,
@@ -67,6 +68,34 @@ function toNumber(value: string | number | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseChannelConfig(channel: AlertChannel, config: Record<string, unknown>): ChannelConfig {
+  if (channel === 'webhook') {
+    if (typeof config.url !== 'string' || typeof config.secret !== 'string') {
+      throw new Error('Stored webhook alert config is invalid');
+    }
+    const headers = config.headers;
+    if (headers !== undefined && (
+      !headers || typeof headers !== 'object' || Array.isArray(headers) ||
+      Object.values(headers).some((value) => typeof value !== 'string')
+    )) {
+      throw new Error('Stored webhook headers are invalid');
+    }
+    return { url: config.url, secret: config.secret, headers: headers as Record<string, string> | undefined };
+  }
+
+  if (channel === 'email') {
+    if (typeof config.to !== 'string' || (config.subject !== undefined && typeof config.subject !== 'string')) {
+      throw new Error('Stored email alert config is invalid');
+    }
+    return { to: config.to, subject: config.subject as string | undefined };
+  }
+
+  if (typeof config.topic !== 'string') {
+    throw new Error('Stored websocket alert config is invalid');
+  }
+  return { topic: config.topic };
+}
+
 function rowToAlert(row: MonitoringAlertRow): MonitoringAlert {
   return {
     id: row.id,
@@ -78,7 +107,7 @@ function rowToAlert(row: MonitoringAlertRow): MonitoringAlert {
     alertType: row.alert_type,
     threshold: toNumber(row.threshold) ?? 0,
     channel: row.channel,
-    channelConfig: row.channel_config as MonitoringAlert['channelConfig'],
+    channelConfig: parseChannelConfig(row.channel, row.channel_config),
     cooldownSeconds: row.cooldown_seconds,
     status: row.status,
     lastTriggeredAt: row.last_triggered_at ? new Date(row.last_triggered_at) : null,
