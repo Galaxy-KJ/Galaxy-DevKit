@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsc",
     "start": "next start",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
