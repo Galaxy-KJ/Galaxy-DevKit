@@ -1,3 +1,5 @@
+import type { Keypair } from '@stellar/stellar-sdk';
+
 /**
  * @fileoverview Type definitions for Stellar operations
  * @description Contains all interfaces and types related to Stellar functionality
@@ -70,6 +72,13 @@ export interface Wallet {
   updatedAt: Date;
   metadata: Record<string, unknown>;
 }
+
+/** A wallet whose keypair is already unlocked on the client device. */
+export interface NonCustodialWallet extends Omit<Wallet, 'privateKey'> {
+  keypair: Keypair;
+}
+
+export type SigningWallet = Wallet | NonCustodialWallet;
 
 /**
  * Account balance information
