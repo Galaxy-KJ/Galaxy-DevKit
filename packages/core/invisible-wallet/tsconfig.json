@@ -1,6 +1,10 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
+    "paths": {
+      "@galaxy-kj/core-stellar-sdk": ["packages/core/stellar-sdk/dist/stellar-sdk/src/index.d.ts"],
+      "@galaxy-kj/core-stellar-sdk/*": ["packages/core/stellar-sdk/dist/stellar-sdk/src/*"]
+    },
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,

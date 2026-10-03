@@ -1,4 +1,4 @@
-import { IKYCProvider, KYCStatusRecord, KYCVerificationResult } from '../types/kyc-types';
+import { IKYCProvider, KYCStatusRecord, KYCVerificationResult } from '../../types/kyc-types';
 import { MockKYCProvider } from './providers/mock-kyc-provider';
 
 // Assume supabase client is available or injected
