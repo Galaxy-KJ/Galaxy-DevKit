@@ -103,15 +103,23 @@ export class ComplianceReportEngine {
       }));
 
     try {
-      const events = await this.auditLogger.query({
-        userId,
-        from: input.from,
-        to: input.to,
-      });
+      const events: AuditEvent[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await this.auditLogger.query({
+          userId,
+          from: input.from,
+          to: input.to,
+          cursor,
+          limit: 200,
+        });
+        events.push(...page.items);
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
 
       const payload = buildReportPayload(
         input.reportType,
-        events as AuditEvent[],
+        events,
         { from: input.from, to: input.to },
         redactPii
       );

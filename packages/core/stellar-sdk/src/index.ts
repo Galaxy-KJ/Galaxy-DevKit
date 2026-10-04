@@ -7,10 +7,13 @@
  */
 
 // Export types
+export type { Json } from './types/database.types.js';
 export type {
   NetworkConfig,
   WalletConfig,
   Wallet,
+  NonCustodialWallet,
+  SigningWallet,
   Balance,
   AccountInfo,
   PaymentParams,

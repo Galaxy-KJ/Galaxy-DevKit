@@ -19,7 +19,6 @@ import * as bip39 from 'bip39';
 import {
   encryptPrivateKey,
   decryptPrivateKeyToString,
-  withDecryptedKey,
 } from '../utils/encryption.utils.js';
 import {
   Wallet,
@@ -30,6 +29,7 @@ import {
   PaymentParams,
   PaymentResult,
   TransactionInfo,
+  SigningWallet,
 } from '../types/stellar-types.js';
 import { derivePath } from 'ed25519-hd-key';
 import { supabaseClient } from '../utils/supabase-client.js';
@@ -310,9 +310,9 @@ export class StellarService {
    * @returns Promise<PaymentResult>
    */
   async sendPayment(
-    wallet: Wallet,
+    wallet: SigningWallet,
     params: PaymentParams,
-    password: string
+    password?: string
   ): Promise<PaymentResult> {
     try {
       if (!this.networkUtils.isValidPublicKey(params.destination)) {
@@ -338,8 +338,12 @@ export class StellarService {
         validateMemo(params.memo);
       }
 
-      return await withDecryptedKey(wallet.privateKey, password, async (keyBuffer) => {
-        const keypair = Keypair.fromSecret(keyBuffer.toString('utf8'));
+      const keypair = 'keypair' in wallet
+        ? wallet.keypair
+        : Keypair.fromSecret(await decryptPrivateKeyToString(
+            wallet.privateKey,
+            this.requirePassword(password)
+          ));
 
         const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
@@ -387,7 +391,6 @@ export class StellarService {
           ledger: result.ledger.toString(),
           createdAt: new Date(),
         } as PaymentResult;
-      });
     } catch (error) {
       throw new Error(
         `Failed to send payment: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -629,14 +632,18 @@ export class StellarService {
   }
 
   async addTrustline(
-    wallet: Wallet,
+    wallet: SigningWallet,
     assetCode: string,
     assetIssuer: string,
     limit: string = '922337203685.4775807', // Max
-    password: string
+    password?: string
   ): Promise<PaymentResult> {
-    const decrypted = await decryptPrivateKeyToString(wallet.privateKey, password);
-    const keypair = Keypair.fromSecret(decrypted);
+    const keypair = 'keypair' in wallet
+      ? wallet.keypair
+      : Keypair.fromSecret(await decryptPrivateKeyToString(
+          wallet.privateKey,
+          this.requirePassword(password)
+        ));
     const sourceAccount = await this.server.loadAccount(wallet.publicKey);
 
     const transaction = new TransactionBuilder(sourceAccount, {
@@ -673,6 +680,13 @@ export class StellarService {
     const crypto = require('crypto');
     const random = crypto.randomBytes(6).toString('hex');
     return `wallet_${Date.now()}_${random}`;
+  }
+
+  private requirePassword(password?: string): string {
+    if (!password) {
+      throw new Error('A password is required to sign with an encrypted wallet');
+    }
+    return password;
   }
 
   /**

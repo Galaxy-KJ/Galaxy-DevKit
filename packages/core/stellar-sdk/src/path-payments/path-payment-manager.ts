@@ -30,7 +30,7 @@ import {
   HIGH_PRICE_IMPACT_THRESHOLD,
   PathPaymentError,
 } from './types.js';
-import { Wallet } from '../types/stellar-types.js';
+import { SigningWallet } from '../types/stellar-types.js';
 import { decryptPrivateKeyToString } from '../utils/encryption.utils.js';
 
 /** Default path cache TTL in milliseconds (5 minutes) */
@@ -145,10 +145,10 @@ export class PathPaymentManager {
    * Execute a path payment (swap)
    */
   async executeSwap(
-    wallet: Wallet,
+    wallet: SigningWallet,
     params: SwapParams,
-    password: string,
-    sourceAccountId: string
+    passwordOrSourceAccountId: string,
+    legacySourceAccountId?: string
   ): Promise<SwapResult> {
     this.assertSwapParams(params);
     const paths = params.customPath
@@ -171,7 +171,10 @@ export class PathPaymentManager {
     const estimate = this.estimateSwapFromPath(bestPath, params);
     this.validateSlippageProtection(params, estimate);
 
-    const keypair = Keypair.fromSecret(await decryptPrivateKeyToString(wallet.privateKey, password));
+    const sourceAccountId = legacySourceAccountId ?? passwordOrSourceAccountId;
+    const keypair = 'keypair' in wallet
+      ? wallet.keypair
+      : Keypair.fromSecret(await decryptPrivateKeyToString(wallet.privateKey, passwordOrSourceAccountId));
     const sourceAccount = await this.server.loadAccount(sourceAccountId);
     const destinationAccountId = params.destinationAccount ?? sourceAccountId;
 

@@ -3,8 +3,8 @@
   "version": "5.0.2",
   "description": "Galaxy Stellar SDK - Enhanced Stellar SDK with Soroban smart contract support for Galaxy DevKit",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/stellar-sdk/src/index.js",
+  "types": "dist/stellar-sdk/src/index.d.ts",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

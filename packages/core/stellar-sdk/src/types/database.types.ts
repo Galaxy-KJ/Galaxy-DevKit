@@ -303,92 +303,38 @@ export interface Database {
       invisible_wallets: {
         Row: {
           id: string
+          user_id: string | null
+          public_key: string
+          network: string
           created_at: string
           updated_at: string | null
-          user_id: string | null
-          action: string | null
-          resource: string | null
-          ip_address: string | null
-          success: boolean | null
-          error_code: string | null
+          last_accessed_at: string | null
           metadata: Json | null
-          organization_id: string | null
-          status: string | null
-          role: string | null
-          name: string | null
-          description: string | null
-          amount: number | null
-          currency: string | null
-          reference_id: string | null
-          is_active: boolean | null
-          config: Json | null
-          data: Json | null
-          version: number | null
-          deleted_at: string | null
-          created_by: string | null
-          updated_by: string | null
+          backup_status: Json | null
         }
         Insert: {
-          id?: string
+          id: string
+          user_id?: string | null
+          public_key: string
+          network: string
           created_at?: string
           updated_at?: string | null
-          user_id?: string | null
-          action?: string | null
-          resource?: string | null
-          ip_address?: string | null
-          success?: boolean | null
-          error_code?: string | null
+          last_accessed_at?: string | null
           metadata?: Json | null
-          organization_id?: string | null
-          status?: string | null
-          role?: string | null
-          name?: string | null
-          description?: string | null
-          amount?: number | null
-          currency?: string | null
-          reference_id?: string | null
-          is_active?: boolean | null
-          config?: Json | null
-          data?: Json | null
-          version?: number | null
-          deleted_at?: string | null
-          created_by?: string | null
-          updated_by?: string | null
+          backup_status?: Json | null
         }
         Update: {
           id?: string
+          user_id?: string | null
+          public_key?: string
+          network?: string
           created_at?: string
           updated_at?: string | null
-          user_id?: string | null
-          action?: string | null
-          resource?: string | null
-          ip_address?: string | null
-          success?: boolean | null
-          error_code?: string | null
+          last_accessed_at?: string | null
           metadata?: Json | null
-          organization_id?: string | null
-          status?: string | null
-          role?: string | null
-          name?: string | null
-          description?: string | null
-          amount?: number | null
-          currency?: string | null
-          reference_id?: string | null
-          is_active?: boolean | null
-          config?: Json | null
-          data?: Json | null
-          version?: number | null
-          deleted_at?: string | null
-          created_by?: string | null
-          updated_by?: string | null
+          backup_status?: Json | null
         }
         Relationships: [
-          {
-            foreignKeyName: "invisible_wallets_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "invisible_wallets_user_id_fkey"
             columns: ["user_id"]
@@ -400,99 +346,33 @@ export interface Database {
       wallet_sessions: {
         Row: {
           id: string
+          wallet_id: string
+          user_id: string
+          session_token: string
+          expires_at: string
           created_at: string
-          updated_at: string | null
-          user_id: string | null
-          action: string | null
-          resource: string | null
-          ip_address: string | null
-          success: boolean | null
-          error_code: string | null
-          metadata: Json | null
-          organization_id: string | null
-          status: string | null
-          role: string | null
-          name: string | null
-          description: string | null
-          amount: number | null
-          currency: string | null
-          reference_id: string | null
-          is_active: boolean | null
-          config: Json | null
-          data: Json | null
-          version: number | null
-          deleted_at: string | null
-          created_by: string | null
-          updated_by: string | null
+          is_active: boolean
+          device_info: Json | null
         }
         Insert: {
           id?: string
+          wallet_id: string
+          user_id: string
+          session_token: string
+          expires_at: string
           created_at?: string
-          updated_at?: string | null
-          user_id?: string | null
-          action?: string | null
-          resource?: string | null
-          ip_address?: string | null
-          success?: boolean | null
-          error_code?: string | null
-          metadata?: Json | null
-          organization_id?: string | null
-          status?: string | null
-          role?: string | null
-          name?: string | null
-          description?: string | null
-          amount?: number | null
-          currency?: string | null
-          reference_id?: string | null
-          is_active?: boolean | null
-          config?: Json | null
-          data?: Json | null
-          version?: number | null
-          deleted_at?: string | null
-          created_by?: string | null
-          updated_by?: string | null
+          is_active?: boolean
+          device_info?: Json | null
         }
         Update: {
-          id?: string
-          created_at?: string
-          updated_at?: string | null
-          user_id?: string | null
-          action?: string | null
-          resource?: string | null
-          ip_address?: string | null
-          success?: boolean | null
-          error_code?: string | null
-          metadata?: Json | null
-          organization_id?: string | null
-          status?: string | null
-          role?: string | null
-          name?: string | null
-          description?: string | null
-          amount?: number | null
-          currency?: string | null
-          reference_id?: string | null
-          is_active?: boolean | null
-          config?: Json | null
-          data?: Json | null
-          version?: number | null
-          deleted_at?: string | null
-          created_by?: string | null
-          updated_by?: string | null
+          wallet_id?: string
+          user_id?: string
+          session_token?: string
+          expires_at?: string
+          is_active?: boolean
+          device_info?: Json | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "wallet_sessions_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wallet_sessions_user_id_fkey"
-            columns: ["user_id"]
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          }
-        ]
+        Relationships: []
       }
       organization_members: {
         Row: {
