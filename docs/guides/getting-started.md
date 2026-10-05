@@ -28,7 +28,7 @@ Before you begin, make sure you have the following installed:
 
 3. **Bootstrap the monorepo:**
    ```bash
-   npm run bootstrap
+   npm install
    ```
 
 4. **Start development:**
@@ -431,4 +431,3 @@ If you run into issues:
 ---
 
 **Happy coding with Galaxy DevKit! 🚀**
-

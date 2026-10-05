@@ -211,6 +211,7 @@ fn signer_index_key() -> Symbol {
 
 fn register_signer(env: &Env, credential_id: &Bytes, kind: SignerKind) {
     let key = signer_index_key();
+<<<<<<< HEAD
     let stored: Vec<SignerIndexEntry> =
         env.storage().instance().get(&key).unwrap_or(Vec::new(env));
     let mut entries = Vec::new(env);
@@ -224,6 +225,33 @@ fn register_signer(env: &Env, credential_id: &Bytes, kind: SignerKind) {
             entries.push_back(e);
         }
     }
+=======
+    let existing: Vec<SignerIndexEntry> =
+        env.storage().instance().get(&key).unwrap_or(Vec::new(env));
+
+    // Rebuild the index instead of appending blindly:
+    //   - drop any prior entry for this credential_id (re-registration should
+    //     replace, not duplicate it)
+    //   - drop Session entries whose temporary record has already expired,
+    //     since nothing else ever prunes them and the index would otherwise
+    //     grow without bound as session keys churn
+    let mut entries = Vec::new(env);
+    for entry in existing.iter() {
+        if entry.credential_id == *credential_id {
+            continue;
+        }
+        if matches!(entry.kind, SignerKind::Session)
+            && !env
+                .storage()
+                .temporary()
+                .has(&WalletDataKey::Signer(entry.credential_id.clone()))
+        {
+            continue;
+        }
+        entries.push_back(entry);
+    }
+
+>>>>>>> main
     entries.push_back(SignerIndexEntry {
         credential_id: credential_id.clone(),
         kind,

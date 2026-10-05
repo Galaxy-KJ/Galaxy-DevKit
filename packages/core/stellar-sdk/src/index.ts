@@ -7,10 +7,13 @@
  */
 
 // Export types
+export type { Json } from './types/database.types.js';
 export type {
   NetworkConfig,
   WalletConfig,
   Wallet,
+  NonCustodialWallet,
+  SigningWallet,
   Balance,
   AccountInfo,
   PaymentParams,
@@ -161,7 +164,7 @@ export type {
   PathCacheEntry,
   PathPaymentManagerOptions,
 } from './path-payments/types.js';
-export { PathPaymentManager, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments/index.js';
+export { PathPaymentManager, PathPaymentError, HIGH_PRICE_IMPACT_THRESHOLD } from './path-payments/index.js';
 
 // Export sponsored reserves module
 export * from './sponsored-reserves/index.js';

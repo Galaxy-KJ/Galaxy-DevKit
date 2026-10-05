@@ -279,6 +279,8 @@ await manager.revokeTrustlineSponsorship(
 
 Path payments enable cross-asset swaps and multi-hop payments using Stellar Horizon's path finding. Use **PathPaymentManager** for strict send (fixed send amount), strict receive (fixed receive amount), best-path selection, slippage protection, and swap analytics.
 
+Path search goes through `server.strictSendPaths` and `server.strictReceivePaths`, so asset type (including `credit_alphanum12`) is taken from the `Asset` itself. `maxSlippage` is a percent from 0 to 50. The default is 1. Strict send sets `destMin` from the quoted destination, rounded down to 7 decimals. Strict receive sets `sendMax` from the quoted source, rounded up to 7 decimals. Failures throw `PathPaymentError` with one of these codes: `INVALID_SLIPPAGE`, `INVALID_AMOUNT`, `SAME_ASSET`, `NO_LIQUIDITY`, `HORIZON_ERROR`, `SUBMIT_FAILED`.
+
 ### Quick Start
 
 ```typescript

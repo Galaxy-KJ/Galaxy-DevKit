@@ -139,7 +139,9 @@ export class KeyManagementService {
           expires_at: expiresAt.toISOString(),
           created_at: session.createdAt.toISOString(),
           is_active: true,
-          device_info: deviceInfo,
+          device_info: deviceInfo
+            ? (JSON.parse(JSON.stringify(deviceInfo)) as import('@galaxy-kj/core-stellar-sdk').Json)
+            : null,
         },
       ]);
       if (error) console.warn('Failed to persist session to database:', error.message);

@@ -8,6 +8,27 @@
 
 import { Asset } from '@stellar/stellar-sdk';
 
+export type PathPaymentErrorCode =
+  | 'INVALID_SLIPPAGE'
+  | 'INVALID_AMOUNT'
+  | 'SAME_ASSET'
+  | 'NO_LIQUIDITY'
+  | 'HORIZON_ERROR'
+  | 'SUBMIT_FAILED';
+
+export class PathPaymentError extends Error {
+  readonly code: PathPaymentErrorCode;
+
+  constructor(message: string, code: PathPaymentErrorCode, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'PathPaymentError';
+    this.code = code;
+    if (options && 'cause' in options) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 /**
  * Payment path from source to destination asset
  * Maps to Horizon path payment response

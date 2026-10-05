@@ -53,17 +53,6 @@ fi
 
 echo ""
 
-# Bootstrap dependencies
-echo "📦 Installing dependencies..."
-npm run bootstrap
-
-if [ $? -ne 0 ]; then
-    echo "❌ Bootstrap failed. Please check errors above."
-    exit 1
-fi
-
-echo ""
-
 # Build all packages
 echo "🔨 Building all packages..."
 npm run build

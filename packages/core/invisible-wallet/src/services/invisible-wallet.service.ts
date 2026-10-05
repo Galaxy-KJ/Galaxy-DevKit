@@ -26,7 +26,10 @@ import {
   Balance,
   TransactionInfo,
   NetworkConfig,
-  Wallet,
+  NonCustodialWallet,
+  Json,
+  resolveNetwork,
+  Network,
 } from '@galaxy-kj/core-stellar-sdk';
 import {
   InvisibleWallet,
@@ -106,11 +109,11 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          network: wallet.network,
+          network: wallet.network.network,
           created_at: wallet.createdAt.toISOString(),
           updated_at: wallet.updatedAt.toISOString(),
-          metadata: wallet.metadata,
-          backup_status: wallet.backupStatus,
+          metadata: JSON.parse(JSON.stringify(wallet.metadata)) as Json,
+          backup_status: JSON.parse(JSON.stringify(wallet.backupStatus)) as Json,
         },
       ]);
 
@@ -195,12 +198,11 @@ export class InvisibleWalletService {
           id: wallet.id,
           user_id: wallet.userId,
           public_key: wallet.publicKey,
-          encrypted_seed: wallet.encryptedSeed ?? null,
-          network: wallet.network,
+          network: wallet.network.network,
           created_at: wallet.createdAt.toISOString(),
           updated_at: wallet.updatedAt.toISOString(),
-          metadata: wallet.metadata,
-          backup_status: wallet.backupStatus,
+          metadata: JSON.parse(JSON.stringify(wallet.metadata)) as Json,
+          backup_status: JSON.parse(JSON.stringify(wallet.backupStatus)) as Json,
         },
       ]);
 
@@ -332,7 +334,7 @@ export class InvisibleWalletService {
     try {
       const { data, error } = await this.supabase
         .from('invisible_wallets')
-        .select('id, user_id, public_key, network, encrypted_seed, created_at, updated_at, last_accessed_at, metadata, backup_status')
+        .select('id, user_id, public_key, network, created_at, updated_at, last_accessed_at, metadata, backup_status')
         .eq('id', walletId)
         .single();
 
@@ -349,7 +351,7 @@ export class InvisibleWalletService {
     try {
       const { data, error } = await this.supabase
         .from('invisible_wallets')
-        .select('id, user_id, public_key, network, encrypted_seed, created_at, updated_at, last_accessed_at, metadata, backup_status')
+        .select('id, user_id, public_key, network, created_at, updated_at, last_accessed_at, metadata, backup_status')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -406,7 +408,7 @@ export class InvisibleWalletService {
       const wallet = await this.getWalletById(walletId);
       if (!wallet) throw new Error('Wallet not found');
 
-      const stellarWallet: Wallet = {
+      const stellarWallet: NonCustodialWallet = {
         id: wallet.id,
         publicKey: wallet.publicKey,
         keypair, // passed directly; no decryption needed server-side
@@ -479,7 +481,7 @@ export class InvisibleWalletService {
         throw new Error('Keypair does not match wallet');
       }
 
-    const stellarWallet: Wallet = {
+    const stellarWallet: NonCustodialWallet = {
       id: wallet.id,
       publicKey: wallet.publicKey,
       keypair,
@@ -529,7 +531,7 @@ export class InvisibleWalletService {
       const wallet = await this.getWalletById(walletId);
       if (!wallet) throw new Error('Wallet not found');
 
-      const stellarWallet: Wallet = {
+      const stellarWallet: NonCustodialWallet = {
         id: wallet.id,
         publicKey: wallet.publicKey,
         keypair,
@@ -707,7 +709,7 @@ export class InvisibleWalletService {
     await this.supabase
       .from('invisible_wallets')
       .update({
-        metadata: { ...wallet.metadata, ...metadata },
+        metadata: JSON.parse(JSON.stringify({ ...wallet.metadata, ...metadata })) as Json,
         updated_at: new Date().toISOString(),
       })
       .eq('id', walletId);
@@ -726,9 +728,9 @@ export class InvisibleWalletService {
         backup_status: {
           ...wallet.backupStatus,
           isBackedUp: true,
-          lastBackupAt: new Date(),
+          lastBackupAt: new Date().toISOString(),
           backupMethod,
-        },
+        } as unknown as Json,
       })
       .eq('id', walletId);
       
@@ -771,19 +773,35 @@ export class InvisibleWalletService {
    * Maps a Supabase row to InvisibleWallet.
    * Any legacy private-key fields are intentionally ignored.
    */
-  private mapDatabaseToWallet(data: Record<string, unknown>): InvisibleWallet {
+  private mapDatabaseToWallet(data: {
+    id: string;
+    user_id: string | null;
+    public_key: string;
+    network: string;
+    created_at: string;
+    updated_at: string | null;
+    last_accessed_at: string | null;
+    metadata: Json | null;
+    backup_status: Json | null;
+  }): InvisibleWallet {
     return {
       id: String(data.id),
-      userId: String(data.user_id),
+      userId: data.user_id ?? '',
       publicKey: String(data.public_key),
       // encryptedPrivateKey intentionally omitted (Phase 1 non-custodial)
-      encryptedSeed: typeof data.encrypted_seed === 'string' ? data.encrypted_seed : undefined,
-      network: data.network as NetworkConfig,
+      network: resolveNetwork(data.network as Network),
       createdAt: new Date(String(data.created_at)),
       updatedAt: new Date(String(data.updated_at)),
       lastAccessedAt: data.last_accessed_at ? new Date(String(data.last_accessed_at)) : undefined,
       metadata: (data.metadata as Record<string, unknown> | null) || {},
-      backupStatus: (data.backup_status as InvisibleWallet['backupStatus'] | null) || { isBackedUp: false, backupMethod: 'none' },
+      backupStatus: data.backup_status
+        ? {
+            ...(data.backup_status as Omit<InvisibleWallet['backupStatus'], 'lastBackupAt'> & { lastBackupAt?: string }),
+            lastBackupAt: typeof (data.backup_status as { lastBackupAt?: unknown }).lastBackupAt === 'string'
+              ? new Date((data.backup_status as { lastBackupAt: string }).lastBackupAt)
+              : undefined,
+          }
+        : { isBackedUp: false, backupMethod: 'none' },
     };
   }
 
