@@ -1,0 +1,52 @@
+{
+  "$schema": "https://unpkg.com/syncpack@15/dist/schema.json",
+  "source": [
+    "package.json",
+    "packages/*/package.json",
+    "packages/*/*/package.json",
+    "packages/*/*/*/package.json",
+    "tools/*/package.json",
+    "tools/*/*/package.json"
+  ],
+  "semverGroups": [
+    {
+      "label": "internal @galaxy-kj/* packages must use caret ranges, never exact pins or wildcards",
+      "dependencies": ["@galaxy-kj/**"],
+      "dependencyTypes": ["dev", "prod"],
+      "range": "^"
+    },
+    {
+      "label": "@stellar/stellar-sdk must use caret ranges",
+      "dependencies": ["@stellar/stellar-sdk"],
+      "dependencyTypes": ["dev", "prod"],
+      "range": "^"
+    }
+  ],
+  "versionGroups": [
+    {
+      "label": "scaffold templates ship their own copy of these runtime deps to generated projects and are intentionally excluded from cross-workspace alignment",
+      "packages": ["@galaxy-kj/template-basic", "stellar-dapp"],
+      "dependencies": ["next", "react", "react-dom", "tailwindcss", "eslint-config-next"],
+      "isIgnored": true
+    },
+    {
+      "label": "shared toolchain + internal packages this drift-check enforces (issue #448 scope)",
+      "dependencies": [
+        "typescript",
+        "jest",
+        "ts-jest",
+        "@types/jest",
+        "@types/node",
+        "eslint",
+        "jest-environment-jsdom",
+        "@stellar/stellar-sdk",
+        "@galaxy-kj/**"
+      ]
+    },
+    {
+      "label": "everything else — pre-existing drift outside issue #448's scope, tracked separately",
+      "dependencies": ["**"],
+      "isIgnored": true
+    }
+  ]
+}
