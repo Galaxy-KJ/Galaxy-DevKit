@@ -511,15 +511,18 @@ describe('SponsoredReservesManager', () => {
       };
       const queryBuilder = {
         forSponsor: jest.fn().mockReturnThis(),
-        cursor: jest.fn().mockReturnThis(),
-        order: jest.fn().mockReturnThis(),
         call: jest.fn().mockResolvedValue(firstPage),
       };
       mockServer.accounts.mockReturnValue(queryBuilder);
 
       const entries = await manager.getEntriesSponsoredBy(
         'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-        { entryType: 'account', cursor: 'cursor-123', order: 'asc', limit: 1 }
+        {
+          entryType: 'account',
+          cursor: 'account:GSPONSORED2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          order: 'asc',
+          limit: 1,
+        }
       );
 
       expect(entries).toHaveLength(1);
@@ -528,8 +531,40 @@ describe('SponsoredReservesManager', () => {
       expect(queryBuilder.forSponsor).toHaveBeenCalledWith(
         'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
       );
-      expect(queryBuilder.cursor).toHaveBeenCalledWith('cursor-123');
-      expect(queryBuilder.order).toHaveBeenCalledWith('asc');
+      expect(queryBuilder.call).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies one cursor to combined account and claimable-balance results', async () => {
+      const sponsoredAccount = 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+      mockServer.accounts.mockReturnValue({
+        forSponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{
+            account_id: sponsoredAccount,
+            sponsor: 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+            balances: [],
+            signers: [],
+            data_attr: {},
+          }],
+        }),
+      });
+      mockServer.claimableBalances.mockReturnValue({
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{ id: 'claimable-id', claimants: [], asset: 'native', amount: '1' }],
+        }),
+      });
+      mockServer.offers.mockReturnValue({
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({ records: [] }),
+      });
+
+      const entries = await manager.getEntriesSponsoredBy(
+        'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        { cursor: `account:${sponsoredAccount}`, order: 'asc' }
+      );
+
+      expect(entries.map((entry) => entry.entryType)).toEqual(['claimable_balance']);
     });
 
     it('queries sponsored claimable balances and offers', async () => {

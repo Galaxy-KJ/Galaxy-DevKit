@@ -66,6 +66,7 @@ export class SponsoredReservesManager {
     );
   }
 
+  /** Collect every page returned by a Horizon call builder. */
   private async collectPages<T>(callBuilder: any): Promise<T[]> {
     const records: T[] = [];
     let page = await callBuilder.call();
@@ -81,16 +82,40 @@ export class SponsoredReservesManager {
     return records;
   }
 
-  private applyQueryOptions(callBuilder: any, options: SponsoredEntriesQueryOptions): any {
-    if (options.cursor) {
-      callBuilder = callBuilder.cursor(options.cursor);
+  /** Apply stable ordering, a composite entry cursor, and a final result limit. */
+  private applySponsoredEntryOptions(
+    entries: SponsoredEntry[],
+    options: SponsoredEntriesQueryOptions
+  ): SponsoredEntry[] {
+    const direction = options.order === 'desc' ? -1 : 1;
+    const cursorKey = options.cursor;
+    const result = [...entries].sort((left, right) => {
+      const leftKey = `${left.entryType}:${left.entryId}`;
+      const rightKey = `${right.entryType}:${right.entryId}`;
+      return direction * leftKey.localeCompare(rightKey);
+    });
+
+    if (cursorKey) {
+      const cursorIndex = result.findIndex(
+        (entry) => `${entry.entryType}:${entry.entryId}` === cursorKey
+      );
+      const nextIndex = cursorIndex >= 0
+        ? cursorIndex + 1
+        : result.findIndex((entry) =>
+          direction * `${entry.entryType}:${entry.entryId}`.localeCompare(cursorKey) > 0
+        );
+      if (nextIndex < 0) {
+        return [];
+      }
+      result.splice(0, nextIndex);
     }
-    if (options.order) {
-      callBuilder = callBuilder.order(options.order);
-    }
-    return callBuilder;
+
+    return options.limit === undefined
+      ? result
+      : result.slice(0, Math.max(0, options.limit));
   }
 
+  /** Resolve sponsorship metadata for the named data entries using Stellar RPC. */
   private async getSponsoredDataEntries(
     accountPublicKey: string,
     dataAttributes: Record<string, string>
@@ -512,12 +537,7 @@ export class SponsoredReservesManager {
         }
       }
 
-      // Apply limit
-      if (options.limit !== undefined && entries.length > options.limit) {
-        return entries.slice(0, options.limit);
-      }
-
-      return entries;
+      return this.applySponsoredEntryOptions(entries, options);
     } catch (error) {
       if (error instanceof Error && error.name === 'NotSupportedError') {
         throw error;
@@ -551,8 +571,7 @@ export class SponsoredReservesManager {
 
     try {
       if (include('account') || include('trustline') || include('signer') || include('data')) {
-        let accountsQuery = this.server.accounts().forSponsor(sponsorPublicKey);
-        accountsQuery = this.applyQueryOptions(accountsQuery, options);
+        const accountsQuery = this.server.accounts().forSponsor(sponsorPublicKey);
         const accounts = await this.collectPages<any>(accountsQuery);
 
         for (const account of accounts) {
@@ -608,8 +627,7 @@ export class SponsoredReservesManager {
       }
 
       if (include('claimable_balance')) {
-        let balancesQuery = this.server.claimableBalances().sponsor(sponsorPublicKey);
-        balancesQuery = this.applyQueryOptions(balancesQuery, options);
+        const balancesQuery = this.server.claimableBalances().sponsor(sponsorPublicKey);
         const balances = await this.collectPages<any>(balancesQuery);
         for (const balance of balances) {
           entries.push({
@@ -623,8 +641,7 @@ export class SponsoredReservesManager {
       }
 
       if (include('offer')) {
-        let offersQuery = this.server.offers().sponsor(sponsorPublicKey);
-        offersQuery = this.applyQueryOptions(offersQuery, options);
+        const offersQuery = this.server.offers().sponsor(sponsorPublicKey);
         const offers = await this.collectPages<any>(offersQuery);
         for (const offer of offers) {
           entries.push({
@@ -642,7 +659,7 @@ export class SponsoredReservesManager {
         }
       }
 
-      return options.limit !== undefined ? entries.slice(0, options.limit) : entries;
+      return this.applySponsoredEntryOptions(entries, options);
     } catch (error) {
       if (error instanceof Error && error.name === 'NotSupportedError') {
         throw error;

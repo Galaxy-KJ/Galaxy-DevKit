@@ -249,11 +249,26 @@ const entriesFor = await manager.getSponsoredEntries(userPublicKey);
 // Get entries sponsored BY an account
 const entriesBy = await manager.getEntriesSponsoredBy(sponsorPublicKey);
 
+// Continue after the last returned entry across all entry types
+const lastEntry = entriesBy.at(-1);
+const nextEntries = lastEntry
+  ? await manager.getEntriesSponsoredBy(sponsorPublicKey, {
+      cursor: `${lastEntry.entryType}:${lastEntry.entryId}`,
+      order: 'asc',
+      limit: 20,
+    })
+  : [];
+
 // Filter by type
 const trustlines = await manager.getSponsoredEntries(userPublicKey, {
   entryType: 'trustline',
 });
 ```
+
+Sponsor queries combine records from multiple Horizon endpoints, so their cursor is a
+composite key in the form `entryType:entryId`. Ordering and limits are applied to the
+merged results. Data-entry sponsorship is resolved through the configured Soroban RPC
+endpoint; set `rpcUrl` in `NetworkConfig` when using a non-default endpoint.
 
 ### Revoking Sponsorship
 
