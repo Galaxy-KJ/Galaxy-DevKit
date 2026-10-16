@@ -52,20 +52,14 @@ export namespace SorobanRpc {
     latestLedger: number;
   }
 
-  export interface TopicString {
-    type: 'string';
-    value: unknown;
-  }
-
-  /**
-   * A single topic in a filter. Each entry is either a plain string or the
-   * legacy `{ type, value }` object form.
-   */
-  export type TopicFilter = string | TopicString;
-
   export interface EventFilter {
     contractIds?: string[];
-    topics?: TopicFilter[];
+    /**
+     * Topic filters (OR-ed). Each one is a list of segment matchers: a base64
+     * `ScVal` XDR string, `'*'` (exactly one segment) or `'**'` (zero or more
+     * segments, last position only).
+     */
+    topics?: string[][];
     type?: string;
   }
 
