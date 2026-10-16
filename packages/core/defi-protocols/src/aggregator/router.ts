@@ -18,8 +18,6 @@ export interface Route {
   hops: RouteHop[];
   totalFeePercent: number;
   estimatedOutput: string;
-  /** Fee-adjusted estimate used to compare routes with different venue fees. */
-  feeAdjustedOutput: string;
   priceImpact: number;
   highImpactWarning: boolean;
 }
@@ -85,7 +83,9 @@ export class SmartRouter {
     for (const result of pathEvaluations) {
       if (result.status === 'fulfilled') {
         const route = result.value;
-        if (!bestRoute || new BigNumber(route.feeAdjustedOutput).gt(bestRoute.feeAdjustedOutput)) {
+        // Venue quotes already include their swap fees in amountOut. Compare the
+        // quoted output directly so the reported fee is not deducted twice.
+        if (!bestRoute || new BigNumber(route.estimatedOutput).gt(bestRoute.estimatedOutput)) {
           bestRoute = route;
         }
       }
@@ -141,10 +141,6 @@ export class SmartRouter {
       hops,
       totalFeePercent: cumulativeFeePercent,
       estimatedOutput: currentAmount,
-      feeAdjustedOutput: new BigNumber(currentAmount)
-        .multipliedBy(BigNumber.maximum(100 - cumulativeFeePercent, 0))
-        .dividedBy(100)
-        .toFixed(),
       priceImpact: (1 - remainingPriceImpact) * 100,
       highImpactWarning: (1 - remainingPriceImpact) * 100 >= HIGH_PRICE_IMPACT_PERCENT,
     };
