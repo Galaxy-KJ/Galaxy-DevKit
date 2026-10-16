@@ -1151,6 +1151,13 @@ The DeFi protocols package (`@galaxy/core-defi-protocols`) provides a unified in
 
 ### Architecture Layers
 
+Blend loads pool metadata, reserves, and token metadata from the ledger via the
+Blend SDK, caching the complete snapshot with a TTL and sharing concurrent
+refreshes. Liquidation discovery gets unique users from a configured indexer or
+a bounded, paginated pool-event scan, then evaluates current positions. Event
+history is limited by RPC retention and does not replace a historical indexer.
+See [Blend discovery](guides/blend-discovery.md).
+
 ```mermaid
 graph TD
     subgraph "Application Layer"

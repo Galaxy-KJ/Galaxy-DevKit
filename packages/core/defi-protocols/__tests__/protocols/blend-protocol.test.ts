@@ -81,7 +81,7 @@ jest.mock('@stellar/stellar-sdk', () => {
     Address: jest.fn().mockImplementation((addr) => ({
       toScVal: jest.fn().mockReturnValue({ type: 'address', value: addr }),
     })),
-    nativeToScVal: jest.fn().mockReturnValue({ type: 'scval' }),
+    nativeToScVal: jest.fn().mockReturnValue({ type: 'scval', toXDR: () => 'mock-topic' }),
     BASE_FEE: '100',
     rpc: {
       Server: jest.fn(),
@@ -152,6 +152,8 @@ describe('BlendProtocol', () => {
 
     // Mock Soroban Server
     mockSorobanServer = {
+      getHealth: jest.fn().mockResolvedValue({ latestLedger: 100, oldestLedger: 1 }),
+      getEvents: jest.fn().mockResolvedValue({ events: [], cursor: 'end' }),
       simulateTransaction: jest.fn().mockResolvedValue({
         id: 'sim-id',
         events: [],

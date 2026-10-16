@@ -16,6 +16,14 @@
 - **Soroswap** - Decentralized exchange
 - **Aquarius** - Liquidity pools
 
+### Blend pool configuration and liquidation discovery
+
+`BlendProtocol.initialize()` reads pool metadata and reserves through the Blend SDK.
+It rejects RPC or incomplete reserve loads so callers can retry instead of using an
+empty placeholder. `getPoolConfig()` returns a copy of that on-chain configuration.
+See the [Blend discovery guide](../../../docs/guides/blend-discovery.md) for options,
+the indexer response contract, and event-history limits.
+
 ## 🎯 Features
 
 - ✅ **Unified Interface** - Common interface (`IDefiProtocol`) for all protocols

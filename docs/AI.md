@@ -391,6 +391,13 @@ Event-driven system for DeFi automation with:
 
 ### 4. DeFi Protocol Integration
 
+Blend pool discovery uses `PoolV2.load()` and `TokenMetadata.load()` to build an
+atomic cached snapshot. Use `getPoolConfig()` to read it; configure
+`poolConfigTtlMs`, `eventLookbackLedgers`, and optional `indexerUrl` through
+`ProtocolConfig`. Without an indexer, borrower discovery paginates retained pool
+events and cannot cover inactive historical borrowers. See
+[Blend discovery](guides/blend-discovery.md) for the response contract and example.
+
 Integration layer for Stellar DeFi protocols providing unified interfaces for:
 
 - **Blend Protocol**: Lending and borrowing
