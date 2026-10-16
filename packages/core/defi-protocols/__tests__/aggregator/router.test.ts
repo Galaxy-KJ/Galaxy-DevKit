@@ -113,6 +113,38 @@ describe('SmartRouter', () => {
     expect(route.highImpactWarning).toBe(true);
   });
 
+  it('ranks quotes using reported venue fees', async () => {
+    mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
+      if (assetIn.code === 'XLM' && assetOut.code === 'TEST') {
+        return {
+          assetIn, assetOut, amountIn, totalAmountOut: '100',
+          routes: [{ venue: 'sdex', amountIn, amountOut: '100', feePercent: 0, priceImpact: 0, path: [] }],
+          effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0,
+        };
+      }
+      if (assetIn.code === 'XLM' && assetOut.code === 'USDC') {
+        return {
+          assetIn, assetOut, amountIn, totalAmountOut: '100',
+          routes: [{ venue: 'sdex', amountIn, amountOut: '100', feePercent: 0, priceImpact: 0, path: [] }],
+          effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0,
+        };
+      }
+      if (assetIn.code === 'USDC' && assetOut.code === 'TEST') {
+        return {
+          assetIn, assetOut, amountIn, totalAmountOut: '100.1',
+          routes: [{ venue: 'soroswap', amountIn, amountOut: '100.1', feePercent: 2, priceImpact: 0, path: [] }],
+          effectivePrice: 1.001, savingsVsBestSingle: 0, totalPriceImpact: 0,
+        };
+      }
+      throw new Error(`No mock route for ${assetIn.code} -> ${assetOut.code}`);
+    });
+
+    const route = await findOptimalRoute(mockAggregator, XLM, TEST_TOKEN, '100');
+
+    expect(route.path.map(asset => asset.code)).toEqual(['XLM', 'TEST']);
+    expect(route.feeAdjustedOutput).toBe('100');
+  });
+
   it('respects maxHops limit', async () => {
       // Create a graph where a 3-hop route is better, but we restrict maxHops to 1
       mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
@@ -155,7 +187,7 @@ describe('SmartRouter', () => {
     const router = new SmartRouter(mockAggregator);
     await expect(router.findOptimalRoute(XLM, TEST_TOKEN, '100'))
       .rejects
-      .toThrow('All route quotes failed; check venue connectivity and liquidity');
+      .toThrow('All route quotes failed; check venue connectivity and liquidity: Liquidity error');
   });
 });
 

@@ -18,6 +18,8 @@ export interface Route {
   hops: RouteHop[];
   totalFeePercent: number;
   estimatedOutput: string;
+  /** Fee-adjusted estimate used to compare routes with different venue fees. */
+  feeAdjustedOutput: string;
   priceImpact: number;
   highImpactWarning: boolean;
 }
@@ -81,9 +83,9 @@ export class SmartRouter {
     );
 
     for (const result of pathEvaluations) {
-      if (result.status === 'fulfilled' && result.value !== null) {
+      if (result.status === 'fulfilled') {
         const route = result.value;
-        if (!bestRoute || new BigNumber(route.estimatedOutput).gt(bestRoute.estimatedOutput)) {
+        if (!bestRoute || new BigNumber(route.feeAdjustedOutput).gt(bestRoute.feeAdjustedOutput)) {
           bestRoute = route;
         }
       }
@@ -91,9 +93,10 @@ export class SmartRouter {
 
     if (!bestRoute) {
       if (failedQuotes.length > 0) {
-        const error = new Error('All route quotes failed; check venue connectivity and liquidity');
-        (error as Error & { cause?: unknown }).cause = failedQuotes[0].reason;
-        throw error;
+        const details = failedQuotes
+          .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason))
+          .join('; ');
+        throw new Error(`All route quotes failed; check venue connectivity and liquidity: ${details}`);
       }
       throw new Error('No valid routes could be executed to find quotes');
     }
@@ -101,48 +104,50 @@ export class SmartRouter {
     return bestRoute;
   }
 
-  private async evaluatePath(path: Asset[], initialAmount: string): Promise<Route | null> {
-      let currentAmount = initialAmount;
-      const hops: RouteHop[] = [];
-      let cumulativeFeePercent = 0;
-      let remainingPriceImpact = 1;
+  private async evaluatePath(path: Asset[], initialAmount: string): Promise<Route> {
+    let currentAmount = initialAmount;
+    const hops: RouteHop[] = [];
+    let cumulativeFeePercent = 0;
+    let remainingPriceImpact = 1;
 
-      for (let i = 0; i < path.length - 1; i++) {
-        const assetIn = path[i];
-        const assetOut = path[i + 1];
+    for (let i = 0; i < path.length - 1; i++) {
+      const assetIn = path[i];
+      const assetOut = path[i + 1];
 
-        const quote = await this.aggregator.getBestQuote(assetIn, assetOut, currentAmount);
-        
-        const venueName = quote.routes.map(r => r.venue).join(',');
-        
-        const hopFee = quote.routes.reduce((weightedFee, route) => {
-          const routeWeight = new BigNumber(route.amountIn).dividedBy(currentAmount);
-          return weightedFee.plus(routeWeight.multipliedBy(route.feePercent ?? 0));
-        }, new BigNumber(0)).toNumber();
-        const hopPriceImpact = Math.min(Math.max(quote.totalPriceImpact, 0), 100);
+      const quote = await this.aggregator.getBestQuote(assetIn, assetOut, currentAmount);
+      const venueName = quote.routes.map(r => r.venue).join(',');
+      const hopFee = quote.routes.reduce((weightedFee, route) => {
+        const routeWeight = new BigNumber(route.amountIn).dividedBy(currentAmount);
+        return weightedFee.plus(routeWeight.multipliedBy(route.feePercent ?? 0));
+      }, new BigNumber(0)).toNumber();
+      const hopPriceImpact = Math.min(Math.max(quote.totalPriceImpact, 0), 100);
 
-        hops.push({
-          venue: venueName,
-          assetIn,
-          assetOut,
-          amountIn: currentAmount,
-          amountOut: quote.totalAmountOut,
-          feePercent: hopFee
-        });
+      hops.push({
+        venue: venueName,
+        assetIn,
+        assetOut,
+        amountIn: currentAmount,
+        amountOut: quote.totalAmountOut,
+        feePercent: hopFee
+      });
 
-        cumulativeFeePercent += hopFee;
-        remainingPriceImpact *= 1 - hopPriceImpact / 100;
-        currentAmount = quote.totalAmountOut;
-      }
+      cumulativeFeePercent += hopFee;
+      remainingPriceImpact *= 1 - hopPriceImpact / 100;
+      currentAmount = quote.totalAmountOut;
+    }
 
-      return {
-        path,
-        hops,
-        totalFeePercent: cumulativeFeePercent,
-        estimatedOutput: currentAmount,
-        priceImpact: (1 - remainingPriceImpact) * 100,
-        highImpactWarning: (1 - remainingPriceImpact) * 100 >= HIGH_PRICE_IMPACT_PERCENT,
-      };
+    return {
+      path,
+      hops,
+      totalFeePercent: cumulativeFeePercent,
+      estimatedOutput: currentAmount,
+      feeAdjustedOutput: new BigNumber(currentAmount)
+        .multipliedBy(BigNumber.maximum(100 - cumulativeFeePercent, 0))
+        .dividedBy(100)
+        .toFixed(),
+      priceImpact: (1 - remainingPriceImpact) * 100,
+      highImpactWarning: (1 - remainingPriceImpact) * 100 >= HIGH_PRICE_IMPACT_PERCENT,
+    };
   }
 }
 

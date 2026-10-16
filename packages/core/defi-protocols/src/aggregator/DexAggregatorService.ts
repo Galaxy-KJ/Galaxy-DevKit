@@ -144,7 +144,14 @@ export class DexAggregatorService implements IDEXAggregator {
       .map((result) => result.value);
 
     if (routes.length === 0) {
-      throw new Error('No aggregator routes are available for the requested swap');
+      const failures = settled
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason));
+      throw new Error(
+        failures.length > 0
+          ? `No aggregator routes are available for the requested swap: ${failures.join('; ')}`
+          : 'No aggregator routes are available for the requested swap'
+      );
     }
 
     return routes;
