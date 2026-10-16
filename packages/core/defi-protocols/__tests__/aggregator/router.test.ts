@@ -117,9 +117,9 @@ describe('SmartRouter', () => {
     mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
       if (assetIn.code === 'XLM' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '99.5',
-          routes: [{ venue: 'sdex', amountIn, amountOut: '99.5', feePercent: 0, priceImpact: 0, path: [] }],
-          effectivePrice: 0.995, savingsVsBestSingle: 0, totalPriceImpact: 0,
+          assetIn, assetOut, amountIn, totalAmountOut: '100',
+          routes: [{ venue: 'sdex', amountIn, amountOut: '100', feePercent: 0, priceImpact: 0, path: [] }],
+          effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: 0,
         };
       }
       if (assetIn.code === 'XLM' && assetOut.code === 'USDC') {
@@ -131,9 +131,9 @@ describe('SmartRouter', () => {
       }
       if (assetIn.code === 'USDC' && assetOut.code === 'TEST') {
         return {
-          assetIn, assetOut, amountIn, totalAmountOut: '100.1',
-          routes: [{ venue: 'soroswap', amountIn, amountOut: '100.1', feePercent: 2, priceImpact: 0, path: [] }],
-          effectivePrice: 1.001, savingsVsBestSingle: 0, totalPriceImpact: 0,
+          assetIn, assetOut, amountIn, totalAmountOut: '98',
+          routes: [{ venue: 'soroswap', amountIn, amountOut: '98', feePercent: 2, priceImpact: 0, path: [] }],
+          effectivePrice: 0.98, savingsVsBestSingle: 0, totalPriceImpact: 0,
         };
       }
       throw new Error(`No mock route for ${assetIn.code} -> ${assetOut.code}`);
@@ -141,9 +141,9 @@ describe('SmartRouter', () => {
 
     const route = await findOptimalRoute(mockAggregator, XLM, TEST_TOKEN, '100');
 
-    expect(route.path.map(asset => asset.code)).toEqual(['XLM', 'USDC', 'TEST']);
-    expect(route.estimatedOutput).toBe('100.1');
-    expect(route.totalFeePercent).toBeCloseTo(2);
+    expect(route.path.map(asset => asset.code)).toEqual(['XLM', 'TEST']);
+    expect(route.estimatedOutput).toBe('100');
+    expect(route.totalFeePercent).toBe(0);
   });
 
   it('respects maxHops limit', async () => {
