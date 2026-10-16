@@ -93,6 +93,26 @@ describe('SmartRouter', () => {
     expect(route.hops[1].venue).toBe('soroswap');
   });
 
+  it('composes multi-hop impact and uses each venue fee', async () => {
+    mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
+      const direct = assetIn.code === 'XLM' && assetOut.code === 'TEST';
+      const venue = assetOut.code === 'USDC' ? 'sdex' : 'soroswap';
+      const amountOut = direct ? '80' : assetIn.code === 'XLM' ? '100' : '95';
+      const impact = direct ? 1 : assetIn.code === 'XLM' ? 10 : 20;
+      return {
+        assetIn, assetOut, amountIn, totalAmountOut: amountOut,
+        routes: [{ venue, amountIn, amountOut, feePercent: venue === 'sdex' ? 0 : 0.3, priceImpact: impact, path: [] }],
+        effectivePrice: 1, savingsVsBestSingle: 0, totalPriceImpact: impact,
+      } as any;
+    });
+
+    const route = await findOptimalRoute(mockAggregator, XLM, TEST_TOKEN, '100');
+    expect(route.hops.map((hop) => hop.feePercent)).toEqual([0, 0.3]);
+    expect(route.totalFeePercent).toBeCloseTo(0.3);
+    expect(route.priceImpact).toBeCloseTo(28);
+    expect(route.highImpactWarning).toBe(true);
+  });
+
   it('respects maxHops limit', async () => {
       // Create a graph where a 3-hop route is better, but we restrict maxHops to 1
       mockAggregator.getBestQuote.mockImplementation(async (assetIn: Asset, assetOut: Asset, amountIn: string) => {
@@ -135,7 +155,7 @@ describe('SmartRouter', () => {
     const router = new SmartRouter(mockAggregator);
     await expect(router.findOptimalRoute(XLM, TEST_TOKEN, '100'))
       .rejects
-      .toThrow('No valid routes could be executed to find quotes');
+      .toThrow('All route quotes failed; check venue connectivity and liquidity');
   });
 });
 

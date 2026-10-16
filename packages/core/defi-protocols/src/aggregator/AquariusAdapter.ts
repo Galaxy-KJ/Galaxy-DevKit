@@ -35,6 +35,7 @@ export interface AquariusAdapterOptions {
 /** Raw shape returned by the Aquarius quote endpoint. */
 interface AquariusQuoteResponse {
   amount_out?: string;
+  fee_percent?: string | number;
   price_impact?: string | number;
   path?: string[];
 }
@@ -87,6 +88,7 @@ export class AquariusAdapter {
       amountOut: amountOut
         .decimalPlaces(DISPLAY_DECIMALS)
         .toFixed(DISPLAY_DECIMALS),
+      ...(body.fee_percent === undefined ? {} : { feePercent: this.toNumber(body.fee_percent) }),
       priceImpact: this.toNumber(body.price_impact),
       path: body.path ?? [],
     };

@@ -19,7 +19,10 @@ export interface Route {
   totalFeePercent: number;
   estimatedOutput: string;
   priceImpact: number;
+  highImpactWarning: boolean;
 }
+
+const HIGH_PRICE_IMPACT_PERCENT = 5;
 
 const COMMON_TRANSIT_ASSETS: Asset[] = [
   { code: 'XLM', type: 'native' },
@@ -73,6 +76,10 @@ export class SmartRouter {
       candidatePaths.map(path => this.evaluatePath(path, amount))
     );
 
+    const failedQuotes = pathEvaluations.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+
     for (const result of pathEvaluations) {
       if (result.status === 'fulfilled' && result.value !== null) {
         const route = result.value;
@@ -83,6 +90,11 @@ export class SmartRouter {
     }
 
     if (!bestRoute) {
+      if (failedQuotes.length > 0) {
+        const error = new Error('All route quotes failed; check venue connectivity and liquidity');
+        (error as Error & { cause?: unknown }).cause = failedQuotes[0].reason;
+        throw error;
+      }
       throw new Error('No valid routes could be executed to find quotes');
     }
 
@@ -90,10 +102,10 @@ export class SmartRouter {
   }
 
   private async evaluatePath(path: Asset[], initialAmount: string): Promise<Route | null> {
-    try {
       let currentAmount = initialAmount;
       const hops: RouteHop[] = [];
       let cumulativeFeePercent = 0;
+      let remainingPriceImpact = 1;
 
       for (let i = 0; i < path.length - 1; i++) {
         const assetIn = path[i];
@@ -103,8 +115,11 @@ export class SmartRouter {
         
         const venueName = quote.routes.map(r => r.venue).join(',');
         
-        // Typical fee for DEX hops (e.g. 0.3%)
-        const hopFee = 0.3; 
+        const hopFee = quote.routes.reduce((weightedFee, route) => {
+          const routeWeight = new BigNumber(route.amountIn).dividedBy(currentAmount);
+          return weightedFee.plus(routeWeight.multipliedBy(route.feePercent ?? 0));
+        }, new BigNumber(0)).toNumber();
+        const hopPriceImpact = Math.min(Math.max(quote.totalPriceImpact, 0), 100);
 
         hops.push({
           venue: venueName,
@@ -116,6 +131,7 @@ export class SmartRouter {
         });
 
         cumulativeFeePercent += hopFee;
+        remainingPriceImpact *= 1 - hopPriceImpact / 100;
         currentAmount = quote.totalAmountOut;
       }
 
@@ -124,12 +140,9 @@ export class SmartRouter {
         hops,
         totalFeePercent: cumulativeFeePercent,
         estimatedOutput: currentAmount,
-        priceImpact: 0 // Placeholder, we can refine this later
+        priceImpact: (1 - remainingPriceImpact) * 100,
+        highImpactWarning: (1 - remainingPriceImpact) * 100 >= HIGH_PRICE_IMPACT_PERCENT,
       };
-    } catch {
-      // If any hop fails (e.g., no liquidity for that pair), this path is invalid
-      return null;
-    }
   }
 }
 
