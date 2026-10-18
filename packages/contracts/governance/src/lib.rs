@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Map, String, Symbol,
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -10,23 +10,28 @@ const PROPOSALS: Symbol = symbol_short!("PROPOSALS");
 const VOTES: Symbol = symbol_short!("VOTES"); // Map<(Address, u32), VoteRecord>
 const LOCKS: Symbol = symbol_short!("LOCKS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
+const ADMIN: Symbol = symbol_short!("ADMIN");
+const TOKEN: Symbol = symbol_short!("TOKEN");
+const VOTING_PERIOD: Symbol = symbol_short!("VOTING_PERIOD");
+const QUORUM: Symbol = symbol_short!("QUORUM");
+const ACTIVE_VOTE_COUNT: Symbol = symbol_short!("ACTIVE_VOTE_COUNT"); // Map<Address, u32>
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-/// Voting period in ledger seconds (7 days at ~5 s/ledger).
-const VOTING_PERIOD_SECS: u64 = 7 * 24 * 60 * 60;
+/// Default voting period in ledger seconds (7 days at ~5 s/ledger).
+pub const DEFAULT_VOTING_PERIOD_SECS: u64 = 7 * 24 * 60 * 60;
 
-/// Minimum total weight (for + against) required for a proposal to pass.
+/// Default minimum total weight (for + against) required for a proposal to pass.
 /// Prevents low-participation proposals from executing.
-const QUORUM_THRESHOLD: i128 = 1_000;
+const DEFAULT_QUORUM_THRESHOLD: i128 = 1_000;
 
 /// Minimum FOR weight as a percentage of total votes cast (50 % = majority).
 const APPROVAL_THRESHOLD_PCT: i128 = 50;
 
 /// Proposals, votes and locks can sit idle for weeks between interactions
 /// (the voting period alone is 7 days), so use a longer TTL horizon.
-const INSTANCE_TTL_THRESHOLD: u32 = 241_920; // ~14 days
-const INSTANCE_TTL_EXTEND: u32 = 483_840; // ~28 days
+pub const INSTANCE_TTL_THRESHOLD: u32 = 241_920; // ~14 days
+pub const INSTANCE_TTL_EXTEND: u32 = 483_840; // ~28 days
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,6 +95,40 @@ pub struct GovernanceContract;
 
 #[contractimpl]
 impl GovernanceContract {
+    // ── Initialization ───────────────────────────────────────────────────────
+
+    /// Initialize the governance contract with configuration.
+    ///
+    /// Can only be called once. Sets the admin address, governance token address,
+    /// voting period, and quorum threshold.
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        token: Address,
+        voting_period: u64,
+        quorum: i128,
+    ) {
+        if env.storage().instance().has(&ADMIN) {
+            panic!("contract already initialized");
+        }
+
+        if voting_period == 0 {
+            panic!("voting period must be positive");
+        }
+
+        if quorum <= 0 {
+            panic!("quorum must be positive");
+        }
+
+        env.storage().instance().set(&ADMIN, &admin);
+        env.storage().instance().set(&TOKEN, &token);
+        env.storage().instance().set(&VOTING_PERIOD, &voting_period);
+        env.storage().instance().set(&QUORUM, &quorum);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+    }
+
     // ── Proposal management ───────────────────────────────────────────────────
 
     /// Create a new governance proposal.
@@ -117,12 +156,13 @@ impl GovernanceContract {
         let next_id = id.checked_add(1).expect("proposal ID overflow");
 
         let now = env.ledger().timestamp();
+        let voting_period: u64 = env.storage().instance().get(&VOTING_PERIOD).unwrap();
         let proposal = Proposal {
             id,
             proposer,
             action,
             created_at: now,
-            voting_ends_at: now + VOTING_PERIOD_SECS,
+            voting_ends_at: now + voting_period,
             votes_for: 0,
             votes_against: 0,
             status: ProposalStatus::Active,
@@ -200,6 +240,14 @@ impl GovernanceContract {
         all_votes.set(vote_key, record);
         env.storage().instance().set(&VOTES, &all_votes);
 
+        // Track active vote count for this voter.
+        let mut active_vote_count: Map<Address, u32> =
+            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+        let current_count = active_vote_count.get(voter.clone()).unwrap_or(0);
+        let new_count = current_count.checked_add(1).expect("active vote count overflow");
+        active_vote_count.set(voter, new_count);
+        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
+
         // Accumulate weight.
         if support {
             proposal.votes_for = proposal
@@ -245,7 +293,8 @@ impl GovernanceContract {
             .checked_add(proposal.votes_against)
             .expect("total votes overflow");
 
-        let passed = total >= QUORUM_THRESHOLD
+        let quorum: i128 = env.storage().instance().get(&QUORUM).unwrap();
+        let passed = total >= quorum
             && proposal.votes_for * 100 > total * APPROVAL_THRESHOLD_PCT;
 
         proposal.status = if passed {
@@ -256,6 +305,23 @@ impl GovernanceContract {
 
         proposals.set(proposal_id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
+
+        // Decrement active vote count for all voters on this proposal.
+        let all_votes: Map<(Address, u32), VoteRecord> =
+            env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
+        let mut active_vote_count: Map<Address, u32> =
+            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+
+        for (voter, vote_proposal_id) in all_votes.keys() {
+            if vote_proposal_id == proposal_id {
+                let current_count = active_vote_count.get(voter.clone()).unwrap_or(0);
+                if current_count > 0 {
+                    active_vote_count.set(voter, current_count - 1);
+                }
+            }
+        }
+
+        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -293,15 +359,26 @@ impl GovernanceContract {
 
     /// Lock `amount` governance tokens to gain voting weight.
     ///
-    /// Calling again overwrites the existing lock (adds to it conceptually —
-    /// in a production contract this would call a token contract's
-    /// `transfer_from` to escrow the tokens on-chain).
+    /// Transfers tokens from the voter to the contract via the token contract's
+    /// `transfer_from` method. The voter must have approved the governance contract
+    /// to spend their tokens beforehand.
     pub fn lock_tokens(env: Env, voter: Address, amount: i128) {
         voter.require_auth();
 
         if amount <= 0 {
             panic!("lock amount must be positive");
         }
+
+        let token_address: Address = env.storage().instance().get(&TOKEN).expect("contract not initialized");
+        let contract_address = env.current_contract_address();
+
+        // Transfer tokens from voter to contract (escrow)
+        token::Client::new(&env, &token_address).transfer_from(
+            &contract_address,
+            &voter,
+            &contract_address,
+            &amount,
+        );
 
         let mut locks: Map<Address, TokenLock> =
             env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
@@ -334,17 +411,33 @@ impl GovernanceContract {
     /// A voter may only unlock after all proposals they voted on have been
     /// finalized (Passed, Rejected, or Executed) — preventing double-spend
     /// of voting weight across overlapping proposals.
-    /// For simplicity in this implementation the caller asserts readiness;
-    /// a production version would iterate active vote records.
     pub fn unlock_tokens(env: Env, voter: Address) {
         voter.require_auth();
+
+        // Check if voter has active votes on non-finalized proposals.
+        let active_vote_count: Map<Address, u32> =
+            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+        let count = active_vote_count.get(voter.clone()).unwrap_or(0);
+
+        if count > 0 {
+            panic!("cannot unlock tokens while having active votes on non-finalized proposals");
+        }
 
         let mut locks: Map<Address, TokenLock> =
             env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
 
-        if !locks.contains_key(voter.clone()) {
-            panic!("no token lock found for voter");
-        }
+        let lock = locks.get(voter.clone()).expect("no token lock found for voter");
+        let amount = lock.amount;
+
+        // Transfer tokens back to voter.
+        let token_address: Address = env.storage().instance().get(&TOKEN).expect("contract not initialized");
+        let contract_address = env.current_contract_address();
+
+        token::Client::new(&env, &token_address).transfer(
+            &contract_address,
+            &voter,
+            &amount,
+        );
 
         locks.remove(voter);
         env.storage().instance().set(&LOCKS, &locks);
@@ -393,399 +486,7 @@ impl GovernanceContract {
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         env.storage().instance().get(&NEXT_ID).unwrap_or(0u32)
     }
-
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::{
-        testutils::{storage::Instance as _, Address as _, Ledger},
-        Address, Env, String,
-    };
-
-    fn setup() -> (Env, GovernanceContractClient<'static>) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, GovernanceContract);
-        let client = GovernanceContractClient::new(&env, &contract_id);
-        (env, client)
-    }
-
-    // ── Happy path ────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_lock_and_propose() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-
-        let lock = client.get_lock(&proposer).unwrap();
-        assert_eq!(lock.amount, 500);
-
-        let action = String::from_str(&env, "transfer_treasury_100_USDC");
-        let id = client.propose(&proposer, &action);
-        assert_eq!(id, 0);
-
-        let proposal = client.get_proposal(&0).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Active);
-        assert_eq!(proposal.votes_for, 0);
-        assert_eq!(proposal.votes_against, 0);
-    }
-
-    #[test]
-    fn test_vote_for_and_against() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter_a = Address::generate(&env);
-        let voter_b = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter_a, &800);
-        client.lock_tokens(&voter_b, &400);
-
-        let action = String::from_str(&env, "upgrade_protocol_v2");
-        let id = client.propose(&proposer, &action);
-
-        client.vote(&voter_a, &id, &800, &true);
-        client.vote(&voter_b, &id, &400, &false);
-
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.votes_for, 800);
-        assert_eq!(proposal.votes_against, 400);
-    }
-
-    #[test]
-    fn test_full_lifecycle_passes() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-        let executor = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &2_000);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "mint_rewards"));
-
-        client.vote(&voter, &id, &2_000, &true);
-
-        // Advance ledger past voting period.
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-        });
-
-        client.finalize(&id);
-
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Passed);
-
-        client.execute(&executor, &id);
-
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Executed);
-    }
-
-    #[test]
-    fn test_full_lifecycle_rejected_low_approval() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter_for = Address::generate(&env);
-        let voter_against = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter_for, &400);
-        client.lock_tokens(&voter_against, &700);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "change_fee_params"));
-
-        client.vote(&voter_for, &id, &400, &true);
-        client.vote(&voter_against, &id, &700, &false);
-
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-        });
-
-        client.finalize(&id);
-
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Rejected);
-    }
-
-    #[test]
-    fn test_full_lifecycle_rejected_below_quorum() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &100);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "minor_param_update"));
-
-        // voter_for = 100 — below QUORUM_THRESHOLD of 1_000
-        client.vote(&voter, &id, &100, &true);
-
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-        });
-
-        client.finalize(&id);
-
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Rejected);
-    }
-
-    // ── Edge / error cases ────────────────────────────────────────────────────
-
-    #[test]
-    #[should_panic(expected = "proposer must lock tokens before creating a proposal")]
-    fn test_propose_without_lock_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        client.propose(&proposer, &String::from_str(&env, "no_lock_action"));
-    }
-
-    #[test]
-    #[should_panic(expected = "voter has no locked tokens")]
-    fn test_vote_without_lock_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.vote(&voter, &id, &100, &true);
-    }
-
-    #[test]
-    #[should_panic(expected = "voting weight exceeds locked token balance")]
-    fn test_vote_exceeds_lock_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &200);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.vote(&voter, &id, &500, &true); // 500 > 200 locked
-    }
-
-    #[test]
-    #[should_panic(expected = "voting period has ended")]
-    fn test_vote_after_period_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-        client.lock_tokens(&voter, &500);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-        });
-
-        client.vote(&voter, &id, &500, &true);
-    }
-
-    #[test]
-    #[should_panic(expected = "voting period has not yet ended")]
-    fn test_finalize_before_period_ends_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.finalize(&id);
-    }
-
-    #[test]
-    #[should_panic(expected = "proposal must be in Passed status to execute")]
-    fn test_execute_rejected_proposal_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-        let executor = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &100);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.vote(&voter, &id, &100, &true); // quorum not met
-
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-        });
-
-        client.finalize(&id);
-        client.execute(&executor, &id); // status = Rejected → panic
-    }
-
-    #[test]
-    #[should_panic(expected = "proposal must be in Passed status to execute")]
-    fn test_execute_active_proposal_panics() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let executor = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.execute(&executor, &id);
-    }
-
-    #[test]
-    fn test_accumulate_lock_tokens() {
-        let (env, client) = setup();
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&voter, &300);
-        client.lock_tokens(&voter, &700);
-
-        let lock = client.get_lock(&voter).unwrap();
-        assert_eq!(lock.amount, 1_000);
-    }
-
-    #[test]
-    fn test_unlock_tokens() {
-        let (env, client) = setup();
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&voter, &500);
-        client.unlock_tokens(&voter);
-
-        assert!(client.get_lock(&voter).is_none());
-    }
-
-    #[test]
-    fn test_next_proposal_id_increments() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &500);
-
-        assert_eq!(client.next_proposal_id(), 0);
-        client.propose(&proposer, &String::from_str(&env, "p1"));
-        assert_eq!(client.next_proposal_id(), 1);
-        client.propose(&proposer, &String::from_str(&env, "p2"));
-        assert_eq!(client.next_proposal_id(), 2);
-    }
-
-    #[test]
-    fn test_get_vote_record() {
-        let (env, client) = setup();
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &600);
-
-        let id = client.propose(&proposer, &String::from_str(&env, "action"));
-        client.vote(&voter, &id, &600, &true);
-
-        let record = client.get_vote(&voter, &id).unwrap();
-        assert_eq!(record.weight, 600);
-        assert!(record.support);
-    }
-
-    // ── TTL — instance storage survivability and exact boundary behavior ──────
-
-    #[test]
-    fn test_lock_tokens_extends_instance_ttl() {
-        let (env, client) = setup();
-        env.ledger().with_mut(|li| li.sequence_number = 100);
-        let voter = Address::generate(&env);
-
-        client.lock_tokens(&voter, &500);
-
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
-    }
-
-    #[test]
-    fn test_instance_ttl_survives_past_initial_threshold_via_propose() {
-        let (env, client) = setup();
-        env.ledger().with_mut(|li| li.sequence_number = 100);
-        let proposer = Address::generate(&env);
-        client.lock_tokens(&proposer, &500);
-
-        env.ledger()
-            .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
-        client.propose(&proposer, &String::from_str(&env, "keep alive"));
-
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
-    }
-
-    #[test]
-    fn test_instance_ttl_boundary_behavior() {
-        let (env, client) = setup();
-        env.ledger().with_mut(|li| li.sequence_number = 100);
-        let voter = Address::generate(&env);
-        client.lock_tokens(&voter, &500);
-
-        let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
-        env.ledger()
-            .with_mut(|li| li.sequence_number = just_before_threshold);
-        client.lock_tokens(&voter, &1);
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(
-            ttl,
-            INSTANCE_TTL_THRESHOLD + 1,
-            "must not re-extend before threshold"
-        );
-
-        env.ledger()
-            .with_mut(|li| li.sequence_number = just_before_threshold + 1);
-        client.lock_tokens(&voter, &1);
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND, "must re-extend at/past threshold");
-    }
-
-    #[test]
-    fn test_finalize_and_execute_extend_instance_ttl() {
-        let (env, client) = setup();
-        env.ledger().with_mut(|li| li.sequence_number = 100);
-        let proposer = Address::generate(&env);
-        let voter = Address::generate(&env);
-        let executor = Address::generate(&env);
-
-        client.lock_tokens(&proposer, &100);
-        client.lock_tokens(&voter, &2_000);
-        let id = client.propose(&proposer, &String::from_str(&env, "mint_rewards"));
-        client.vote(&voter, &id, &2_000, &true);
-
-        env.ledger().with_mut(|li| {
-            li.timestamp += VOTING_PERIOD_SECS + 1;
-            li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1;
-        });
-        client.finalize(&id);
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
-
-        env.ledger()
-            .with_mut(|li| li.sequence_number += INSTANCE_TTL_EXTEND - 1);
-        client.execute(&executor, &id);
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
-    }
-
-    #[test]
-    fn test_unlock_tokens_extends_instance_ttl() {
-        let (env, client) = setup();
-        env.ledger().with_mut(|li| li.sequence_number = 100);
-        let voter = Address::generate(&env);
-        client.lock_tokens(&voter, &500);
-
-        env.ledger()
-            .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
-        client.unlock_tokens(&voter);
-
-        let ttl = env.as_contract(&client.address, || env.storage().instance().get_ttl());
-        assert_eq!(ttl, INSTANCE_TTL_EXTEND);
-    }
-}
+mod test;
