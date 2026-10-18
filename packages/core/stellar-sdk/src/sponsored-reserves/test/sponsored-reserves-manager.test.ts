@@ -14,6 +14,19 @@ const mockServer = {
   loadAccount: jest.fn(),
   submitTransaction: jest.fn(),
   feeStats: jest.fn(),
+  accounts: jest.fn(),
+  claimableBalances: jest.fn(),
+  offers: jest.fn(),
+};
+const mockRpcServer = { getLedgerEntries: jest.fn() };
+const mockLedgerEntry = {
+  ext: () => ({
+    switch: () => ({ name: 'ledgerEntryExtensionV1' }),
+    v1: () => ({
+      sponsoringId: () => ({ ed25519: () => new Uint8Array(32) }),
+    }),
+  }),
+  data: () => ({ data: () => ({ dataName: () => 'profile' }) }),
 };
 
 jest.mock('@stellar/stellar-sdk', () => ({
@@ -28,6 +41,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
     })),
     fromPublicKey: jest.fn(key => ({
       publicKey: jest.fn(() => key),
+      xdrAccountId: jest.fn(() => ({ accountId: key })),
     })),
   },
   StrKey: {
@@ -35,6 +49,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
     isValidEd25519SecretSeed: jest.fn(key => key.startsWith('S') && key.length > 40),
     isValidPreAuthTx: jest.fn(() => true),
     isValidSha256Hash: jest.fn(() => true),
+    encodeEd25519PublicKey: jest.fn(() => 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'),
   },
   Asset: Object.assign(
     jest.fn((code, issuer) => ({ code, issuer, type: 'credit_alphanum4' })),
@@ -89,6 +104,12 @@ jest.mock('@stellar/stellar-sdk', () => ({
     })),
   })),
   Horizon: { Server: jest.fn(() => mockServer) },
+  rpc: { Server: jest.fn(() => mockRpcServer) },
+  xdr: {
+    LedgerKey: { data: jest.fn(key => key) },
+    LedgerKeyData: jest.fn(options => options),
+    LedgerEntry: { fromXDR: jest.fn(() => mockLedgerEntry) },
+  },
   BASE_FEE: '100',
   Claimant: {
     predicateUnconditional: jest.fn(() => ({ type: 'unconditional' })),
@@ -112,6 +133,7 @@ describe('SponsoredReservesManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     manager = new SponsoredReservesManager(mockNetworkConfig);
+    mockRpcServer.getLedgerEntries.mockResolvedValue({ entries: [] });
 
     mockServer.feeStats.mockResolvedValue({
       max_fee: { mode: '100' },
@@ -441,6 +463,151 @@ describe('SponsoredReservesManager', () => {
       );
 
       expect(entries.every(e => e.entryType === 'trustline')).toBe(true);
+    });
+
+    it('should resolve data-entry sponsorship through RPC ledger entries', async () => {
+      mockServer.loadAccount.mockResolvedValue({
+        sponsor: undefined,
+        balances: [],
+        signers: [],
+        data_attr: { profile: 'encoded-value' },
+      });
+      mockRpcServer.getLedgerEntries.mockResolvedValue({ entries: [{ xdr: 'mock-xdr' }] });
+
+      const entries = await manager.getSponsoredEntries(
+        'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        { entryType: 'data' }
+      );
+
+      expect(entries).toEqual([expect.objectContaining({
+        entryType: 'data',
+        sponsor: 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        entryId: 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:profile',
+      })]);
+      expect(mockRpcServer.getLedgerEntries).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getEntriesSponsoredBy', () => {
+    it('collects sponsored accounts from all Horizon pages and honors query options', async () => {
+      const secondPage = {
+        records: [{
+          account_id: 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          sponsor: 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          balances: [],
+          signers: [],
+          data_attr: {},
+        }],
+      };
+      const firstPage = {
+        records: [{
+          account_id: 'GSPONSORED2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          sponsor: 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          balances: [],
+          signers: [],
+          data_attr: {},
+        }],
+        next: jest.fn().mockResolvedValue(secondPage),
+      };
+      const queryBuilder = {
+        forSponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue(firstPage),
+      };
+      mockServer.accounts.mockReturnValue(queryBuilder);
+
+      const entries = await manager.getEntriesSponsoredBy(
+        'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        {
+          entryType: 'account',
+          cursor: 'account:GSPONSORED2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          order: 'asc',
+          limit: 1,
+        }
+      );
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0].sponsoredAccount).toBe('GSPONSORED2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+      expect(firstPage.next).toHaveBeenCalledTimes(1);
+      expect(queryBuilder.forSponsor).toHaveBeenCalledWith(
+        'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+      );
+      expect(queryBuilder.call).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies one cursor to combined account and claimable-balance results', async () => {
+      const sponsoredAccount = 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+      mockServer.accounts.mockReturnValue({
+        forSponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{
+            account_id: sponsoredAccount,
+            sponsor: 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+            balances: [],
+            signers: [],
+            data_attr: {},
+          }],
+        }),
+      });
+      mockServer.claimableBalances.mockReturnValue({
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{ id: 'claimable-id', claimants: [], asset: 'native', amount: '1' }],
+        }),
+      });
+      mockServer.offers.mockReturnValue({
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({ records: [] }),
+      });
+
+      const entries = await manager.getEntriesSponsoredBy(
+        'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        { cursor: `account:${sponsoredAccount}`, order: 'asc' }
+      );
+
+      expect(entries.map((entry) => entry.entryType)).toEqual(['claimable_balance']);
+    });
+
+    it('queries sponsored claimable balances and offers', async () => {
+      const claimableBuilder = {
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{
+            id: 'claimable-id',
+            claimants: [{ destination: 'GCLAIMANTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' }],
+            asset: 'native',
+            amount: '2.0000000',
+          }],
+        }),
+      };
+      const offersBuilder = {
+        sponsor: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [{
+            id: 7,
+            seller: 'GOFFERSELLERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+            selling: { asset_type: 'native' },
+            buying: { asset_type: 'credit_alphanum4', asset_code: 'USD' },
+            amount: '1.0000000',
+            price: '1/2',
+          }],
+        }),
+      };
+      mockServer.claimableBalances.mockReturnValue(claimableBuilder);
+      mockServer.offers.mockReturnValue(offersBuilder);
+      const sponsor = 'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+
+      const balances = await manager.getEntriesSponsoredBy(sponsor, {
+        entryType: 'claimable_balance',
+      });
+      const offers = await manager.getEntriesSponsoredBy(sponsor, { entryType: 'offer' });
+
+      expect(claimableBuilder.sponsor).toHaveBeenCalledWith(sponsor);
+      expect(balances[0]).toEqual(expect.objectContaining({
+        entryType: 'claimable_balance',
+        entryId: 'claimable-id',
+      }));
+      expect(offersBuilder.sponsor).toHaveBeenCalledWith(sponsor);
+      expect(offers[0]).toEqual(expect.objectContaining({ entryType: 'offer', entryId: '7' }));
     });
   });
 

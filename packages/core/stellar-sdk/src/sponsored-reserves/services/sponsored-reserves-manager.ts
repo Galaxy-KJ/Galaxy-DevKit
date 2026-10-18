@@ -14,10 +14,13 @@ import {
   TransactionBuilder,
   Memo,
   Horizon,
+  rpc as SorobanRpc,
+  StrKey,
   xdr,
   Claimant as StellarClaimant,
 } from '@stellar/stellar-sdk';
 import { NetworkConfig } from '../../types/stellar-types.js';
+import { resolveNetwork } from '../../utils/network-utils.js';
 import {
   SponsorshipConfig,
   SponsoredEntry,
@@ -48,6 +51,7 @@ import {
  */
 export class SponsoredReservesManager {
   private server: Horizon.Server;
+  private rpcServer: SorobanRpc.Server;
   private networkConfig: NetworkConfig;
 
   /**
@@ -57,6 +61,117 @@ export class SponsoredReservesManager {
   constructor(networkConfig: NetworkConfig) {
     this.networkConfig = networkConfig;
     this.server = new Horizon.Server(networkConfig.horizonUrl);
+    this.rpcServer = new SorobanRpc.Server(
+      networkConfig.rpcUrl || resolveNetwork(networkConfig.network).rpcUrl
+    );
+  }
+
+  /** Collect every page returned by a Horizon call builder. */
+  private async collectPages<T>(callBuilder: any): Promise<T[]> {
+    const records: T[] = [];
+    let page = await callBuilder.call();
+
+    while (page) {
+      records.push(...page.records);
+      if (typeof page.next !== 'function') {
+        break;
+      }
+      page = await page.next();
+    }
+
+    return records;
+  }
+
+  /** Apply stable ordering, a composite entry cursor, and a final result limit. */
+  private applySponsoredEntryOptions(
+    entries: SponsoredEntry[],
+    options: SponsoredEntriesQueryOptions
+  ): SponsoredEntry[] {
+    const direction = options.order === 'desc' ? -1 : 1;
+    const cursorKey = options.cursor;
+    const result = [...entries].sort((left, right) => {
+      const leftKey = `${left.entryType}:${left.entryId}`;
+      const rightKey = `${right.entryType}:${right.entryId}`;
+      return direction * leftKey.localeCompare(rightKey);
+    });
+
+    if (cursorKey) {
+      const cursorIndex = result.findIndex(
+        (entry) => `${entry.entryType}:${entry.entryId}` === cursorKey
+      );
+      const nextIndex = cursorIndex >= 0
+        ? cursorIndex + 1
+        : result.findIndex((entry) =>
+          direction * `${entry.entryType}:${entry.entryId}`.localeCompare(cursorKey) > 0
+        );
+      if (nextIndex < 0) {
+        return [];
+      }
+      result.splice(0, nextIndex);
+    }
+
+    return options.limit === undefined
+      ? result
+      : result.slice(0, Math.max(0, options.limit));
+  }
+
+  /** Resolve sponsorship metadata for the named data entries using Stellar RPC. */
+  private async getSponsoredDataEntries(
+    accountPublicKey: string,
+    dataAttributes: Record<string, string>
+  ): Promise<SponsoredEntry[]> {
+    const names = Object.keys(dataAttributes);
+    if (names.length === 0) {
+      return [];
+    }
+
+    if (typeof this.rpcServer.getLedgerEntries !== 'function') {
+      const error = new Error('RPC ledger entry lookup is not supported by this server');
+      error.name = 'NotSupportedError';
+      throw error;
+    }
+
+    try {
+      const accountId = Keypair.fromPublicKey(accountPublicKey).xdrAccountId();
+      const ledgerKeys = names.map((dataName) =>
+        xdr.LedgerKey.data(
+          new xdr.LedgerKeyData({ accountId, dataName })
+        )
+      );
+      const response = await this.rpcServer.getLedgerEntries(...ledgerKeys);
+      if (!response.entries || response.entries.length !== names.length) {
+        throw new Error('RPC did not return every requested data ledger entry');
+      }
+
+      return (response.entries || []).flatMap((record: any) => {
+        const ledgerEntry = xdr.LedgerEntry.fromXDR(record.xdr, 'base64');
+        const extension = ledgerEntry.ext();
+        if (extension.switch().name !== 'ledgerEntryExtensionV1') {
+          return [];
+        }
+
+        const sponsor = extension.v1().sponsoringId();
+        if (!sponsor) {
+          return [];
+        }
+
+        const sponsorPublicKey = StrKey.encodeEd25519PublicKey(sponsor.ed25519());
+        const dataName = ledgerEntry.data().data().dataName();
+        return [{
+          entryType: 'data' as const,
+          sponsor: sponsorPublicKey,
+          sponsoredAccount: accountPublicKey,
+          entryId: `${accountPublicKey}:${dataName}`,
+          details: { name: dataName, value: dataAttributes[dataName] },
+        }];
+      });
+    } catch (error) {
+      const notSupported = new Error(
+        `Unable to resolve data-entry sponsorship: ${error instanceof Error ? error.message : String(error)}`
+      );
+      notSupported.name = 'NotSupportedError';
+      throw notSupported;
+    }
   }
 
   /**
@@ -398,11 +513,12 @@ export class SponsoredReservesManager {
       }
 
       // Check data entries for sponsorship
-      // Note: Data entry sponsorship info requires querying effects/operations
-      // This is a placeholder for future implementation
       if (!options.entryType || options.entryType === 'data') {
-        // Data entries with sponsors would need to be checked via effects/operations
-        // Full implementation would iterate through account data and check sponsorship
+        const dataEntries = await this.getSponsoredDataEntries(
+          accountPublicKey,
+          account.data_attr || {}
+        );
+        entries.push(...dataEntries);
       }
 
       // Check signers for sponsorship
@@ -421,13 +537,11 @@ export class SponsoredReservesManager {
         }
       }
 
-      // Apply limit
-      if (options.limit && entries.length > options.limit) {
-        return entries.slice(0, options.limit);
-      }
-
-      return entries;
+      return this.applySponsoredEntryOptions(entries, options);
     } catch (error) {
+      if (error instanceof Error && error.name === 'NotSupportedError') {
+        throw error;
+      }
       if (error instanceof Error && error.message.includes('404')) {
         return [];
       }
@@ -445,25 +559,115 @@ export class SponsoredReservesManager {
    */
   async getEntriesSponsoredBy(
     sponsorPublicKey: string,
-    _options: SponsoredEntriesQueryOptions = {}
+    options: SponsoredEntriesQueryOptions = {}
   ): Promise<SponsoredEntry[]> {
     if (!validatePublicKey(sponsorPublicKey)) {
       throw new Error('Invalid sponsor public key');
     }
 
-    // This requires querying accounts and checking their sponsors
-    // A full implementation would use Horizon's effects or a dedicated API
-    // For now, return empty array - would need indexer support for full implementation
     const entries: SponsoredEntry[] = [];
+    const include = (entryType: SponsoredEntry['entryType']) =>
+      !options.entryType || options.entryType === entryType;
 
-    // Note: Stellar Horizon doesn't provide a direct API to query entries sponsored BY an account
-    // This would require either:
-    // 1. An indexer that tracks sponsorship relationships
-    // 2. Querying all accounts and filtering (not practical)
-    // 3. Tracking sponsorship events from the transaction history
-    // The _options parameter is reserved for future use with an indexer
+    try {
+      if (include('account') || include('trustline') || include('signer') || include('data')) {
+        const accountsQuery = this.server.accounts().forSponsor(sponsorPublicKey);
+        const accounts = await this.collectPages<any>(accountsQuery);
 
-    return entries;
+        for (const account of accounts) {
+          const accountId = account.account_id || account.id;
+          if (include('account') && account.sponsor === sponsorPublicKey) {
+            entries.push({
+              entryType: 'account',
+              sponsor: sponsorPublicKey,
+              sponsoredAccount: accountId,
+              entryId: accountId,
+              details: { type: 'account' },
+            });
+          }
+
+          if (include('trustline')) {
+            for (const balance of account.balances || []) {
+              if (balance.sponsor !== sponsorPublicKey || balance.asset_type === 'native') {
+                continue;
+              }
+              const asset = { code: balance.asset_code, issuer: balance.asset_issuer };
+              entries.push({
+                entryType: 'trustline',
+                sponsor: sponsorPublicKey,
+                sponsoredAccount: accountId,
+                entryId: `${accountId}:${asset.code}:${asset.issuer}`,
+                details: { asset },
+              });
+            }
+          }
+
+          if (include('signer')) {
+            for (const signer of account.signers || []) {
+              if (signer.sponsor === sponsorPublicKey) {
+                entries.push({
+                  entryType: 'signer',
+                  sponsor: sponsorPublicKey,
+                  sponsoredAccount: accountId,
+                  entryId: `${accountId}:${signer.key}`,
+                  details: { signerKey: signer.key, weight: signer.weight },
+                });
+              }
+            }
+          }
+
+          if (include('data')) {
+            const dataEntries = await this.getSponsoredDataEntries(
+              accountId,
+              account.data_attr || {}
+            );
+            entries.push(...dataEntries.filter((entry) => entry.sponsor === sponsorPublicKey));
+          }
+        }
+      }
+
+      if (include('claimable_balance')) {
+        const balancesQuery = this.server.claimableBalances().sponsor(sponsorPublicKey);
+        const balances = await this.collectPages<any>(balancesQuery);
+        for (const balance of balances) {
+          entries.push({
+            entryType: 'claimable_balance',
+            sponsor: sponsorPublicKey,
+            sponsoredAccount: balance.claimants?.[0]?.destination || sponsorPublicKey,
+            entryId: balance.id,
+            details: { asset: balance.asset, amount: balance.amount },
+          });
+        }
+      }
+
+      if (include('offer')) {
+        const offersQuery = this.server.offers().sponsor(sponsorPublicKey);
+        const offers = await this.collectPages<any>(offersQuery);
+        for (const offer of offers) {
+          entries.push({
+            entryType: 'offer',
+            sponsor: sponsorPublicKey,
+            sponsoredAccount: offer.seller,
+            entryId: String(offer.id),
+            details: {
+              selling: offer.selling,
+              buying: offer.buying,
+              amount: offer.amount,
+              price: offer.price,
+            },
+          });
+        }
+      }
+
+      return this.applySponsoredEntryOptions(entries, options);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'NotSupportedError') {
+        throw error;
+      }
+      throw new Error(
+        `Failed to get entries sponsored by account: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**

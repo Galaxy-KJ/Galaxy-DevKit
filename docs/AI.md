@@ -75,6 +75,13 @@ Abstraction layer over `@stellar/stellar-sdk` providing simplified interfaces fo
 - `packages/core/stellar-sdk/src/services/stellar-service.ts`
 - `packages/core/stellar-sdk/src/types/stellar-types.ts`
 - `packages/core/stellar-sdk/src/claimable-balances/` - Claimable balance implementation
+- `packages/core/stellar-sdk/src/sponsored-reserves/services/sponsored-reserves-manager.ts` - Sponsored reserve queries
+
+**Sponsored Reserve Query Patterns:**
+
+- `getEntriesSponsoredBy()` combines Horizon account, claimable-balance, and offer results. It paginates each Horizon feed, then applies ordering, cursor, and limit to the merged entries.
+- The merged cursor is `${entryType}:${entryId}`. Keep this composite format when continuing a query across entry types.
+- Data-entry sponsors come from ledger-entry sponsorship metadata via Soroban RPC. Provide `NetworkConfig.rpcUrl` when the default endpoint is not appropriate; unresolved sponsorship data raises `NotSupportedError` rather than appearing as an empty result.
 
 **Claimable Balance Patterns:**
 
