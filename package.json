@@ -88,7 +88,7 @@
       "@stellar/stellar-sdk": "^14.6.1"
     },
     "diff": "^8.0.1",
-    "handlebars": "4.7.9",
+    "handlebars": "^4.7.10",
     "shell-quote": "^1.9.0",
     "tar": "^7.5.16",
     "xml2js": "^0.6.0",
