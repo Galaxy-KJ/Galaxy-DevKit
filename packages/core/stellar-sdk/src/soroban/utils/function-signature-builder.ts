@@ -8,6 +8,8 @@
  */
 
 import { xdr } from '@stellar/stellar-sdk';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
 import { ScValConverter } from './scval-converter.js';
 import { ContractFunction, ScType } from '../types/contract-types.js';
 
@@ -275,23 +277,9 @@ export class FunctionSignatureBuilder {
     return { original, optimized, savings };
   }
 
-  /**
-   * Hash signature (simplified implementation)
-   */
+  /** Hash a signature as a lowercase 64-character SHA-256 hex digest. */
   private static hashSignature(signature: string): string {
-    // This is a simplified implementation
-    // In practice, you'd use crypto.createHash('sha256').update(signature).digest('hex')
-    // For now, return a hash-like string
-    let hash = 0;
-    for (let i = 0; i < signature.length; i++) {
-      const char = signature.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-
-    // Convert to hex string
-    const absHash = Math.abs(hash);
-    return absHash.toString(16).padStart(8, '0').repeat(4); // 32-character hex string
+    return bytesToHex(sha256(new TextEncoder().encode(signature)));
   }
 
   /**
