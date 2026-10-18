@@ -13,6 +13,8 @@ export interface AggregatorRoute {
   venue: AggregatorVenue;
   amountIn: string;
   amountOut: string;
+  /** Venue's swap fee in percentage points (0.3 means 0.3%). */
+  feePercent?: number;
   priceImpact: number;
   path: string[];
 }

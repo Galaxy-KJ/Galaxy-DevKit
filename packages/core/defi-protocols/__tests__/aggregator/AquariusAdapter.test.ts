@@ -108,4 +108,20 @@ describe('AquariusAdapter (#273)', () => {
     const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
     expect(route.priceImpact).toBe(0);
   });
+
+  it('maps fee_percent to feePercent when Aquarius reports it', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse({ amount_out: '5', fee_percent: '0.3', price_impact: 0 }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
+    expect(route.feePercent).toBe(0.3);
+  });
+
+  it('omits feePercent when Aquarius does not report fee_percent', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ amount_out: '5', price_impact: 0 }));
+    const adapter = new AquariusAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const route = await adapter.fetchRoute({ assetIn: XLM, assetOut: USDC, amountIn: '100' });
+    expect(route).not.toHaveProperty('feePercent');
+  });
 });

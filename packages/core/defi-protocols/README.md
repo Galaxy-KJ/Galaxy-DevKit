@@ -285,7 +285,21 @@ const route = await router.findOptimalRoute(
 
 console.log(route.path.map((asset) => asset.code));
 console.log(route.estimatedOutput);
+if (route.highImpactWarning) {
+  console.warn(`High price impact: ${route.priceImpact.toFixed(2)}%`);
+}
 ```
+
+The legacy aggregator router exposes `totalFeePercent` as a sum of the
+venue-reported fee rates (Soroswap currently reports 0.3%, SDEX reports no LP
+fee, and Aquarius includes a fee only when its quote response provides one).
+Route selection compares the quoted `estimatedOutput`, because venue quote
+outputs already include their swap fees; reported rates are display metadata
+and must not be deducted a second time. Its `priceImpact` composes the hop impacts and
+`highImpactWarning` follows the
+5% threshold used by `PathPaymentManager`. When every candidate quote fails,
+the router includes individual venue failure messages so callers can distinguish
+unavailable RPCs from an empty route set.
 
 #### initialize()
 

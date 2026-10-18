@@ -5,6 +5,7 @@ import { Asset, ProtocolConfig, SwapQuote } from '../types/defi-types.js';
 import { ProtocolFactory } from '../services/protocol-factory.js';
 import { AggregatorQuote, AggregatorRoute, AggregatorVenue, IDEXAggregator } from './types.js';
 import { AquariusAdapter } from './AquariusAdapter.js';
+import { SOROSWAP_DEFAULT_FEE } from '../protocols/soroswap/soroswap-config.js';
 
 const DEFAULT_SPLIT_PERCENTAGES = [10, 20, 30, 40, 50, 60, 70, 80, 90];
 const DISPLAY_DECIMALS = 7;
@@ -143,7 +144,10 @@ export class DexAggregatorService implements IDEXAggregator {
       .map((result) => result.value);
 
     if (routes.length === 0) {
-      throw new Error('No aggregator routes are available for the requested swap');
+      const failures = settled
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason));
+      throw new Error(`No aggregator routes are available for the requested swap: ${failures.join('; ')}`);
     }
 
     return routes;
@@ -185,6 +189,7 @@ export class DexAggregatorService implements IDEXAggregator {
       venue: 'soroswap',
       amountIn,
       amountOut: quote.amountOut,
+      feePercent: Number(SOROSWAP_DEFAULT_FEE) * 100,
       priceImpact: this.toNumber(quote.priceImpact),
       path: quote.path ?? [],
     };
@@ -208,6 +213,7 @@ export class DexAggregatorService implements IDEXAggregator {
       venue: 'sdex',
       amountIn,
       amountOut: quote.amountOut,
+      feePercent: 0,
       priceImpact: this.toNumber(quote.priceImpact),
       path: quote.path ?? [],
     };
