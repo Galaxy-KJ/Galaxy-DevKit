@@ -239,3 +239,14 @@ gantt
 
 **Last Updated**: 2026-07-24
 **Maintained By**: Galaxy DevKit Team
+
+### Issue #487: TypeScript SDK (SDK-only scope)
+
+- [x] Unified client for currently mounted DeFi routes, API-key authentication, typed responses and errors.
+- [x] ESM/CommonJS builds with declarations; mocked HTTP/router tests and browser package smoke test.
+- [x] Local REST example and explicit unavailable-capability documentation.
+- [ ] Wallet, oracle and automation REST prerequisites; selectable mainnet configuration.
+- [ ] Checked-in OpenAPI contract and generated SDK types.
+- [ ] Full live-server/provider validation and public major-version release (package remains private).
+
+This is partial delivery of #487; backend prerequisites are outside this SDK-only change.

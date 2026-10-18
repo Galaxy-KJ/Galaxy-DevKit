@@ -3046,3 +3046,9 @@ graph TB
 
 **Last Updated**: 2024-01-15
 **Version**: 1.0.0
+
+## TypeScript REST SDK (#487, partial delivery)
+
+`GalaxyClient` -> native fetch transport -> mounted `/api/v1/defi` REST routes -> existing protocol services. The client root has no server, database or Node-only dependencies. Conditional exports provide separate ESM and CommonJS builds and declarations. Existing Stellar path-payment helpers remain available through explicit `stellar/*` subpaths.
+
+The SDK models current REST JSON responses rather than importing server types. Wallet, oracle and automation capabilities are unavailable until their routes are mounted/implemented. Network selection remains server-owned (currently testnet); OpenAPI generation awaits a checked-in specification. The package remains private pending completion and release review. See `packages/sdk/typescript/README.md` for detailed limitations.

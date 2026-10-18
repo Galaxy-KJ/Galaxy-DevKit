@@ -7,6 +7,8 @@ module.exports = {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
         module: 'CommonJS',
+        types: ['node', 'jest'],
+        lib: ['ES2022', 'DOM'],
         moduleResolution: 'node',
         esModuleInterop: true,
         allowSyntheticDefaultImports: true,
@@ -16,5 +18,6 @@ module.exports = {
     }],
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
+  moduleNameMapper: { '^(\\.\\.?/.*)\\.js$': '$1' },
   clearMocks: true,
 };

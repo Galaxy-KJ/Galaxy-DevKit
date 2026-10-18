@@ -1,30 +1,25 @@
 {
   "name": "@galaxy-kj/sdk-typescript",
   "version": "5.0.0",
-  "description": "Galaxy TypeScript SDK - Auto-generated TypeScript SDK for Galaxy DevKit",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "Typed browser and Node client for the available Galaxy REST API",
+  "main": "dist/cjs/index.js",
+  "types": "dist/cjs/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build.cjs",
     "dev": "tsc --watch",
     "test": "jest",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "generate": "node scripts/generate-sdk.js"
+    "prepack": "npm run build",
+    "test:package": "npm run build && node scripts/smoke.cjs"
   },
   "dependencies": {
-    "@galaxy-kj/api-rest": "^5.0.0",
-    "@galaxy-kj/api-websocket": "^5.0.0",
-    "@galaxy-kj/core-automation": "^5.0.0",
-    "@galaxy-kj/core-invisible-wallet": "^5.1.1",
-    "@galaxy-kj/core-stellar-sdk": "^5.0.2",
-    "axios": "^1.6.2",
-    "ws": "^8.14.2"
+    "@stellar/stellar-sdk": "^14.6.1"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.10"
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "stellar",
@@ -40,5 +35,39 @@
     "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
     "directory": "packages/sdk/typescript"
   },
-  "gitHead": "85e010448d26e31ad3724c51660a7e402c561cc2"
+  "private": true,
+  "module": "dist/esm/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./stellar/*": {
+      "import": {
+        "types": "./dist/esm/stellar/*.d.ts",
+        "default": "./dist/esm/stellar/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/stellar/*.d.ts",
+        "default": "./dist/cjs/stellar/*.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  }
 }

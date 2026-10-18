@@ -1667,3 +1667,11 @@ await expect(ledger.getPublicKey()).rejects.toThrow();
 - [x] Wallet README includes biometric setup and examples.
 
 TODO: I can add TSDoc/JSDoc comments to the biometric files listed above to raise docstring coverage — confirm and I'll implement those changes and run tests.
+
+## SDK-only REST facade (#487)
+
+`packages/sdk/typescript/src/client.ts` exposes `GalaxyClient`, `BlendClient`, `SoroswapClient` and `AggregatorClient`. The root entry uses native fetch, no server or database imports. `HttpClient` centralizes API-key headers, cancellation, timeouts and typed errors. Methods forward only documented public input fields; never send private keys.
+
+The backend currently selects testnet. Wallets, oracles and automation expose `{ available: false, reason }`, not speculative HTTP methods. Mainnet is rejected. Wire types in `src/types.ts` are hand-maintained because no OpenAPI spec is checked in. JSON dates remain strings; transaction `hash` currently contains unsigned XDR, not a submitted transaction hash. Preserve these distinctions when extending the SDK.
+
+See the package README for the supported route table and unavailable features, and `docs/examples/sdk/` for a local REST example. `client.test.ts` mocks fetch; `rest-contract.test.ts` exercises the real REST router with mocked auth/audit/protocol services. `scripts/smoke.cjs` checks built CJS/ESM and Chromium native ESM/fetch. These checks do not prove live-chain execution.
