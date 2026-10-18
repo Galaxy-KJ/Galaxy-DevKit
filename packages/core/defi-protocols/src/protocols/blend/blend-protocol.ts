@@ -12,6 +12,7 @@ import {
   BASE_FEE,
   Keypair,
   nativeToScVal,
+  scValToNative,
   Address,
   rpc
 } from '@stellar/stellar-sdk';
@@ -20,6 +21,7 @@ import {
 import {
   PoolContractV2,
   PoolV2,
+  TokenMetadata,
 
   Request,
   RequestType,
@@ -63,6 +65,8 @@ export class BlendProtocol extends BaseProtocol {
   private poolConfig: BlendPoolConfig | null = null;
   private blendPool: Pool | null = null;
   private blendNetwork: Network;
+  private poolConfigExpiresAt = 0;
+  private poolConfigLoad: Promise<void> | null = null;
 
   /**
    * Constructor
@@ -70,6 +74,14 @@ export class BlendProtocol extends BaseProtocol {
    */
   constructor(config: ProtocolConfig) {
     super(config);
+    for (const [name, value] of Object.entries({
+      poolConfigTtlMs: config.poolConfigTtlMs ?? 60000,
+      eventLookbackLedgers: config.eventLookbackLedgers ?? 17280
+    })) {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(`${name} must be a positive safe integer`);
+      }
+    }
     this.sorobanServer = new rpc.Server(this.sorobanRpcUrl);
     this.blendNetwork = {
       rpc: this.sorobanRpcUrl,
@@ -97,14 +109,6 @@ export class BlendProtocol extends BaseProtocol {
       const poolAddress = this.getContractAddress('pool');
       this.poolContract = new Contract(poolAddress);
 
-      // Load pool using Blend SDK for read operations
-      try {
-        this.blendPool = await PoolV2.load(this.blendNetwork, poolAddress);
-      } catch (poolLoadError) {
-        console.warn('Could not load Blend pool data from SDK:', poolLoadError);
-        // Pool loading is optional for write operations
-      }
-
       // Load pool configuration
       await this.loadPoolConfig();
     } catch (error) {
@@ -118,14 +122,62 @@ export class BlendProtocol extends BaseProtocol {
    * @returns {Promise<void>}
    */
   private async loadPoolConfig(): Promise<void> {
-    // In a real implementation, this would fetch pool config from the contract
-    // For now, we'll create a basic config structure
+    if (this.poolConfig && Date.now() < this.poolConfigExpiresAt) return;
+    if (this.poolConfigLoad) return this.poolConfigLoad;
+
+    this.poolConfigLoad = this.refreshPoolConfig();
+    try {
+      await this.poolConfigLoad;
+    } finally {
+      this.poolConfigLoad = null;
+    }
+  }
+
+  /** Load a complete snapshot before replacing the cached pool and configuration. */
+  private async refreshPoolConfig(): Promise<void> {
+    const poolAddress = this.getContractAddress('pool');
+    // The SDK reads PoolConfig, ResList, ResConfig and ResData from the ledger.
+    const pool = await PoolV2.load(this.blendNetwork, poolAddress);
+    const assets = await Promise.all(pool.metadata.reserveList.map(async assetAddress => {
+      const reserve = pool.reserves.get(assetAddress);
+      if (!reserve) throw new Error(`Missing reserve data for ${assetAddress}`);
+      const token = await TokenMetadata.load(this.blendNetwork, assetAddress);
+      const asset: Asset = token.asset?.isNative()
+        ? { type: 'native', code: 'XLM' }
+        : {
+          type: token.symbol.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12',
+          code: token.symbol,
+          issuer: token.asset?.getIssuer() ?? assetAddress
+        };
+      const rateAtFullUtilization = new BigNumber(reserve.config.r_base)
+        .plus(reserve.config.r_one).plus(reserve.config.r_two)
+        .multipliedBy(reserve.data.interestRateModifier.toString())
+        .dividedBy(10 ** reserve.irmodDecimals).plus(reserve.config.r_three);
+      return {
+        asset,
+        assetAddress,
+        collateralFactor: new BigNumber(reserve.config.c_factor).dividedBy(1e7).toString(),
+        liquidationFactor: new BigNumber(reserve.config.l_factor).dividedBy(1e7).toString(),
+        reserveFactor: new BigNumber(pool.metadata.backstopRate).dividedBy(1e7).toString(),
+        maxBorrowRate: rateAtFullUtilization.dividedBy(1e7).toString()
+      };
+    }));
     this.poolConfig = {
-      poolAddress: this.getContractAddress('pool'),
-      name: 'Blend Lending Pool',
-      assets: [],
-      oracleAddress: this.getContractAddress('oracle')
+      poolAddress,
+      name: pool.metadata.name,
+      assets,
+      oracleAddress: pool.metadata.oracle,
+      indexerUrl: this.config.indexerUrl
     };
+    this.blendPool = pool;
+    this.poolConfigExpiresAt = Date.now() + (this.config.poolConfigTtlMs ?? 60000);
+  }
+
+  /** Return the on-chain pool configuration, refreshing it after its TTL expires. */
+  public async getPoolConfig(): Promise<BlendPoolConfig> {
+    this.ensureInitialized();
+    await this.loadPoolConfig();
+    return structuredClone(this.poolConfig!);
   }
 
   // ========================================
@@ -502,6 +554,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAddress(address);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -714,35 +767,27 @@ export class BlendProtocol extends BaseProtocol {
 
       const opportunities: LiquidationOpportunity[] = [];
 
-      // Query indexer for users if provided
-      if (this.poolConfig?.indexerUrl) {
+      await this.loadPoolConfig();
+      const users = this.poolConfig?.indexerUrl
+        ? await this.discoverIndexedUsers(this.poolConfig.indexerUrl)
+        : await this.discoverEventUsers();
+      for (const address of users) {
         try {
-          const response = await fetch(`${this.poolConfig.indexerUrl}/pools/${this.poolConfig.poolAddress}/positions`);
-          if (response.ok) {
-            const data = await response.json();
-            const users = data.users || [];
-            for (const address of users) {
-              try {
-                const position = await this.getPosition(address);
-                if (position && position.healthFactor !== '∞' && parseFloat(position.healthFactor) < minHealthFactor) {
-                  opportunities.push({
-                    userAddress: position.address,
-                    healthFactor: position.healthFactor,
-                    collateralValueUSD: position.collateralValue,
-                    debtValueUSD: position.debtValue,
-                    collateralAssets: position.supplied as any,
-                    debtAssets: position.borrowed as any,
-                    estimatedProfitUSD: '0'
-                  });
-                }
-              } catch (err) {
-                // Continue checking other users if one fails
-                console.warn(`Failed to process position for ${address}`, err);
-              }
-            }
+          const position = await this.getPosition(address);
+          const healthFactor = Number(position.healthFactor);
+          if (Number.isFinite(healthFactor) && healthFactor < minHealthFactor) {
+            opportunities.push({
+              userAddress: position.address,
+              healthFactor: position.healthFactor,
+              collateralValueUSD: position.collateralValue,
+              debtValueUSD: position.debtValue,
+              collateralAssets: position.supplied as any,
+              debtAssets: position.borrowed as any,
+              estimatedProfitUSD: '0'
+            });
           }
         } catch (error) {
-          console.warn('Failed to query indexer for liquidation opportunities', error);
+          console.warn(`Failed to process position for ${address}`, error);
         }
       }
 
@@ -750,6 +795,63 @@ export class BlendProtocol extends BaseProtocol {
     } catch (error) {
       this.handleError(error, 'findLiquidationOpportunities');
     }
+  }
+
+  /** Discover unique borrowers from the configured positions indexer. */
+  private async discoverIndexedUsers(indexerUrl: string): Promise<string[]> {
+    const response = await fetch(
+      `${indexerUrl.replace(/\/$/, '')}/pools/${this.getContractAddress('pool')}/positions`
+    );
+    if (!response.ok) throw new Error(`Blend indexer returned HTTP ${response.status}`);
+    const data: unknown = await response.json();
+    if (!data || typeof data !== 'object' || !('users' in data) ||
+        !Array.isArray(data.users) || data.users.some(user => typeof user !== 'string')) {
+      throw new Error('Blend indexer must return a users array of addresses');
+    }
+    return [...new Set(data.users as string[])];
+  }
+
+  /** Scan retained pool events within a fixed ledger window, following RPC cursors. */
+  private async discoverEventUsers(): Promise<string[]> {
+    const health = await this.sorobanServer.getHealth();
+    const endLedger = health.latestLedger;
+    const startLedger = Math.max(1, health.oldestLedger,
+      endLedger - (this.config.eventLookbackLedgers ?? 17280) + 1);
+    const poolAddress = this.getContractAddress('pool');
+    const filters: rpc.Api.EventFilter[] = [{
+      type: 'contract',
+      contractIds: [poolAddress],
+      topics: ['borrow', 'supply_collateral'].map(name => [
+        nativeToScVal(name, { type: 'symbol' }).toXDR('base64'), '*', '*'
+      ])
+    }];
+    const users = new Set<string>();
+    let cursor: string | undefined;
+    // Bound requests as well as ledger history. Never silently return a partial scan.
+    for (let page = 0; page < 100; page++) {
+      const response = await this.sorobanServer.getEvents(cursor
+        ? { filters, cursor, limit: 1000 }
+        : { filters, startLedger, endLedger: endLedger + 1, limit: 1000 });
+      for (const event of response.events) {
+        if (event.ledger > endLedger) return [...users];
+        if (event.ledger < startLedger || !event.inSuccessfulContractCall ||
+            event.contractId?.contractId() !== poolAddress || event.topic.length !== 3) continue;
+        try {
+          const name = scValToNative(event.topic[0]);
+          if (name === 'borrow' || name === 'supply_collateral') {
+            users.add(Address.fromScVal(event.topic[2]).toString());
+          }
+        } catch {
+          // Ignore malformed or unrelated events without dropping the rest of the page.
+        }
+      }
+      if (response.events.length === 0) return [...users];
+      if (!response.cursor || response.cursor === cursor) {
+        throw new Error('Blend event scan cursor did not advance');
+      }
+      cursor = response.cursor;
+    }
+    throw new Error('Blend event scan exceeded 100 pages; narrow eventLookbackLedgers or use an indexer');
   }
 
   // ========================================
@@ -764,6 +866,7 @@ export class BlendProtocol extends BaseProtocol {
     this.ensureInitialized();
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -820,6 +923,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -859,6 +963,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -898,6 +1003,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -928,6 +1034,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -958,6 +1065,7 @@ export class BlendProtocol extends BaseProtocol {
     this.validateAsset(asset);
 
     try {
+      await this.loadPoolConfig();
       if (!this.poolContract) {
         throw new Error('Pool contract not initialized');
       }
@@ -1031,6 +1139,10 @@ export class BlendProtocol extends BaseProtocol {
    * @returns {string}
    */
   private assetToContractAddress(asset: Asset): string {
+    const configured = this.poolConfig?.assets.find(({ asset: candidate }) =>
+      candidate.type === asset.type && candidate.code === asset.code && candidate.issuer === asset.issuer);
+    if (configured) return configured.assetAddress;
+
     // Map known testnet assets to their Soroban contract addresses
     const assetMap: Record<string, string> = {
       'USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',

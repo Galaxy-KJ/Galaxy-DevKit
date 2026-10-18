@@ -199,6 +199,12 @@ export interface ProtocolConfig {
   network: NetworkConfig;
   contractAddresses: Record<string, string>;
   metadata: Record<string, unknown>;
+  /** Optional Blend positions indexer base URL. */
+  indexerUrl?: string;
+  /** Blend pool configuration cache lifetime in milliseconds (default: 60000). */
+  poolConfigTtlMs?: number;
+  /** Recent ledgers to scan for Blend borrowers without an indexer (default: 17280). */
+  eventLookbackLedgers?: number;
 }
 
 /**

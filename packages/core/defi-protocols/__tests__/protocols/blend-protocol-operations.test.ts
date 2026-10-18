@@ -56,6 +56,8 @@ jest.mock('@stellar/stellar-sdk', () => {
     rpc: {
       ...actual.rpc,
       Server: jest.fn().mockImplementation(() => ({
+        getHealth: jest.fn().mockResolvedValue({ latestLedger: 100, oldestLedger: 1 }),
+        getEvents: jest.fn().mockResolvedValue({ events: [], cursor: 'end' }),
         getTransaction: jest.fn(),
         simulateTransaction: jest.fn(),
         sendTransaction: jest.fn()
@@ -89,6 +91,7 @@ jest.mock('@blend-capital/blend-sdk', () => ({
         getPrice: jest.fn().mockReturnValue(10000000n),
         decimals: 7
       }),
+      metadata: { name: 'Blend Lending Pool', oracle: 'oracle', backstopRate: 1000000, reserveList: [] },
       reserves: new Map()
     }),
   },

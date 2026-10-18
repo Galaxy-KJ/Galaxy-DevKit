@@ -36,11 +36,11 @@ export interface BlendPoolAsset {
   assetAddress: string;
   /** Collateral factor (0-1) */
   collateralFactor: string;
-  /** Liquidation factor (0-1) */
+  /** On-chain liability factor l_factor (0-1), retained under the legacy field name. */
   liquidationFactor: string;
-  /** Reserve factor (0-1) */
+  /** Pool backstop take rate (0-1). */
   reserveFactor: string;
-  /** Maximum borrow rate */
+  /** Borrow APR at full utilization using the current interest rate modifier (decimal). */
   maxBorrowRate: string;
 }
 

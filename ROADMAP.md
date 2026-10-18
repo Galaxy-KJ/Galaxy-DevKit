@@ -71,6 +71,8 @@ gantt
 
 ### Blend Protocol (5 issues)
 
+- [x] **#493** Load on-chain pool reserves with TTL caching and indexer/event borrower discovery.
+
 - [x] **#21** Implement Blend protocol service ✅
 - [x] **#22** Add supply/withdraw operations ✅
 - [x] **#23** Add borrow/repay operations ✅
