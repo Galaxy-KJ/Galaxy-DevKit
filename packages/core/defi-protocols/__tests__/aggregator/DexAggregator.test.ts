@@ -230,6 +230,35 @@ describe('DexAggregatorService', () => {
     );
   });
 
+  it('includes each venue failure reason when no venue can produce a quote', async () => {
+    protocolFactory.createProtocol.mockImplementation((cfg) => {
+      if (cfg.protocolId === 'soroswap') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue('soroswap offline'),
+        };
+      }
+      if (cfg.protocolId === 'sdex') {
+        return {
+          initialize: jest.fn().mockResolvedValue(undefined),
+          getSwapQuote: jest.fn().mockRejectedValue(new Error('SDEX did not return a viable path')),
+        };
+      }
+      return null;
+    });
+
+    const aggregator = new DexAggregatorService(config, {
+      fetchImpl,
+      horizonServer,
+      protocolFactory,
+    });
+
+    const error = await aggregator.getBestQuote(XLM, USDC, '100').catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('soroswap offline');
+    expect((error as Error).message).toContain('SDEX did not return a viable path');
+  });
+
   it('returns the surviving venue when the other venue fails during best-quote discovery', async () => {
     protocolFactory.createProtocol.mockImplementation((cfg) => {
       if (cfg.protocolId === 'soroswap') {

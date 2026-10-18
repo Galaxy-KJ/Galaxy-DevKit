@@ -190,6 +190,15 @@ describe('SmartRouter', () => {
       .rejects
       .toThrow('All route quotes failed; check venue connectivity and liquidity: Liquidity error');
   });
+
+  it('stringifies non-Error rejection reasons when all route evaluations fail', async () => {
+    mockAggregator.getBestQuote.mockRejectedValue('venue offline');
+
+    const router = new SmartRouter(mockAggregator);
+    await expect(router.findOptimalRoute(XLM, TEST_TOKEN, '100'))
+      .rejects
+      .toThrow('All route quotes failed; check venue connectivity and liquidity: venue offline');
+  });
 });
 
 describe('LiquidityGraph', () => {

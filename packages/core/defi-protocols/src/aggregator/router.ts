@@ -92,13 +92,11 @@ export class SmartRouter {
     }
 
     if (!bestRoute) {
-      if (failedQuotes.length > 0) {
-        const details = failedQuotes
-          .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason))
-          .join('; ');
-        throw new Error(`All route quotes failed; check venue connectivity and liquidity: ${details}`);
-      }
-      throw new Error('No valid routes could be executed to find quotes');
+      // candidatePaths is non-empty, so reaching here means every path quote was rejected.
+      const details = failedQuotes
+        .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason))
+        .join('; ');
+      throw new Error(`All route quotes failed; check venue connectivity and liquidity: ${details}`);
     }
 
     return bestRoute;
