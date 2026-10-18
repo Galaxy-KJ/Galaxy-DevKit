@@ -1,3 +1,10 @@
+## Unreleased - SDK-only REST facade (#487)
+
+- Add GalaxyClient for mounted Blend, Soroswap and aggregator endpoints, API-key authentication, cancellation and typed errors.
+- Build conditional ESM/CJS exports with declarations; retain separate Stellar helper subpaths.
+- Mark the incomplete SDK private and remove unused server dependencies from the client package.
+- Wallet/oracle/automation clients, mainnet, OpenAPI generation and pool analytics remain unavailable and documented. No backend or public npm release is included.
+
 # Change Log
 
 All notable changes to this project will be documented in this file.

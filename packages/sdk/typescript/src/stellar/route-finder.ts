@@ -7,7 +7,7 @@
  */
 
 import { Asset } from '@stellar/stellar-sdk';
-import { PathPaymentError } from './path-payment-error';
+import { PathPaymentError } from './path-payment-error.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

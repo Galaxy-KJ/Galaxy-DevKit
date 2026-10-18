@@ -16,8 +16,8 @@ import {
   TransactionBuilder,
   BASE_FEE,
 } from '@stellar/stellar-sdk';
-import { findOptimalPath, type QuotedRoute, type RouteFinderOptions } from './route-finder';
-import { PathPaymentError } from './path-payment-error';
+import { findOptimalPath, type QuotedRoute, type RouteFinderOptions } from './route-finder.js';
+import { PathPaymentError } from './path-payment-error.js';
 
 export { PathPaymentError };
 
