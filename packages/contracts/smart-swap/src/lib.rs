@@ -131,11 +131,9 @@ fn load_owner_ids(env: &Env, owner: &Address) -> Vec<u64> {
 fn renew_indexed_conditions(env: &Env, ids: &Vec<u64>) {
     for id in ids.iter() {
         let key = DataKey::Condition(id);
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_TTL_THRESHOLD,
-            PERSISTENT_TTL_EXTEND,
-        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL_EXTEND, PERSISTENT_TTL_EXTEND);
     }
 }
 
@@ -145,7 +143,7 @@ fn save_owner_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
     env.storage().persistent().set(&key, ids);
     env.storage()
         .persistent()
-        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+        .extend_ttl(&key, PERSISTENT_TTL_EXTEND, PERSISTENT_TTL_EXTEND);
 }
 
 fn remove_owner_id(env: &Env, owner: &Address, id: u64) {
@@ -251,7 +249,7 @@ impl SmartSwapContract {
         if condition.status != SwapStatus::Active {
             return Err(SmartSwapError::ConditionNotActive);
         }
-        if env.ledger().timestamp() > condition.expires_at {
+        if env.ledger().timestamp() >= condition.expires_at {
             return Err(SmartSwapError::ConditionExpired);
         }
 

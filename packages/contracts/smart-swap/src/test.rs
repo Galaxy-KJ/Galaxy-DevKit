@@ -447,6 +447,41 @@ fn terminal_conditions_are_pruned_from_owner_index() {
     });
     assert_eq!(c.get_active_conditions(&owner).len(), 1);
 }
+#[test]
+fn test_execute_swap_condition_at_expiration_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SmartSwapContract);
+    let client = SmartSwapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let price_oracle = Address::generate(&env);
+    let owner = Address::generate(&env);
+
+    client.initialize(&admin, &price_oracle);
+
+    let expires_at = 1_000_000;
+
+    let condition_id = client.create_swap_condition(
+        &owner,
+        &Symbol::short("XLM"),
+        &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100),
+        &100,
+        &90,
+        &5,
+        &expires_at,
+    );
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    let result = client.try_execute_swap_condition(&condition_id);
+
+    assert_eq!(result, Err(Ok(SmartSwapError::ConditionExpired)));
+}
 
 #[test]
 fn reading_active_conditions_renews_record_ttl() {
