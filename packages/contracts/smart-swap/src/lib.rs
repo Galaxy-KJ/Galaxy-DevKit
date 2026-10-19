@@ -1,16 +1,16 @@
 //! Smart Swap Contract for Galaxy DevKit
-//! 
-//! This contract implements automated token swapping with price conditions
-//! and slippage protection for the Stellar ecosystem.
+//!
+//! This contract implements automated token swapping with price conditions.
+//! Conditions and execution records are individually stored in persistent
+//! storage, avoiding unbounded instance-storage entries.
 
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, vec, Address, BytesN, Env, Map, Symbol,
-    Vec, String as SorobanString,
+    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env,
+    Symbol, Vec,
 };
 
-/// Contract type definitions
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SwapCondition {
@@ -57,33 +57,128 @@ pub struct SwapExecution {
     pub transaction_hash: BytesN<32>,
 }
 
-/// Contract storage keys
-const SWAP_CONDITIONS: Symbol = symbol_short!("SWAP_COND");
-const SWAP_EXECUTIONS: Symbol = symbol_short!("SWAP_EXEC");
-const NEXT_CONDITION_ID: Symbol = symbol_short!("NEXT_ID");
-const PRICE_ORACLE: Symbol = symbol_short!("PRC_ORCL");
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    Admin,
+    PriceOracle,
+    NextConditionId,
+    Condition(u64),
+    OwnerConditions(Address),
+    Execution(u64),
+}
 
-// Swap conditions are meant to trigger within days, not months, so a
-// week of slack matches how long a condition realistically stays open.
-const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
-const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum SmartSwapError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    ConditionNotFound = 3,
+    NotAuthorized = 4,
+    ConditionNotActive = 5,
+    ConditionExpired = 6,
+    ConditionNotMet = 7,
+    IdOverflow = 8,
+    InvalidExpiration = 9,
+}
 
-/// Smart Swap Contract
+// Ledger-sequence TTL values; the index and records use the same extension
+// policy. Old IDs in an index are harmless if their records have expired.
+const INSTANCE_TTL_THRESHOLD: u32 = 60_480;
+const INSTANCE_TTL_EXTEND: u32 = 120_960;
+const PERSISTENT_TTL_THRESHOLD: u32 = 60_480;
+const PERSISTENT_TTL_EXTEND: u32 = 120_960;
+
 #[contract]
 pub struct SmartSwapContract;
 
-/// Contract implementation
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+}
+
+fn load_condition(env: &Env, id: u64) -> Result<SwapCondition, SmartSwapError> {
+    let key = DataKey::Condition(id);
+    let condition = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .ok_or(SmartSwapError::ConditionNotFound)?;
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+    Ok(condition)
+}
+
+fn save_condition(env: &Env, condition: &SwapCondition) {
+    let key = DataKey::Condition(condition.id);
+    env.storage().persistent().set(&key, condition);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+}
+
+fn load_owner_ids(env: &Env, owner: &Address) -> Vec<u64> {
+    let key = DataKey::OwnerConditions(owner.clone());
+    let storage = env.storage().persistent();
+    let ids = storage.get(&key).unwrap_or(Vec::new(env));
+    if storage.has(&key) {
+        storage.extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+    }
+    ids
+}
+
+fn save_owner_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
+    let key = DataKey::OwnerConditions(owner.clone());
+    env.storage().persistent().set(&key, ids);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+}
+
+fn require_initialized(env: &Env) -> Result<(), SmartSwapError> {
+    if !env.storage().instance().has(&DataKey::Admin) {
+        return Err(SmartSwapError::NotInitialized);
+    }
+    Ok(())
+}
+
 #[contractimpl]
 impl SmartSwapContract {
-    /// Initialize the contract
-    pub fn initialize(env: &Env, price_oracle: Address) {
+    /// Initializes contract once. The administrator must authorize the call.
+    pub fn initialize(
+        env: &Env,
+        admin: Address,
+        price_oracle: Address,
+    ) -> Result<(), SmartSwapError> {
         let storage = env.storage().instance();
-        storage.set(&PRICE_ORACLE, &price_oracle);
-        storage.set(&NEXT_CONDITION_ID, &1u64);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        // Reject before asking for authorization to make the guard deterministic.
+        if storage.has(&DataKey::Admin) {
+            return Err(SmartSwapError::AlreadyInitialized);
+        }
+        admin.require_auth();
+        storage.set(&DataKey::Admin, &admin);
+        storage.set(&DataKey::PriceOracle, &price_oracle);
+        storage.set(&DataKey::NextConditionId, &1u64);
+        bump_instance(env);
+        Ok(())
     }
 
-    /// Create a new swap condition
+    /// Changes oracle only with the stored administrator's authorization.
+    pub fn set_oracle(env: &Env, price_oracle: Address) -> Result<(), SmartSwapError> {
+        require_initialized(env)?;
+        let storage = env.storage().instance();
+        let admin: Address = storage
+            .get(&DataKey::Admin)
+            .ok_or(SmartSwapError::NotInitialized)?;
+        admin.require_auth();
+        storage.set(&DataKey::PriceOracle, &price_oracle);
+        bump_instance(env);
+        Ok(())
+    }
+
     pub fn create_swap_condition(
         env: &Env,
         owner: Address,
@@ -94,10 +189,18 @@ impl SmartSwapContract {
         min_amount_out: u64,
         max_slippage: u32,
         expires_at: u64,
-    ) -> u64 {
+    ) -> Result<u64, SmartSwapError> {
+        require_initialized(env)?;
+        owner.require_auth();
+        if expires_at <= env.ledger().timestamp() {
+            return Err(SmartSwapError::InvalidExpiration);
+        }
+
         let storage = env.storage().instance();
-        let mut next_id: u64 = storage.get(&NEXT_CONDITION_ID).unwrap_or(1);
-        
+        let next_id: u64 = storage
+            .get(&DataKey::NextConditionId)
+            .ok_or(SmartSwapError::NotInitialized)?;
+        let next = next_id.checked_add(1).ok_or(SmartSwapError::IdOverflow)?;
         let condition = SwapCondition {
             id: next_id,
             owner: owner.clone(),
@@ -107,55 +210,46 @@ impl SmartSwapContract {
             amount_to_swap,
             min_amount_out,
             max_slippage,
-            reference_price: 0, // Will be set when condition is checked
+            reference_price: 0,
             created_at: env.ledger().timestamp(),
             expires_at,
             status: SwapStatus::Active,
         };
-
-        // Store the condition
-        let mut conditions: Map<u64, SwapCondition> = storage.get(&SWAP_CONDITIONS).unwrap_or(Map::new(&env));
-        conditions.set(next_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
-        
-        // Increment next ID
-        next_id += 1;
-        storage.set(&NEXT_CONDITION_ID, &next_id);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        next_id - 1
+        save_condition(env, &condition);
+        let mut ids = load_owner_ids(env, &owner);
+        ids.push_back(next_id);
+        save_owner_ids(env, &owner, &ids);
+        storage.set(&DataKey::NextConditionId, &next);
+        bump_instance(env);
+        Ok(next_id)
     }
 
-    /// Execute a swap condition if conditions are met
-    pub fn execute_swap_condition(env: &Env, condition_id: u64) -> SwapExecution {
-        let storage = env.storage().instance();
-        let mut conditions: Map<u64, SwapCondition> = storage.get(&SWAP_CONDITIONS).unwrap_or(Map::new(&env));
-        
-        let mut condition = conditions.get(condition_id).unwrap();
-        
-        // Check if condition is still active
+    pub fn execute_swap_condition(
+        env: &Env,
+        condition_id: u64,
+    ) -> Result<SwapExecution, SmartSwapError> {
+        require_initialized(env)?;
+        let mut condition = load_condition(env, condition_id)?;
         if condition.status != SwapStatus::Active {
-            panic!("Condition is not active");
+            return Err(SmartSwapError::ConditionNotActive);
         }
-
-        // Check if condition has expired
         if env.ledger().timestamp() > condition.expires_at {
-            condition.status = SwapStatus::Expired;
-            conditions.set(condition_id, condition);
-            storage.set(&SWAP_CONDITIONS, &conditions);
-            panic!("Condition has expired");
+            return Err(SmartSwapError::ConditionExpired);
         }
 
-        // Get current price from oracle
-        let price_oracle: Address = storage.get(&PRICE_ORACLE).unwrap();
-        let current_price = Self::get_current_price(env, &price_oracle, &condition.source_asset, &condition.destination_asset);
-        
-        // Check if condition is met
+        let price_oracle: Address = env.storage().instance()
+            .get(&DataKey::PriceOracle)
+            .ok_or(SmartSwapError::NotInitialized)?;
+        let current_price = Self::get_current_price(
+            env,
+            &price_oracle,
+            &condition.source_asset,
+            &condition.destination_asset,
+        );
         if !Self::is_condition_met(&condition, current_price) {
-            panic!("Condition not met");
+            return Err(SmartSwapError::ConditionNotMet);
         }
 
-        // Execute the swap
         let actual_amount_out = Self::execute_swap(
             env,
             &condition.owner,
@@ -165,14 +259,10 @@ impl SmartSwapContract {
             condition.min_amount_out,
             condition.max_slippage,
         );
-
-        // Update condition status
         condition.status = SwapStatus::Executed;
         condition.reference_price = current_price;
-        conditions.set(condition_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
+        save_condition(env, &condition);
 
-        // Record execution
         let execution = SwapExecution {
             condition_id,
             executed_at: env.ledger().timestamp(),
@@ -180,95 +270,85 @@ impl SmartSwapContract {
             price_at_execution: current_price,
             transaction_hash: BytesN::from_array(env, &[0u8; 32]),
         };
-
-        let mut executions: Vec<SwapExecution> = storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(&env));
-        executions.push_back(execution.clone());
-        storage.set(&SWAP_EXECUTIONS, &executions);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        execution
+        let key = DataKey::Execution(condition_id);
+        env.storage().persistent().set(&key, &execution);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+        bump_instance(env);
+        Ok(execution)
     }
 
-    /// Get all active swap conditions for an owner
     pub fn get_active_conditions(env: &Env, owner: Address) -> Vec<SwapCondition> {
-        let storage = env.storage().instance();
-        let conditions: Map<u64, SwapCondition> = storage.get(&SWAP_CONDITIONS).unwrap_or(Map::new(&env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        let mut active_conditions = Vec::new(&env);
-        
-        for (_, condition) in conditions.iter() {
-            if condition.owner == owner && condition.status == SwapStatus::Active {
-                active_conditions.push_back(condition);
+        let ids = load_owner_ids(env, &owner);
+        let mut active = Vec::new(env);
+        for id in ids.iter() {
+            let key = DataKey::Condition(id);
+            if let Some(condition) = env.storage().persistent().get::<_, SwapCondition>(&key) {
+                if condition.status == SwapStatus::Active {
+                    active.push_back(condition);
+                }
             }
         }
-        
-        active_conditions
+        active
     }
 
-    /// Cancel a swap condition
-    pub fn cancel_condition(env: &Env, condition_id: u64, owner: Address) {
-        let storage = env.storage().instance();
-        let mut conditions: Map<u64, SwapCondition> = storage.get(&SWAP_CONDITIONS).unwrap_or(Map::new(&env));
-        
-        let mut condition = conditions.get(condition_id).unwrap();
-        
-        // Check ownership
-        if condition.owner != owner {
-            panic!("Not authorized");
-        }
-        
-        // Check if condition is still active
-        if condition.status != SwapStatus::Active {
-            panic!("Condition is not active");
-        }
-        
-        // Cancel the condition
-        condition.status = SwapStatus::Cancelled;
-        conditions.set(condition_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-    }
-
-    /// Get swap execution history
-    pub fn get_execution_history(env: &Env, condition_id: u64) -> Vec<SwapExecution> {
-        let storage = env.storage().instance();
-        let executions: Vec<SwapExecution> = storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(&env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-
-        let mut filtered_executions = Vec::new(&env);
-        
-        for execution in executions.iter() {
-            if execution.condition_id == condition_id {
-                filtered_executions.push_back(execution);
-            }
-        }
-        
-        filtered_executions
-    }
-
-    /// Helper function to get current price from oracle
-    fn get_current_price(
+    pub fn cancel_condition(
         env: &Env,
-        price_oracle: &Address,
-        source_asset: &Symbol,
-        destination_asset: &Symbol,
-    ) -> u64 {
-        // This would typically call a price oracle contract
-        // For now, return a mock price
-        1000 // Mock price
+        condition_id: u64,
+        owner: Address,
+    ) -> Result<(), SmartSwapError> {
+        require_initialized(env)?;
+        owner.require_auth();
+        let mut condition = load_condition(env, condition_id)?;
+        if condition.owner != owner {
+            return Err(SmartSwapError::NotAuthorized);
+        }
+        if condition.status != SwapStatus::Active {
+            return Err(SmartSwapError::ConditionNotActive);
+        }
+        condition.status = SwapStatus::Cancelled;
+        save_condition(env, &condition);
+        bump_instance(env);
+        Ok(())
     }
 
-    /// Helper function to check if condition is met
+    /// A swap executes at most once; history is a zero- or one-element vector.
+    pub fn get_execution_history(env: &Env, condition_id: u64) -> Vec<SwapExecution> {
+        let key = DataKey::Execution(condition_id);
+        let mut out = Vec::new(env);
+        if let Some(execution) = env.storage().persistent().get(&key) {
+            out.push_back(execution);
+            env.storage().persistent().extend_ttl(
+                &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+            );
+        }
+        out
+    }
+
+    fn get_current_price(
+        _env: &Env,
+        _price_oracle: &Address,
+        _source_asset: &Symbol,
+        _destination_asset: &Symbol,
+    ) -> u64 {
+        // Placeholder: oracle integration is outside the scope of this issue.
+        1000
+    }
+
     fn is_condition_met(condition: &SwapCondition, current_price: u64) -> bool {
         match &condition.condition_type {
-            SwapConditionType::PercentageIncrease(percentage) => {
-                let threshold = condition.reference_price + (condition.reference_price * *percentage as u64 / 100);
-                current_price >= threshold
+            SwapConditionType::PercentageIncrease(percent) => {
+                let increment = condition.reference_price
+                    .saturating_mul(*percent as u64) / 100;
+                current_price >= condition.reference_price.saturating_add(increment)
             }
-            SwapConditionType::PercentageDecrease(percentage) => {
-                let threshold = condition.reference_price - (condition.reference_price * *percentage as u64 / 100);
-                current_price <= threshold
+            SwapConditionType::PercentageDecrease(percent) => {
+                let decrement = condition.reference_price
+                    .saturating_mul(*percent as u64) / 100;
+                current_price <= condition.reference_price.saturating_sub(decrement)
             }
             SwapConditionType::TargetPrice(price) => current_price == *price,
             SwapConditionType::PriceAbove(price) => current_price > *price,
@@ -276,22 +356,19 @@ impl SmartSwapContract {
         }
     }
 
-    /// Helper function to execute the actual swap
     fn execute_swap(
-        env: &Env,
-        owner: &Address,
-        source_asset: &Symbol,
-        destination_asset: &Symbol,
-        amount_in: u64,
+        _env: &Env,
+        _owner: &Address,
+        _source_asset: &Symbol,
+        _destination_asset: &Symbol,
+        _amount_in: u64,
         min_amount_out: u64,
-        max_slippage: u32,
+        _max_slippage: u32,
     ) -> u64 {
-        // This would typically interact with a DEX or AMM
-        // For now, return a mock amount
+        // Placeholder: DEX integration is outside the scope of this issue.
         min_amount_out
     }
 }
 
 #[cfg(test)]
 mod test;
-
