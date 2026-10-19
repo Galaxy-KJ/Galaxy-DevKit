@@ -83,8 +83,8 @@ pub enum SmartSwapError {
     InvalidExpiration = 9,
 }
 
-// Ledger-sequence TTL values; the index and records use the same extension
-// policy. Old IDs in an index are harmless if their records have expired.
+// Ledger-sequence TTL values. Owner indexes contain only active condition IDs;
+// reads renew the TTL of active records so the index cannot outlive them.
 const INSTANCE_TTL_THRESHOLD: u32 = 60_480;
 const INSTANCE_TTL_EXTEND: u32 = 120_960;
 const PERSISTENT_TTL_THRESHOLD: u32 = 60_480;
@@ -136,6 +136,14 @@ fn save_owner_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
     env.storage()
         .persistent()
         .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+}
+
+fn remove_owner_id(env: &Env, owner: &Address, id: u64) {
+    let mut ids = load_owner_ids(env, owner);
+    if let Some(position) = ids.first_index_of(id) {
+        ids.remove(position);
+        save_owner_ids(env, owner, &ids);
+    }
 }
 
 fn require_initialized(env: &Env) -> Result<(), SmartSwapError> {
@@ -262,6 +270,7 @@ impl SmartSwapContract {
         condition.status = SwapStatus::Executed;
         condition.reference_price = current_price;
         save_condition(env, &condition);
+        remove_owner_id(env, &condition.owner, condition_id);
 
         let execution = SwapExecution {
             condition_id,
@@ -288,6 +297,9 @@ impl SmartSwapContract {
             let key = DataKey::Condition(id);
             if let Some(condition) = env.storage().persistent().get::<_, SwapCondition>(&key) {
                 if condition.status == SwapStatus::Active {
+                    env.storage().persistent().extend_ttl(
+                        &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+                    );
                     active.push_back(condition);
                 }
             }
@@ -311,6 +323,7 @@ impl SmartSwapContract {
         }
         condition.status = SwapStatus::Cancelled;
         save_condition(env, &condition);
+        remove_owner_id(env, &condition.owner, condition_id);
         bump_instance(env);
         Ok(())
     }
