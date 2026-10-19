@@ -422,10 +422,52 @@ fn reading_active_conditions_renews_record_ttl() {
         &SwapConditionType::PriceAbove(100), &100, &90, &5, &1_000_000,
     );
     env.ledger().with_mut(|li| {
-        li.sequence_number = 100 + PERSISTENT_TTL_EXTEND - PERSISTENT_TTL_THRESHOLD;
+        li.sequence_number = 100 + PERSISTENT_TTL_EXTEND - PERSISTENT_TTL_THRESHOLD + 1;
     });
     assert_eq!(c.get_active_conditions(&owner).len(), 1);
     let ttl = env.as_contract(&id, || env.storage().persistent()
         .get_ttl(&DataKey::Condition(condition)));
+    assert_eq!(ttl, PERSISTENT_TTL_EXTEND);
+}
+
+#[test]
+fn expired_conditions_are_not_returned_as_active() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    let owner = Address::generate(&env);
+    c.create_swap_condition(
+        &owner, &Symbol::short("XLM"), &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100), &100, &90, &5, &100,
+    );
+    env.ledger().set_timestamp(100);
+    assert!(c.get_active_conditions(&owner).is_empty());
+}
+
+#[test]
+fn new_creation_renews_older_indexed_record_ttl() {
+    use soroban_sdk::testutils::storage::Persistent as _;
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.sequence_number = 100);
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    let owner = Address::generate(&env);
+    let first = c.create_swap_condition(
+        &owner, &Symbol::short("XLM"), &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100), &100, &90, &5, &1_000_000,
+    );
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 100 + PERSISTENT_TTL_EXTEND - PERSISTENT_TTL_THRESHOLD + 1;
+    });
+    c.create_swap_condition(
+        &owner, &Symbol::short("XLM"), &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100), &100, &90, &5, &1_000_000,
+    );
+    let ttl = env.as_contract(&id, || env.storage().persistent()
+        .get_ttl(&DataKey::Condition(first)));
     assert_eq!(ttl, PERSISTENT_TTL_EXTEND);
 }
