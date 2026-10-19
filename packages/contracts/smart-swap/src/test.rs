@@ -577,3 +577,62 @@ fn new_creation_renews_older_indexed_record_ttl() {
     });
     assert_eq!(ttl, PERSISTENT_TTL_EXTEND);
 }
+
+#[test]
+fn expired_conditions_are_pruned_from_owner_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 100;
+        li.sequence_number = 100;
+    });
+
+    let contract_id = env.register_contract(None, SmartSwapContract);
+    let client = SmartSwapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let owner = Address::generate(&env);
+
+    client.initialize(&admin, &oracle);
+
+    let first = client.create_swap_condition(
+        &owner,
+        &Symbol::short("XLM"),
+        &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100),
+        &100,
+        &90,
+        &5,
+        &200,
+    );
+
+    // Move past the first condition's expiration.
+    env.ledger().with_mut(|li| {
+        li.timestamp = 201;
+    });
+
+    // Creating another condition should prune the expired ID.
+    let second = client.create_swap_condition(
+        &owner,
+        &Symbol::short("XLM"),
+        &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100),
+        &100,
+        &90,
+        &5,
+        &300,
+    );
+
+    let ids: Vec<u64> = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .get(&DataKey::OwnerConditions(owner.clone()))
+            .unwrap()
+    });
+
+    assert_eq!(ids.len(), 1);
+    assert_eq!(ids.get(0), Some(second));
+    assert_ne!(first, second);
+}

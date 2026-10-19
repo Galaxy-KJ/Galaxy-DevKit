@@ -138,9 +138,17 @@ fn renew_indexed_conditions(env: &Env, ids: &Vec<u64>) {
 }
 
 fn save_owner_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
-    renew_indexed_conditions(env, ids);
     let key = DataKey::OwnerConditions(owner.clone());
+
+    if ids.is_empty() {
+        env.storage().persistent().remove(&key);
+        return;
+    }
+
+    renew_indexed_conditions(env, ids);
+
     env.storage().persistent().set(&key, ids);
+
     env.storage()
         .persistent()
         .extend_ttl(&key, PERSISTENT_TTL_EXTEND, PERSISTENT_TTL_EXTEND);
@@ -232,9 +240,21 @@ impl SmartSwapContract {
             status: SwapStatus::Active,
         };
         save_condition(env, &condition);
-        let mut ids = load_owner_ids(env, &owner);
-        ids.push_back(next_id);
-        save_owner_ids(env, &owner, &ids);
+        let ids = load_owner_ids(env, &owner);
+        let now = env.ledger().timestamp();
+        let mut active_ids = Vec::new(env);
+
+        for id in ids.iter() {
+            let key = DataKey::Condition(id);
+
+            if let Some(condition) = env.storage().persistent().get::<_, SwapCondition>(&key) {
+                if condition.status == SwapStatus::Active && condition.expires_at > now {
+                    active_ids.push_back(id);
+                }
+            }
+        }
+        active_ids.push_back(next_id);
+        save_owner_ids(env, &owner, &active_ids);
         storage.set(&DataKey::NextConditionId, &next);
         bump_instance(env);
         Ok(next_id)
@@ -302,27 +322,31 @@ impl SmartSwapContract {
 
     pub fn get_active_conditions(env: &Env, owner: Address) -> Vec<SwapCondition> {
         let ids = load_owner_ids(env, &owner);
+
         let mut active = Vec::new(env);
+        let mut active_ids = Vec::new(env);
+
+        let now = env.ledger().timestamp();
+
         for id in ids.iter() {
             let key = DataKey::Condition(id);
+
             if let Some(condition) = env.storage().persistent().get::<_, SwapCondition>(&key) {
-                if condition.status == SwapStatus::Active
-                    && condition.expires_at > env.ledger().timestamp()
-                {
+                if condition.status == SwapStatus::Active && condition.expires_at > now {
                     env.storage().persistent().extend_ttl(
                         &key,
-                        PERSISTENT_TTL_THRESHOLD,
+                        PERSISTENT_TTL_EXTEND,
                         PERSISTENT_TTL_EXTEND,
                     );
+
                     active.push_back(condition);
+                    active_ids.push_back(id);
                 }
             }
         }
-        // Reading active records also renews the index, keeping its TTL
-        // aligned with the records it references.
-        if !ids.is_empty() {
-            save_owner_ids(env, &owner, &ids);
-        }
+
+        save_owner_ids(env, &owner, &active_ids);
+
         active
     }
 
