@@ -180,6 +180,15 @@ const func = AbiParser.getFunctionByName(abi, 'transfer');
 
 // Validate arguments
 const validation = AbiParser.validateArguments(func, args);
+const isValid = AbiParser.validateArgumentsBoolean(func, args);
+
+// Get structured argument errors and validate spec-defined structs/enums
+const detailed = AbiParser.validateArguments(func, args, abi.types);
+if (!detailed.valid) {
+  for (const error of detailed.errors) {
+    console.error(`Argument ${error.index}: expected ${error.expected}, received ${error.received}`);
+  }
+}
 
 // Build function signature
 const signature = AbiParser.buildFunctionSignature(func);
@@ -248,6 +257,8 @@ The utilities support all Soroban ScVal types:
 - **Primitive types**: `void`, `bool`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`, `u256`, `i256`, `f32`, `f64`
 - **String types**: `bytes`, `string`, `symbol`, `address`
 - **Container types**: `option`, `result`, `vec`, `map`, `set`, `tuple`
+
+Argument validation preserves generic type expressions such as `Vec<u32>`, `BytesN<32>`, and `(u32, Address)`. `AbiParser.validateArguments` returns `{ valid, errors }` with `{ index, expected, received }` errors. `validateArgumentsBoolean` is the boolean compatibility wrapper. Pass `abi.types` to validate struct and enum values defined in the contract spec.
 
 ## Error Handling
 

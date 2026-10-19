@@ -11,7 +11,12 @@ import { xdr } from '@stellar/stellar-sdk';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import { ScValConverter } from './scval-converter.js';
-import { ContractFunction, ScType } from '../types/contract-types.js';
+import { AbiType, ContractFunction, ScType } from '../types/contract-types.js';
+import {
+  ArgumentValidationResult,
+  formatArgumentValidationError,
+  validateFunctionArguments,
+} from './argument-validator.js';
 
 const VALID_SC_TYPES: ReadonlySet<string> = new Set([
   'void',
@@ -94,44 +99,37 @@ export class FunctionSignatureBuilder {
    */
   static validateArguments(
     func: ContractFunction,
-    args: any[]
+    args: any[],
+    types: AbiType[] = []
   ): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
+    const result = this.validateArgumentsDetailed(func, args, types);
+    return {
+      valid: result.valid,
+      errors: result.errors.map(error => {
+        const inputName = func.inputs[error.index]?.name;
+        const label = inputName ? ` (${inputName})` : '';
+        return `Argument ${error.index}${label}: expected ${error.expected}, received ${error.received}`;
+      }),
+    };
+  }
 
-    // Check argument count
-    if (args.length !== func.inputs.length) {
-      errors.push(
-        `Expected ${func.inputs.length} arguments, got ${args.length}. ` +
-          `Expected: [${func.inputs.map(i => i.name).join(', ')}]`
-      );
-      return { valid: false, errors };
-    }
-
-    // Validate each argument
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      const input = func.inputs[i];
-      const validationError = this.validateArgumentType(arg, input.type);
-
-      if (validationError) {
-        errors.push(`Argument ${i} (${input.name}): ${validationError}`);
-      }
-    }
-
-    return { valid: errors.length === 0, errors };
+  static validateArgumentsDetailed(
+    func: ContractFunction,
+    args: any[],
+    types: AbiType[] = []
+  ): ArgumentValidationResult {
+    return validateFunctionArguments(func, args, types);
   }
 
   /**
    * Validate single argument type
    */
   static validateArgumentType(arg: any, expectedType: ScType): string | null {
-    try {
-      // Try to convert to expected type
-      ScValConverter.toScVal(arg, expectedType);
-      return null;
-    } catch (error) {
-      return `Type validation failed: ${error.message}`;
-    }
+    const result = validateFunctionArguments(
+      { name: '', inputs: [{ name: '', type: expectedType }], outputs: [] },
+      [arg]
+    );
+    return result.errors.length ? formatArgumentValidationError(result.errors[0]) : null;
   }
 
   /**

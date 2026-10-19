@@ -28,29 +28,7 @@ export interface ContractEvent {
   data: ScType[];
 }
 
-export type ScType =
-  | 'void'
-  | 'bool'
-  | 'u32'
-  | 'i32'
-  | 'u64'
-  | 'i64'
-  | 'u128'
-  | 'i128'
-  | 'u256'
-  | 'i256'
-  | 'f32'
-  | 'f64'
-  | 'bytes'
-  | 'string'
-  | 'symbol'
-  | 'address'
-  | 'option'
-  | 'result'
-  | 'vec'
-  | 'map'
-  | 'set'
-  | 'tuple';
+export type ScType = string;
 
 export interface ContractDeploymentParams {
   wasm: Buffer;
@@ -157,6 +135,13 @@ export interface AbiType {
   kind: string;
   fields?: AbiField[];
   generics?: string[];
+  variants?: AbiVariant[];
+}
+
+export interface AbiVariant {
+  name: string;
+  type?: string;
+  fields?: AbiField[];
 }
 
 export interface AbiField {

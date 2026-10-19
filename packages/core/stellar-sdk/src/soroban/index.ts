@@ -17,6 +17,10 @@ export { ScValConverter } from './utils/scval-converter.js';
 export { AbiParser } from './utils/abi-parser.js';
 export { ErrorParser, SorobanError } from './utils/error-parser.js';
 export { FunctionSignatureBuilder } from './utils/function-signature-builder.js';
+export type {
+  ArgumentValidationError,
+  ArgumentValidationResult,
+} from './utils/argument-validator.js';
 export { EventDecoder } from './utils/event-decoder.js';
 export { predictContractAddress, normalizeSalt } from './utils/contract-address.js';
 
@@ -43,6 +47,7 @@ export type {
   AbiFunction,
   AbiArgument,
   AbiType,
+  AbiVariant,
   AbiField,
 } from './types/contract-types.js';
 

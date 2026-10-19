@@ -13,6 +13,7 @@ import {
   ContractEvent,
   ScType,
 } from '../types/contract-types.js';
+import { ArgumentValidationResult, validateFunctionArguments } from './argument-validator.js';
 
 export class AbiParser {
   /**
@@ -42,6 +43,20 @@ export class AbiParser {
           }))
         : undefined,
       generics: Array.isArray(type.generics) ? type.generics : undefined,
+      variants: Array.isArray(type.variants ?? type.cases)
+        ? (type.variants ?? type.cases).map((variant: any) => ({
+            name: variant.name || '',
+            ...(typeof variant.type === 'string' ? { type: variant.type } : {}),
+            ...(Array.isArray(variant.fields)
+              ? {
+                  fields: variant.fields.map((field: any) => ({
+                    name: field.name || '',
+                    type: field.type || '',
+                  })),
+                }
+              : {}),
+          }))
+        : undefined,
     }));
   }
 
@@ -102,7 +117,8 @@ export class AbiParser {
    * Parse ScType from string
    */
   static parseScType(typeStr: string): ScType {
-    const normalizedType = typeStr.toLowerCase();
+    const trimmedType = typeStr.trim();
+    const normalizedType = trimmedType.toLowerCase();
 
     switch (normalizedType) {
       case 'void':
@@ -150,21 +166,12 @@ export class AbiParser {
       case 'tuple':
         return 'tuple';
       default:
-        // Handle generic types like Vec<u32>, Map<string, u64>, etc.
-        if (normalizedType.startsWith('vec<')) {
-          return 'vec';
-        }
-        if (normalizedType.startsWith('map<')) {
-          return 'map';
-        }
-        if (normalizedType.startsWith('set<')) {
-          return 'set';
-        }
-        if (normalizedType.startsWith('option<')) {
-          return 'option';
-        }
-        if (normalizedType.startsWith('result<')) {
-          return 'result';
+        if (
+          /^(vec|map|set|option|result|tuple|bytesn)\s*</i.test(trimmedType) ||
+          /^\s*\(/.test(trimmedType) ||
+          /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedType)
+        ) {
+          return trimmedType;
         }
         throw new Error(`Unknown ScType: ${typeStr}`);
     }
@@ -207,14 +214,30 @@ export class AbiParser {
   /**
    * Validate arguments against function signature
    */
-  static validateArguments(func: ContractFunction, args: any[]): boolean {
-    if (func.inputs.length !== args.length) {
-      return false;
-    }
+  static validateArguments(
+    func: ContractFunction,
+    args: any[],
+    types: AbiType[] = []
+  ): ArgumentValidationResult {
+    return validateFunctionArguments(func, args, types);
+  }
 
-    // Type validation would require more complex logic
-    // For now, just check length
-    return true;
+  /** Validate arguments and return structured per-argument errors. */
+  static validateArgumentsDetailed(
+    func: ContractFunction,
+    args: any[],
+    types: AbiType[] = []
+  ): ArgumentValidationResult {
+    return this.validateArguments(func, args, types);
+  }
+
+  /** Boolean compatibility wrapper for callers of the original validator. */
+  static validateArgumentsBoolean(
+    func: ContractFunction,
+    args: any[],
+    types: AbiType[] = []
+  ): boolean {
+    return this.validateArguments(func, args, types).valid;
   }
 
   /**
