@@ -7,8 +7,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, Symbol, Vec,
 };
 
 #[contracttype]
@@ -133,7 +132,9 @@ fn renew_indexed_conditions(env: &Env, ids: &Vec<u64>) {
     for id in ids.iter() {
         let key = DataKey::Condition(id);
         env.storage().persistent().extend_ttl(
-            &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+            &key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
         );
     }
 }
@@ -254,7 +255,9 @@ impl SmartSwapContract {
             return Err(SmartSwapError::ConditionExpired);
         }
 
-        let price_oracle: Address = env.storage().instance()
+        let price_oracle: Address = env
+            .storage()
+            .instance()
             .get(&DataKey::PriceOracle)
             .ok_or(SmartSwapError::NotInitialized)?;
         let current_price = Self::get_current_price(
@@ -309,7 +312,9 @@ impl SmartSwapContract {
                     && condition.expires_at > env.ledger().timestamp()
                 {
                     env.storage().persistent().extend_ttl(
-                        &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+                        &key,
+                        PERSISTENT_TTL_THRESHOLD,
+                        PERSISTENT_TTL_EXTEND,
                     );
                     active.push_back(condition);
                 }
@@ -351,7 +356,9 @@ impl SmartSwapContract {
         if let Some(execution) = env.storage().persistent().get(&key) {
             out.push_back(execution);
             env.storage().persistent().extend_ttl(
-                &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+                &key,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND,
             );
         }
         out
@@ -370,13 +377,11 @@ impl SmartSwapContract {
     fn is_condition_met(condition: &SwapCondition, current_price: u64) -> bool {
         match &condition.condition_type {
             SwapConditionType::PercentageIncrease(percent) => {
-                let increment = condition.reference_price
-                    .saturating_mul(*percent as u64) / 100;
+                let increment = condition.reference_price.saturating_mul(*percent as u64) / 100;
                 current_price >= condition.reference_price.saturating_add(increment)
             }
             SwapConditionType::PercentageDecrease(percent) => {
-                let decrement = condition.reference_price
-                    .saturating_mul(*percent as u64) / 100;
+                let decrement = condition.reference_price.saturating_mul(*percent as u64) / 100;
                 current_price <= condition.reference_price.saturating_sub(decrement)
             }
             SwapConditionType::TargetPrice(price) => current_price == *price,
