@@ -9,11 +9,13 @@ use soroban_sdk::{
 #[test]
 fn test_initialize() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     
     // Test that contract is initialized
     // This would typically check storage values
@@ -22,11 +24,13 @@ fn test_initialize() {
 #[test]
 fn test_create_swap_condition() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     
     let owner = Address::generate(&env);
     let source_asset = Symbol::short("XLM");
@@ -54,11 +58,13 @@ fn test_create_swap_condition() {
 #[test]
 fn test_get_active_conditions() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     
     let owner = Address::generate(&env);
     let source_asset = Symbol::short("XLM");
@@ -87,11 +93,13 @@ fn test_get_active_conditions() {
 #[test]
 fn test_cancel_condition() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     
     let owner = Address::generate(&env);
     let source_asset = Symbol::short("XLM");
@@ -126,12 +134,14 @@ fn test_cancel_condition() {
 #[test]
 fn test_initialize_extends_instance_ttl() {
     let env = Env::default();
+    env.mock_all_auths();
     env.ledger().with_mut(|li| li.sequence_number = 100);
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
 
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert_eq!(ttl, INSTANCE_TTL_EXTEND);
@@ -140,11 +150,13 @@ fn test_initialize_extends_instance_ttl() {
 #[test]
 fn test_create_swap_condition_survives_past_initial_threshold() {
     let env = Env::default();
+    env.mock_all_auths();
     env.ledger().with_mut(|li| li.sequence_number = 100);
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
 
     env.ledger()
         .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
@@ -167,11 +179,13 @@ fn test_create_swap_condition_survives_past_initial_threshold() {
 #[test]
 fn test_instance_ttl_boundary_behavior() {
     let env = Env::default();
+    env.mock_all_auths();
     env.ledger().with_mut(|li| li.sequence_number = 100);
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     let owner = Address::generate(&env);
 
     let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
@@ -213,11 +227,13 @@ fn test_instance_ttl_boundary_behavior() {
 #[test]
 fn test_cancel_condition_extends_instance_ttl() {
     let env = Env::default();
+    env.mock_all_auths();
     env.ledger().with_mut(|li| li.sequence_number = 100);
     let contract_id = env.register_contract(None, SmartSwapContract);
     let client = SmartSwapContractClient::new(&env, &contract_id);
     let price_oracle = Address::generate(&env);
-    client.initialize(&price_oracle);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &price_oracle);
     let owner = Address::generate(&env);
 
     let condition_id = client.create_swap_condition(
@@ -239,3 +255,105 @@ fn test_cancel_condition_extends_instance_ttl() {
     assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }
 
+
+#[test]
+fn initialize_twice_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    c.initialize(&admin, &oracle);
+    let err = c.try_initialize(&admin, &Address::generate(&env)).unwrap_err();
+    assert_eq!(err.ok(), Some(SmartSwapError::AlreadyInitialized));
+}
+
+#[test]
+#[should_panic]
+fn initialize_without_admin_auth_fails() {
+    let env = Env::default();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+}
+
+#[test]
+#[should_panic]
+fn attacker_cannot_create_for_other_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    env.mock_auths(&[]);
+    c.create_swap_condition(
+        &Address::generate(&env),
+        &Symbol::short("XLM"),
+        &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100),
+        &100, &90, &5, &1_000_000,
+    );
+}
+
+#[test]
+#[should_panic]
+fn attacker_cannot_cancel_other_owner_condition() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    let owner = Address::generate(&env);
+    let condition = c.create_swap_condition(
+        &owner,
+        &Symbol::short("XLM"),
+        &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100),
+        &100, &90, &5, &1_000_000,
+    );
+    env.mock_auths(&[]);
+    c.cancel_condition(&condition, &owner);
+}
+
+#[test]
+#[should_panic]
+fn attacker_cannot_change_oracle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    env.mock_auths(&[]);
+    c.set_oracle(&Address::generate(&env));
+}
+
+#[test]
+fn conditions_use_separate_persistent_entries() {
+    use soroban_sdk::testutils::storage::Persistent as _;
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SmartSwapContract);
+    let c = SmartSwapContractClient::new(&env, &id);
+    c.initialize(&Address::generate(&env), &Address::generate(&env));
+    let owner = Address::generate(&env);
+    let first = c.create_swap_condition(
+        &owner, &Symbol::short("XLM"), &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100), &100, &90, &5, &1_000_000,
+    );
+    let second = c.create_swap_condition(
+        &owner, &Symbol::short("XLM"), &Symbol::short("USDC"),
+        &SwapConditionType::PriceAbove(100), &100, &90, &5, &1_000_000,
+    );
+    assert_ne!(first, second);
+    assert_eq!(c.get_active_conditions(&owner).len(), 2);
+    env.as_contract(&id, || {
+        let storage = env.storage().persistent();
+        assert!(storage.has(&DataKey::Condition(first)));
+        assert!(storage.has(&DataKey::Condition(second)));
+        assert!(storage.get_ttl(&DataKey::Condition(first)) > 0);
+        assert!(storage.has(&DataKey::OwnerConditions(owner.clone())));
+    });
+    c.cancel_condition(&first, &owner);
+    assert_eq!(c.get_active_conditions(&owner).len(), 1);
+}
