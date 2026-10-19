@@ -83,8 +83,8 @@ pub enum SmartSwapError {
     InvalidExpiration = 9,
 }
 
-// Ledger-sequence TTL values. Owner indexes contain only active condition IDs;
-// reads renew the TTL of active records so the index cannot outlive them.
+// Ledger-sequence TTL values. Whenever the owner index is renewed, all
+// indexed condition records must be renewed too, before the index is extended.
 const INSTANCE_TTL_THRESHOLD: u32 = 60_480;
 const INSTANCE_TTL_EXTEND: u32 = 120_960;
 const PERSISTENT_TTL_THRESHOLD: u32 = 60_480;
@@ -124,13 +124,22 @@ fn load_owner_ids(env: &Env, owner: &Address) -> Vec<u64> {
     let key = DataKey::OwnerConditions(owner.clone());
     let storage = env.storage().persistent();
     let ids = storage.get(&key).unwrap_or(Vec::new(env));
-    if storage.has(&key) {
-        storage.extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
-    }
+    // Do not renew the index here: callers renew indexed records before
+    // extending the index through save_owner_ids.
     ids
 }
 
+fn renew_indexed_conditions(env: &Env, ids: &Vec<u64>) {
+    for id in ids.iter() {
+        let key = DataKey::Condition(id);
+        env.storage().persistent().extend_ttl(
+            &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
+        );
+    }
+}
+
 fn save_owner_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
+    renew_indexed_conditions(env, ids);
     let key = DataKey::OwnerConditions(owner.clone());
     env.storage().persistent().set(&key, ids);
     env.storage()
@@ -296,13 +305,20 @@ impl SmartSwapContract {
         for id in ids.iter() {
             let key = DataKey::Condition(id);
             if let Some(condition) = env.storage().persistent().get::<_, SwapCondition>(&key) {
-                if condition.status == SwapStatus::Active {
+                if condition.status == SwapStatus::Active
+                    && condition.expires_at > env.ledger().timestamp()
+                {
                     env.storage().persistent().extend_ttl(
                         &key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND,
                     );
                     active.push_back(condition);
                 }
             }
+        }
+        // Reading active records also renews the index, keeping its TTL
+        // aligned with the records it references.
+        if !ids.is_empty() {
+            save_owner_ids(env, &owner, &ids);
         }
         active
     }
