@@ -27,10 +27,9 @@ CREATE POLICY "Service role can manage KYC status"
     ON kyc_status FOR ALL
     USING (auth.role() = 'service_role');
 
--- Create updated_at trigger function if it doesn't exist (assuming it's already defined, but just in case)
--- CREATE OR REPLACE FUNCTION update_modified_column() ...
+-- update_updated_at_column() is defined in 20241201000001_initial_schema.sql
 
 CREATE TRIGGER update_kyc_status_modtime
     BEFORE UPDATE ON kyc_status
     FOR EACH ROW
-    EXECUTE FUNCTION update_modified_column();
+    EXECUTE FUNCTION update_updated_at_column();

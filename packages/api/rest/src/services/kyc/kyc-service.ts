@@ -1,64 +1,129 @@
-import { IKYCProvider, KYCStatusRecord, KYCVerificationResult } from '../../types/kyc-types';
-import { MockKYCProvider } from './providers/mock-kyc-provider';
+import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  IKYCProvider,
+  KYCStatus,
+  KYCStatusLookupError,
+  KYCStatusRecord,
+} from '../../types/kyc-types';
+import { getSupabaseClient } from '../../utils/supabase';
+import { createKYCProvider } from './providers';
 
-// Assume supabase client is available or injected
-// import { supabase } from '../config/supabaseClient';
+export { KYCStatusLookupError };
+
+const TABLE = 'kyc_status';
+
+interface KYCStatusRow {
+  id: string;
+  user_id: string;
+  provider: string;
+  status: KYCStatus;
+  risk_score: number;
+  last_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toRecord(row: KYCStatusRow): KYCStatusRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    provider: row.provider,
+    status: row.status,
+    riskScore: row.risk_score,
+    lastVerifiedAt: row.last_verified_at ? new Date(row.last_verified_at) : null,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+export interface KYCServiceDeps {
+  provider?: IKYCProvider;
+  client?: SupabaseClient;
+}
 
 export class KYCService {
-  private provider: IKYCProvider;
+  private providerInstance?: IKYCProvider;
+  private clientInstance?: SupabaseClient;
 
-  constructor(provider?: IKYCProvider) {
-    this.provider = provider || new MockKYCProvider();
+  constructor(deps: KYCServiceDeps = {}) {
+    this.providerInstance = deps.provider;
+    this.clientInstance = deps.client;
   }
 
-  async verifyUser(userId: string, documentData: any): Promise<KYCVerificationResult> {
-    const result = await this.provider.verifyIdentity(userId, documentData);
-    
-    // In a real implementation, we would update the DB here
-    /*
-    await supabase.from('kyc_status').upsert({
-      user_id: userId,
-      provider: this.provider.name,
-      status: result.status,
-      risk_score: result.riskScore,
-      last_verified_at: result.verifiedAt,
-      updated_at: new Date()
-    });
-    */
-
-    return result;
+  private get provider(): IKYCProvider {
+    this.providerInstance ??= createKYCProvider();
+    return this.providerInstance;
   }
 
-  async checkSanctions(userId: string, walletAddress?: string): Promise<boolean> {
-    const isSanctioned = await this.provider.checkSanctions(userId, walletAddress);
-    if (isSanctioned) {
-      // In a real implementation, update DB to flagged
-    }
-    return isSanctioned;
+  private get client(): SupabaseClient {
+    this.clientInstance ??= getSupabaseClient();
+    return this.clientInstance;
   }
 
   async getStatus(userId: string): Promise<KYCStatusRecord | null> {
-    // In a real implementation, fetch from DB
-    /*
-    const { data } = await supabase
-      .from('kyc_status')
+    const { data, error } = await this.client
+      .from(TABLE)
       .select('*')
       .eq('user_id', userId)
-      .single();
-    return data;
-    */
-    
-    // Mock return for now
-    return {
-      id: 'mock-id',
-      userId,
+      .maybeSingle();
+
+    if (error) {
+      throw new KYCStatusLookupError(
+        `Failed to read KYC status: ${error.message ?? 'unknown error'}`,
+        error
+      );
+    }
+    return data ? toRecord(data as KYCStatusRow) : null;
+  }
+
+  async verifyUser(
+    userId: string,
+    documentData: unknown
+  ): Promise<KYCStatusRecord> {
+    const result = await this.provider.verifyIdentity(userId, documentData);
+    return this.persist(userId, {
+      provider: result.provider,
+      status: result.status,
+      risk_score: result.riskScore,
+      last_verified_at: result.verifiedAt.toISOString(),
+    });
+  }
+
+  async checkSanctions(
+    userId: string,
+    walletAddress?: string
+  ): Promise<{ sanctioned: boolean; record: KYCStatusRecord | null }> {
+    const sanctioned = await this.provider.checkSanctions(userId, walletAddress);
+    if (!sanctioned) {
+      return { sanctioned: false, record: await this.getStatus(userId) };
+    }
+
+    const record = await this.persist(userId, {
       provider: this.provider.name,
-      status: 'approved',
-      riskScore: 10,
-      lastVerifiedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      status: 'flagged',
+    });
+    return { sanctioned: true, record };
+  }
+
+  private async persist(
+    userId: string,
+    fields: Partial<Omit<KYCStatusRow, 'id' | 'user_id'>>
+  ): Promise<KYCStatusRecord> {
+    const { data, error } = await this.client
+      .from(TABLE)
+      .upsert(
+        { user_id: userId, ...fields, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      )
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new Error(
+        `Failed to persist KYC status: ${error?.message ?? 'no row returned'}`
+      );
+    }
+    return toRecord(data as KYCStatusRow);
   }
 }
 
