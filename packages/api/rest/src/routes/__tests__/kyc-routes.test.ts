@@ -3,7 +3,7 @@ import request from 'supertest';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { setupKycRoutes } from '../kyc-routes';
 import { createRequireKYC } from '../../middleware/kyc-middleware';
-import { KYCService } from '../../services/kyc/kyc-service';
+import { KYCService, KYCStatusLookupError } from '../../services/kyc/kyc-service';
 import { IKYCProvider } from '../../types/kyc-types';
 
 let currentUser: Record<string, unknown> | undefined;
@@ -110,6 +110,31 @@ describe('KYC routes with requireKYC', () => {
     const res = await request(app).get('/protected');
     expect(res.status).toBe(403);
     expect(res.body.currentStatus).toBe('flagged');
+  });
+
+  it('does not let a flagged user re-verify into approved', async () => {
+    const { client, upsert } = makeStore(makeRow('flagged'));
+    const app = buildApp(new KYCService({ client, provider: makeProvider() }));
+
+    const verify = await request(app)
+      .post('/kyc/verify')
+      .send({ documentData: { type: 'passport' } });
+    expect(verify.status).toBe(200);
+    expect(verify.body.status).toBe('flagged');
+    expect(upsert).not.toHaveBeenCalled();
+
+    expect((await request(app).get('/protected')).status).toBe(403);
+  });
+
+  it('returns 503 from GET /kyc/status on a store error', async () => {
+    const service = {
+      getStatus: jest.fn().mockRejectedValue(new KYCStatusLookupError('down')),
+    } as unknown as KYCService;
+    const app = buildApp(service);
+
+    const res = await request(app).get('/kyc/status');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'KYC status unavailable' });
   });
 
   it('flags a sanctioned user and then denies the gate', async () => {

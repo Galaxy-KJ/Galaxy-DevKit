@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { KYCService, kycService } from '../services/kyc/kyc-service';
+import {
+  KYCService,
+  KYCStatusLookupError,
+  kycService,
+} from '../services/kyc/kyc-service';
 
 export function setupKycRoutes(service: KYCService = kycService): Router {
   const router = Router();
@@ -14,7 +18,10 @@ export function setupKycRoutes(service: KYCService = kycService): Router {
 
       const status = await service.getStatus(userId);
       res.json(status);
-    } catch {
+    } catch (error) {
+      if (error instanceof KYCStatusLookupError) {
+        return res.status(503).json({ error: 'KYC status unavailable' });
+      }
       res.status(500).json({ error: 'Failed to fetch KYC status' });
     }
   });

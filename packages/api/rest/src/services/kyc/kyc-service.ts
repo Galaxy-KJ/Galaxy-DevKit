@@ -3,12 +3,13 @@ import {
   IKYCProvider,
   KYCStatus,
   KYCStatusLookupError,
+  KYCStatusPersistError,
   KYCStatusRecord,
 } from '../../types/kyc-types';
 import { getSupabaseClient } from '../../utils/supabase';
 import { createKYCProvider } from './providers';
 
-export { KYCStatusLookupError };
+export { KYCStatusLookupError, KYCStatusPersistError };
 
 const TABLE = 'kyc_status';
 
@@ -80,6 +81,12 @@ export class KYCService {
     userId: string,
     documentData: unknown
   ): Promise<KYCStatusRecord> {
+    // A sanctions flag is sticky: re-verification must not clear it.
+    const existing = await this.getStatus(userId);
+    if (existing?.status === 'flagged') {
+      return existing;
+    }
+
     const result = await this.provider.verifyIdentity(userId, documentData);
     return this.persist(userId, {
       provider: result.provider,
@@ -119,8 +126,9 @@ export class KYCService {
       .single();
 
     if (error || !data) {
-      throw new Error(
-        `Failed to persist KYC status: ${error?.message ?? 'no row returned'}`
+      throw new KYCStatusPersistError(
+        `Failed to persist KYC status: ${error?.message ?? 'no row returned'}`,
+        error
       );
     }
     return toRecord(data as KYCStatusRow);

@@ -1,5 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { KYCService, KYCStatusLookupError } from '../kyc-service';
+import {
+  KYCService,
+  KYCStatusLookupError,
+  KYCStatusPersistError,
+} from '../kyc-service';
 import { IKYCProvider } from '../../../types/kyc-types';
 
 function makeClient(
@@ -91,7 +95,10 @@ describe('KYCService', () => {
 
   describe('verifyUser', () => {
     it('upserts the provider result and returns the persisted row', async () => {
-      const { client, chain } = makeClient([{ data: row(), error: null }]);
+      const { client, chain } = makeClient([
+        { data: null, error: null },
+        { data: row(), error: null },
+      ]);
       const svc = new KYCService({ client, provider: makeProvider() });
 
       const record = await svc.verifyUser(USER_ID, { doc: 1 });
@@ -106,17 +113,38 @@ describe('KYCService', () => {
         }),
         { onConflict: 'user_id' }
       );
+      expect(chain.upsert.mock.invocationCallOrder[0]).toBeLessThan(
+        chain.select.mock.invocationCallOrder.slice(-1)[0]
+      );
+      expect(chain.single).toHaveBeenCalledTimes(1);
       expect(record.status).toBe('approved');
       expect(record.id).toBe('row-1');
     });
 
+    it('keeps a flagged user flagged and skips the provider', async () => {
+      const { client, chain } = makeClient([
+        { data: row({ status: 'flagged' }), error: null },
+      ]);
+      const provider = makeProvider();
+      const svc = new KYCService({ client, provider });
+
+      const record = await svc.verifyUser(USER_ID, { doc: 1 });
+
+      expect(record.status).toBe('flagged');
+      expect(provider.verifyIdentity).not.toHaveBeenCalled();
+      expect(chain.upsert).not.toHaveBeenCalled();
+    });
+
     it('throws when the upsert fails', async () => {
-      const { client } = makeClient([{ data: null, error: { message: 'nope' } }]);
+      const { client } = makeClient([
+        { data: null, error: null },
+        { data: null, error: { message: 'nope' } },
+      ]);
       const svc = new KYCService({ client, provider: makeProvider() });
 
-      await expect(svc.verifyUser(USER_ID, {})).rejects.toThrow(
-        /Failed to persist KYC status/
-      );
+      const p = svc.verifyUser(USER_ID, {});
+      await expect(p).rejects.toBeInstanceOf(KYCStatusPersistError);
+      await expect(p).rejects.toThrow(/Failed to persist KYC status/);
     });
   });
 

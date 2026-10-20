@@ -32,3 +32,10 @@ export class KYCStatusLookupError extends Error {
     this.name = 'KYCStatusLookupError';
   }
 }
+
+export class KYCStatusPersistError extends KYCStatusLookupError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'KYCStatusPersistError';
+  }
+}
