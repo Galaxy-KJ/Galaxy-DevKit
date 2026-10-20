@@ -17,7 +17,7 @@ const wsLogger = createLogger({ name: 'api-websocket', level: 'debug' });
 
 - Level: `LOG_LEVEL`, or `silent` when `NODE_ENV=test` and `info` otherwise.
 - Format: JSON by default. With `NODE_ENV=development` and `pino-pretty` installed, output is pretty printed.
-- Redaction: values under `password`, `token`, `accessToken`, `refreshToken`, `secret`, `secretKey`, `privateKey`, `seed`, `mnemonic`, `apiKey`, `signature` and `encryptedPrivateKey` (top-level and one level nested), plus `req.headers.authorization`, `req.headers.cookie`, `req.headers["x-api-key"]` and `headers.authorization`, are replaced with `[REDACTED]`.
+- Redaction: values under `password`, `token`, `accessToken`, `refreshToken`, `secret`, `secretKey`, `privateKey`, `seed`, `mnemonic`, `apiKey`, `signature` and `encryptedPrivateKey` (top-level and one level nested), plus `req.headers.authorization`, `req.headers.cookie`, `req.headers["x-api-key"]`, `req.headers["x-session-token"]`, `headers.authorization`, `headers.cookie`, `headers["x-api-key"]` and `headers["x-session-token"]`, are replaced with `[REDACTED]`. The pino-http request serializer in api-rest also drops the query string from logged URLs.
 
 ## Building
 
