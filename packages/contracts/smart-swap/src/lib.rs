@@ -30,6 +30,8 @@ pub use types::{Config, DataKey, SwapCondition, SwapConditionType, SwapExecution
 /// Oracle prices carry six implied decimals, matching the TS client.
 pub const PRICE_SCALE: i128 = 1_000_000;
 pub const BPS_DENOMINATOR: i128 = 10_000;
+/// Longest a condition may stay open: 365 days.
+pub const MAX_CONDITION_DURATION_SECS: u64 = 365 * 24 * 60 * 60;
 /// Router deadline, relative to the executing ledger's timestamp.
 const SWAP_DEADLINE_SECS: u64 = 300;
 
@@ -66,6 +68,7 @@ impl SmartSwapContract {
             panic_with_error!(env, SwapError::AlreadyInitialized);
         }
         admin.require_auth();
+        Self::validate_config(env, max_price_age_secs, target_tolerance_bps);
 
         let config = Config {
             admin,
@@ -89,6 +92,7 @@ impl SmartSwapContract {
     ) {
         let mut config = Self::load_config(env);
         config.admin.require_auth();
+        Self::validate_config(env, max_price_age_secs, target_tolerance_bps);
 
         config.oracle = oracle;
         config.router = router;
@@ -132,8 +136,13 @@ impl SmartSwapContract {
         if source_token == destination_token {
             panic_with_error!(env, SwapError::InvalidTokenPair);
         }
+        let now = env.ledger().timestamp();
+        if expires_at <= now || expires_at - now > MAX_CONDITION_DURATION_SECS {
+            panic_with_error!(env, SwapError::InvalidExpiry);
+        }
         match condition_type {
-            SwapConditionType::PercentageDecrease(percentage) if percentage > 100 => {
+            // 100% or more would need a price <= 0, which is never accepted.
+            SwapConditionType::PercentageDecrease(percentage) if percentage >= 100 => {
                 panic_with_error!(env, SwapError::InvalidAmount)
             }
             SwapConditionType::TargetPrice(price) if price <= 0 => {
@@ -198,7 +207,8 @@ impl SmartSwapContract {
         let storage = env.storage().instance();
         let mut condition = Self::active_condition(env, condition_id);
 
-        // Expired: refund the owner instead of swapping
+        // Expired (strictly after `expires_at`, which itself still executes):
+        // refund the owner instead of swapping
         if env.ledger().timestamp() > condition.expires_at {
             Self::refund(env, &condition);
             Self::close(env, &mut condition, SwapStatus::Expired);
@@ -297,6 +307,12 @@ impl SmartSwapContract {
 }
 
 impl SmartSwapContract {
+    fn validate_config(env: &Env, max_price_age_secs: u64, target_tolerance_bps: u32) {
+        if max_price_age_secs == 0 || target_tolerance_bps as i128 > BPS_DENOMINATOR {
+            panic_with_error!(env, SwapError::InvalidConfig);
+        }
+    }
+
     fn load_config(env: &Env) -> Config {
         env.storage()
             .instance()
@@ -376,7 +392,10 @@ impl SmartSwapContract {
             destination_asset,
             &max_price_age_secs,
         );
-        if result.is_stale {
+        // Also checked locally: both oracles treat a future timestamp as age 0.
+        let now = env.ledger().timestamp();
+        let timestamp = result.entry.timestamp;
+        if result.is_stale || timestamp > now || now - timestamp > max_price_age_secs {
             panic_with_error!(env, SwapError::PriceStale);
         }
         if result.entry.price <= 0 {

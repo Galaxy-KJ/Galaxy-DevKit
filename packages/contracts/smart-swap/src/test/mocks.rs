@@ -3,8 +3,8 @@
 use crate::oracle::{PriceEntry, PriceResult};
 use crate::PRICE_SCALE;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, token, vec, Address,
-    Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, token,
+    vec, Address, Env, Symbol, Vec,
 };
 
 /// Same `get_price_checked` ABI as `price-oracle` and `galaxy-oracle`.
@@ -19,6 +19,13 @@ impl MockOracle {
             .set(&(base, quote), &(price, timestamp));
     }
 
+    /// Simulates a buggy oracle that never flags a price as stale.
+    pub fn set_never_stale(env: Env, never_stale: bool) {
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NOSTALE"), &never_stale);
+    }
+
     pub fn get_price_checked(
         env: Env,
         base: Symbol,
@@ -31,6 +38,11 @@ impl MockOracle {
             .get(&(base, quote))
             .expect("price not found");
         let age = env.ledger().timestamp().saturating_sub(timestamp);
+        let never_stale: bool = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NOSTALE"))
+            .unwrap_or(false);
         PriceResult {
             entry: PriceEntry {
                 price,
@@ -38,7 +50,7 @@ impl MockOracle {
                 pusher: env.current_contract_address(),
             },
             age_seconds: age,
-            is_stale: age > max_age_seconds,
+            is_stale: !never_stale && age > max_age_seconds,
         }
     }
 }

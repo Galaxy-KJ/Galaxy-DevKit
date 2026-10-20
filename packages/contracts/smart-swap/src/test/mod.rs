@@ -6,6 +6,7 @@ mod config;
 mod mocks;
 mod swap;
 mod ttl;
+mod validation;
 
 use crate::{SmartSwapContract, SmartSwapContractClient, SwapConditionType, PRICE_SCALE};
 use mocks::{MockOracle, MockOracleClient, MockRouter, MockRouterClient};
@@ -160,4 +161,15 @@ impl<'a> Setup<'a> {
         self.swap.cancel_condition(&id, &self.owner);
         self.enforce_auths();
     }
+}
+
+/// What a test-side `try_` call returns when a `require_auth` fails: the
+/// host raises `Error(Auth, InvalidAction)` inside the contract and reports
+/// it to the caller as `Error(Context, InvalidAction)`. Contract errors
+/// surface as `Error(Contract, n)` instead.
+pub fn auth_error() -> soroban_sdk::Error {
+    soroban_sdk::Error::from_type_and_code(
+        soroban_sdk::xdr::ScErrorType::Context,
+        soroban_sdk::xdr::ScErrorCode::InvalidAction,
+    )
 }

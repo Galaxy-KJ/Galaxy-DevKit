@@ -20,4 +20,8 @@ pub enum SwapError {
     Unauthorized = 10,
     /// `source_token` and `destination_token` are the same contract.
     InvalidTokenPair = 11,
+    /// `expires_at` is not in `(now, now + MAX_CONDITION_DURATION_SECS]`.
+    InvalidExpiry = 12,
+    /// `max_price_age_secs` is 0 or `target_tolerance_bps` exceeds 10_000.
+    InvalidConfig = 13,
 }

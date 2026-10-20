@@ -106,6 +106,6 @@ fn test_set_config_rejects_non_admin() {
         },
     }]);
     let result = s.swap.try_set_config(&new_oracle, &s.router_id, &60, &10);
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(auth_error())));
     assert_eq!(s.swap.get_config().oracle, s.oracle_id);
 }

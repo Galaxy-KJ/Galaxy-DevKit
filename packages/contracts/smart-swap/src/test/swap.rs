@@ -235,7 +235,10 @@ fn test_cancel_signed_by_another_address_fails_auth() {
             sub_invokes: &[],
         },
     }]);
-    assert!(s.swap.try_cancel_condition(&id, &s.owner).is_err());
+    assert_eq!(
+        s.swap.try_cancel_condition(&id, &s.owner),
+        Err(Ok(auth_error()))
+    );
 
     assert_unchanged(&s, &before);
     assert_eq!(s.swap.get_condition(&id).status, SwapStatus::Active);

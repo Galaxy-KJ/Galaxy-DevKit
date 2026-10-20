@@ -4,7 +4,6 @@
 extern crate std;
 
 use super::*;
-use crate::SwapError;
 use soroban_sdk::{
     testutils::{AuthorizedFunction, AuthorizedInvocation, MockAuth, MockAuthInvoke},
     IntoVal,
@@ -131,7 +130,7 @@ fn test_create_without_owner_signature_fails() {
         &0,
         &(NOW + 1),
     );
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(auth_error())));
     assert_eq!(s.source.balance(&s.owner), OWNER_FUNDS);
 }
 
@@ -144,7 +143,10 @@ fn test_router_cannot_pull_more_than_the_condition_amount() {
     s.set_market(1_200_000);
     s.router.set_skim(&1);
 
-    assert!(s.swap.try_execute_swap_condition(&id).is_err());
+    assert_eq!(
+        s.swap.try_execute_swap_condition(&id),
+        Err(Ok(auth_error()))
+    );
 
     assert_eq!(s.source.balance(&s.swap_id), 2 * AMOUNT);
     assert_eq!(s.source.balance(&s.router_id), 0);
@@ -156,6 +158,19 @@ fn test_set_config_requires_admin_signature() {
     let s = Setup::new();
     s.enforce_auths();
     let result = s.swap.try_set_config(&s.oracle_id, &s.router_id, &1, &1);
-    assert!(result.is_err());
-    assert_ne!(result, Err(Ok(SwapError::NotInitialized.into())));
+    assert_eq!(result, Err(Ok(auth_error())));
+    assert_eq!(s.swap.get_config().max_price_age_secs, MAX_PRICE_AGE);
+
+    // Same call, signed by the admin: accepted.
+    s.env.mock_auths(&[MockAuth {
+        address: &s.admin,
+        invoke: &MockAuthInvoke {
+            contract: &s.swap_id,
+            fn_name: "set_config",
+            args: (s.oracle_id.clone(), s.router_id.clone(), 1u64, 1u32).into_val(&s.env),
+            sub_invokes: &[],
+        },
+    }]);
+    s.swap.set_config(&s.oracle_id, &s.router_id, &1, &1);
+    assert_eq!(s.swap.get_config().max_price_age_secs, 1);
 }
