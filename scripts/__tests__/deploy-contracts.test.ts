@@ -189,7 +189,7 @@ fi
 if [[ "$1" == "contract" && "$2" == "invoke" ]]; then
   echo "$@" >> "$STUB_INVOKE_LOG"
   if [[ "$*" == *" get_config"* ]]; then
-    echo "{\\"admin\\":\\"\${STUB_CONFIG_ADMIN:-GALICE}\\",\\"max_price_age_secs\\":300}"
+    echo "{\\"admin\\":\\"\${STUB_CONFIG_ADMIN:-GALICE}\\",\\"oracle\\":\\"\${STUB_CONFIG_ORACLE:-CORACLE}\\",\\"max_price_age_secs\\":300}"
     exit 0
   fi
 fi
@@ -246,6 +246,15 @@ echo "ok"
       });
       expect(hijacked.result.status).not.toBe(0);
       expect(hijacked.result.stderr).toMatch(/smart_swap admin is not GALICE/);
+
+      // The deployer's address in another field must not pass for the admin.
+      const decoy = run('decoy', {
+        SMART_SWAP_ROUTER_ID: 'CROUTER',
+        STUB_CONFIG_ADMIN: 'GATTACKER',
+        STUB_CONFIG_ORACLE: 'GALICE',
+      });
+      expect(decoy.result.status).not.toBe(0);
+      expect(decoy.result.stderr).toMatch(/smart_swap admin is not GALICE/);
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }

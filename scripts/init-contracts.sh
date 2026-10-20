@@ -91,10 +91,27 @@ invoke_init() {
   ok "  $key initialised"
 }
 
+# Prints the exact `admin` field of a get_config JSON result, or nothing.
+# Tries the whole output first, then its last line.
+admin_from_config() {
+  python3 - "$1" <<'PY' 2>/dev/null || true
+import json, sys
+raw = sys.argv[1].strip()
+for candidate in (raw, raw.splitlines()[-1] if raw else ""):
+    try:
+        value = json.loads(candidate)
+    except ValueError:
+        continue
+    if isinstance(value, dict) and isinstance(value.get("admin"), str):
+        print(value["admin"])
+        break
+PY
+}
+
 # Deploy and initialize are separate transactions, so another account could
 # initialize first. Fail unless the stored admin is the one we expect.
 verify_smart_swap_admin() {
-  local expected="$1" contract_id config
+  local expected="$1" contract_id config stored_admin
   contract_id="$(read_field "smart_swap" "contractId")"
   [[ -n "$contract_id" ]] || return 0
   config="$(stellar contract invoke \
@@ -103,7 +120,8 @@ verify_smart_swap_admin() {
     --network "$STELLAR_NETWORK" \
     --send=no \
     -- get_config)"
-  if [[ "$config" != *"\"$expected\""* ]]; then
+  stored_admin="$(admin_from_config "$config")"
+  if [[ "$stored_admin" != "$expected" ]]; then
     error "smart_swap admin is not $expected: $config"
     exit 1
   fi
