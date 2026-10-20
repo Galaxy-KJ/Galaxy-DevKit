@@ -1655,28 +1655,27 @@ stateDiagram-v2
 
 ### On-Chain Oracle Contract
 
+The on-chain oracle is the single `price-oracle` contract (`packages/contracts/price-oracle`). See its README for storage and TTL details.
+
 ```rust
-pub struct PriceOracle;
+pub struct PriceOracleContract;
 
 #[contractimpl]
-impl PriceOracle {
-    /// Set price (only trusted sources)
-    pub fn set_price(
-        env: &Env,
-        source: Address,
-        pair: Symbol,
-        price: u128,
-        timestamp: u64
-    );
+impl PriceOracleContract {
+    /// Push a price (registered pushers only)
+    pub fn push_price(env: &Env, pusher: Address, base: Symbol, quote: Symbol, price: i128);
 
-    /// Get latest price
-    pub fn get_price(env: &Env, pair: Symbol) -> PriceData;
+    /// Get latest price entry
+    pub fn get_price(env: &Env, base: Symbol, quote: Symbol) -> PriceEntry;
 
-    /// Get TWAP (Time-Weighted Average Price)
-    pub fn get_twap(env: &Env, pair: Symbol, window: u64) -> u128;
+    /// Get TWAP over the stored history
+    pub fn get_twap(env: &Env, base: Symbol, quote: Symbol) -> i128;
 
-    /// Add trusted source
-    pub fn add_trusted_source(env: &Env, source: Address);
+    /// Get TWAP over a custom window (5m, 15m and 1h shortcuts also exist)
+    pub fn get_twap_window(env: &Env, base: Symbol, quote: Symbol, window_seconds: u64) -> i128;
+
+    /// Register a trusted pusher (admin only)
+    pub fn add_pusher(env: &Env, admin: Address, pusher: Address);
 }
 ```
 
