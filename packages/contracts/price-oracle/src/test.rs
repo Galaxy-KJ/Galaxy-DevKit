@@ -298,7 +298,10 @@ fn test_price_history_isolated_per_pair() {
     }
     client.push_price(&pusher, &btc, &quote, &60_000_000_000_i128);
 
-    assert_eq!(client.get_price_history(&xlm, &quote).len(), TWAP_WINDOW_SIZE);
+    assert_eq!(
+        client.get_price_history(&xlm, &quote).len(),
+        TWAP_WINDOW_SIZE
+    );
     assert_eq!(client.get_price_history(&btc, &quote).len(), 1);
     assert_eq!(client.get_price(&btc, &quote).price, 60_000_000_000_i128);
 }
@@ -832,4 +835,63 @@ fn test_add_pusher_and_set_admin_extend_instance_ttl() {
     client.set_admin(&new_admin);
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert_eq!(ttl, INSTANCE_TTL_EXTEND);
+}
+
+// ---------------------------------------------------------------------------
+// Exact-value scenarios with explicit ledger timestamps
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_push_price_records_ledger_timestamp_and_pusher() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.push_price(&pusher, &base, &quote, &1_250_000);
+
+    let entry = client.get_price(&base, &quote);
+    assert_eq!(entry.price, 1_250_000);
+    assert_eq!(entry.timestamp, 1_000);
+    assert_eq!(entry.pusher, pusher);
+}
+
+#[test]
+fn test_get_price_checked_reports_age_against_each_max_age() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "SOL");
+    let quote = Symbol::new(&env, "USD");
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.push_price(&pusher, &base, &quote, &150_000_000);
+    env.ledger().with_mut(|li| li.timestamp = 1_200);
+
+    let stale = client.get_price_checked(&base, &quote, &150_u64);
+    assert_eq!(stale.age_seconds, 200);
+    assert!(stale.is_stale);
+
+    let fresh = client.get_price_checked(&base, &quote, &300_u64);
+    assert_eq!(fresh.age_seconds, 200);
+    assert!(!fresh.is_stale);
+}
+
+#[test]
+fn test_twap_two_observations_equal_weight_is_exact_mean() {
+    let (env, contract_id, admin, pusher) = setup();
+    let client = init_client(&env, &contract_id, &admin);
+    client.add_pusher(&admin, &pusher);
+    let base = Symbol::new(&env, "XLM");
+    let quote = Symbol::new(&env, "USDC");
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.push_price(&pusher, &base, &quote, &1_000_000);
+    env.ledger().with_mut(|li| li.timestamp = 1_100);
+    client.push_price(&pusher, &base, &quote, &2_000_000);
+    env.ledger().with_mut(|li| li.timestamp = 1_200);
+
+    assert_eq!(client.get_twap(&base, &quote), 1_500_000);
 }
