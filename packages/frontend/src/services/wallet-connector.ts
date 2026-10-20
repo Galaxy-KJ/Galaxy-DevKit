@@ -1,5 +1,5 @@
 import { SmartWalletClient } from './smart-wallet.client';
-import { Address, StrKey, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
+import { Address, StrKey, Networks, xdr, scValToNative, contract } from '@stellar/stellar-sdk';
 import { Server } from '@stellar/stellar-sdk/rpc';
 import { resolveNetwork } from '@galaxy-kj/core-stellar-sdk';
 import { Buffer } from 'buffer';
@@ -86,7 +86,7 @@ export class WalletConnectorService {
       // In Soroban, a contract exists if it has an instance entry
       const ledgerKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
         contract: contractScAddress,
-        key: xdr.ScVal.scvSymbol('Instance'),
+        key: xdr.ScVal.scvLedgerKeyContractInstance(),
         durability: xdr.ContractDataDurability.persistent()
       }));
 
@@ -111,16 +111,25 @@ export class WalletConnectorService {
         return false;
       }
 
-      // To verify it's a smart wallet, we check if it implements the required interface.
-      // We do this by attempting to simulate a call to a read-only method that
-      // all our smart wallets should have, or by checking the contract spec.
+      const contractScAddress = new Address(contractAddress).toScAddress();
+      const instanceKey = xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({
+        contract: contractScAddress,
+        key: xdr.ScVal.scvLedgerKeyContractInstance(),
+        durability: xdr.ContractDataDurability.persistent(),
+      }));
+      const response = await this.server.getLedgerEntries(instanceKey);
+      const instanceEntry = response.entries[0];
+      if (!instanceEntry) {
+        return false;
+      }
 
-      // For this implementation, we'll check for the 'add_signer' method in the interface
-      // by attempting to get the contract code and checking its exported functions
-      // (Simplified for this version - in a full implementation we'd use a spec check)
-
-      return true; // Assume true if verifyContractExists passes for now,
-                   // as full interface check requires WASM inspection
+      const wasmHash = instanceEntry.val.contractData().val().instance().executable().wasmHash();
+      const wasm = await this.server.getContractWasmByHash(wasmHash);
+      const functions = contract.Spec.fromWasm(Buffer.from(wasm))
+        .funcs()
+        .map(func => func.name().toString());
+      const requiredFunctions = ['__check_auth', 'add_signer', 'remove_signer'];
+      return requiredFunctions.every(name => functions.includes(name));
     } catch (error) {
       console.error('Error checking if contract is smart wallet:', error);
       return false;
@@ -154,7 +163,7 @@ export class WalletConnectorService {
       const isSmartWallet = await this.isSmartWalletContract(contractAddress);
       if (!isSmartWallet) {
         result.errorMessage =
-          'Contract does not appear to be a smart wallet contract. Verify the contract address is correct.';
+          'This contract is not a Galaxy smart wallet. Please verify the contract address.';
         return result;
       }
       result.isSmartWallet = true;
