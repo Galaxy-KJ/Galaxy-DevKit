@@ -132,6 +132,21 @@ impl<'a> Setup<'a> {
         min_amount_out: i128,
         max_slippage: u32,
     ) -> u64 {
+        self.create_full(condition_type, min_amount_out, max_slippage, NOW + 86_400)
+    }
+
+    /// Created at the current ledger time, expiring at `expires_at`.
+    pub fn create_expiring(&self, condition_type: SwapConditionType, expires_at: u64) -> u64 {
+        self.create_full(condition_type, 0, 0, expires_at)
+    }
+
+    fn create_full(
+        &self,
+        condition_type: SwapConditionType,
+        min_amount_out: i128,
+        max_slippage: u32,
+        expires_at: u64,
+    ) -> u64 {
         self.env.mock_all_auths();
         let id = self.swap.create_swap_condition(
             &self.owner,
@@ -143,7 +158,7 @@ impl<'a> Setup<'a> {
             &AMOUNT,
             &min_amount_out,
             &max_slippage,
-            &(NOW + 86_400),
+            &expires_at,
         );
         self.enforce_auths();
         id

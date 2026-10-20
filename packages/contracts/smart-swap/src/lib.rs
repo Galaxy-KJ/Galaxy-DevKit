@@ -41,12 +41,14 @@ const SWAP_DEADLINE_SECS: u64 = 300;
 const CONFIG: Symbol = symbol_short!("CONFIG");
 const NEXT_CONDITION_ID: Symbol = symbol_short!("NEXT_ID");
 
-// Swap conditions are meant to trigger within days, not months, so a
-// week of slack matches how long a condition realistically stays open.
-// Persistent entries use the same window and are extended on every read
-// and write.
+// Reads, executions and closed conditions use a one-week window, extended
+// on every read and write. Entries that gate live deposits (the condition,
+// the owner's index and the instance) are kept alive until `expires_at`
+// at creation, see `funded_ttl`.
 const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
 const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
+/// Approximate ledger close time, used to turn `expires_at` into ledgers.
+const LEDGER_CLOSE_SECS: u64 = 5;
 
 /// Smart Swap Contract
 #[contract]
@@ -204,10 +206,23 @@ impl SmartSwapContract {
         owner_ids.push_back(next_id);
         Self::save_owner_condition_ids(env, &condition.owner, &owner_ids);
 
+        // Keep everything the deposit depends on alive until it can expire.
+        // `extend_ttl` never shortens, so a shorter condition cannot cut the
+        // index or instance TTL set by a longer one.
+        let funded_ttl = Self::funded_ttl(env, expires_at);
+        let persistent = env.storage().persistent();
+        persistent.extend_ttl(&DataKey::Condition(next_id), funded_ttl, funded_ttl);
+        persistent.extend_ttl(
+            &DataKey::OwnerConditions(condition.owner.clone()),
+            funded_ttl,
+            funded_ttl,
+        );
+
         // Increment next ID
         next_id += 1;
         storage.set(&NEXT_CONDITION_ID, &next_id);
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        storage.extend_ttl(funded_ttl, funded_ttl);
 
         next_id - 1
     }
@@ -339,6 +354,14 @@ impl SmartSwapContract {
 }
 
 impl SmartSwapContract {
+    /// Ledgers until `expires_at` plus `INSTANCE_TTL_EXTEND` as margin,
+    /// capped at the network maximum.
+    fn funded_ttl(env: &Env, expires_at: u64) -> u32 {
+        let seconds = expires_at.saturating_sub(env.ledger().timestamp());
+        let ledgers = seconds / LEDGER_CLOSE_SECS + INSTANCE_TTL_EXTEND as u64;
+        ledgers.min(env.storage().max_ttl() as u64) as u32
+    }
+
     fn validate_config(env: &Env, max_price_age_secs: u64, target_tolerance_bps: u32) {
         if max_price_age_secs == 0 || target_tolerance_bps as i128 > BPS_DENOMINATOR {
             panic_with_error!(env, SwapError::InvalidConfig);

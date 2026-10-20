@@ -128,7 +128,11 @@ Topics are `(name, owner)`.
   - `DataKey::Execution(id)` holds that condition's execution.
   - `DataKey::OwnerConditions(owner)` holds that owner's active ids. It is pruned on execute, cancel and expiry, and removed when it is empty.
 
-Each call reads and writes only the entries it acts on, and extends their TTL. The TTL threshold is ~3.5 days and the extension is ~7 days. A condition left untouched for longer is archived, not deleted, and can be restored before use.
+Each call reads and writes only the entries it acts on, and extends their TTL. The usual TTL threshold is ~3.5 days and the extension is ~7 days. Executions, closed conditions and plain reads use only this window.
+
+At creation, the entries that a live deposit depends on get a longer TTL. These are the condition, the owner's index and the instance. They are extended to cover `expires_at`, plus the ~7-day extension as a margin. The ledger count is computed at ~5 seconds per ledger (`LEDGER_CLOSE_SECS`).
+
+That TTL is capped at the network's maximum entry TTL. A long condition can therefore still be archived before it expires if the network maximum is shorter than its lifetime, or if ledgers close faster than 5 seconds. Archived entries are not deleted. They must be restored, and Protocol 23 restores footprint entries automatically, before the condition can be executed or refunded.
 
 ## Errors
 
