@@ -172,4 +172,91 @@ echo "ok"
       rmSync(sandbox, { recursive: true, force: true });
     }
   });
+
+  it('init-contracts.sh initializes smart_swap only when a router is configured', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'galaxy-init-swap-'));
+    try {
+      const stubBin = join(sandbox, 'bin');
+      mkdirSync(stubBin, { recursive: true });
+      // `keys address` resolves the deployer identity. `get_config` reports
+      // the stored admin, which STUB_CONFIG_ADMIN can override to simulate
+      // an instance someone else initialised.
+      const stub = `#!/usr/bin/env bash
+if [[ "$1" == "keys" && "$2" == "address" ]]; then
+  echo "GALICE"
+  exit 0
+fi
+if [[ "$1" == "contract" && "$2" == "invoke" ]]; then
+  echo "$@" >> "$STUB_INVOKE_LOG"
+  if [[ "$*" == *" get_config"* ]]; then
+    echo "{\\"admin\\":\\"\${STUB_CONFIG_ADMIN:-GALICE}\\",\\"oracle\\":\\"\${STUB_CONFIG_ORACLE:-CORACLE}\\",\\"max_price_age_secs\\":300}"
+    exit 0
+  fi
+fi
+echo "ok"
+`;
+      writeFileSync(join(stubBin, 'stellar'), stub, { mode: 0o755 });
+
+      const manifest = join(sandbox, 'manifest.json');
+      writeFileSync(
+        manifest,
+        JSON.stringify({
+          network: 'testnet',
+          deployer: 'test',
+          contracts: {
+            smart_swap: { contractId: 'CSWAP', wasmHash: 'shash' },
+            price_oracle: { contractId: 'CORACLE', wasmHash: 'ohash' },
+          },
+        }),
+      );
+
+      const run = (name: string, extraEnv: Record<string, string>) => {
+        const log = join(sandbox, `${name}.log`);
+        writeFileSync(log, '');
+        const result = spawnSync('bash', [INIT_SCRIPT], {
+          cwd: REPO_ROOT,
+          env: {
+            ...process.env,
+            PATH: `${stubBin}:${process.env['PATH'] ?? ''}`,
+            DEPLOY_OUTPUT_FILE: manifest,
+            DEPLOYER_IDENTITY: 'alice',
+            STUB_INVOKE_LOG: log,
+            ...extraEnv,
+          },
+          encoding: 'utf8',
+        });
+        return { result, invocations: readFileSync(log, 'utf8') };
+      };
+
+      const skipped = run('skipped', {});
+      expect(skipped.result.status).toBe(0);
+      expect(skipped.invocations).not.toMatch(/--id CSWAP/);
+      expect(skipped.result.stderr).toMatch(/skipping smart_swap init/);
+
+      const initialized = run('initialized', { SMART_SWAP_ROUTER_ID: 'CROUTER' });
+      expect(initialized.result.status).toBe(0);
+      expect(initialized.invocations).toMatch(
+        /--id CSWAP .* -- initialize --admin GALICE --oracle CORACLE --router CROUTER --max_price_age_secs 300 --target_tolerance_bps 50/,
+      );
+      expect(initialized.invocations).toMatch(/--id CSWAP .*--send=no -- get_config/);
+
+      const hijacked = run('hijacked', {
+        SMART_SWAP_ROUTER_ID: 'CROUTER',
+        STUB_CONFIG_ADMIN: 'GATTACKER',
+      });
+      expect(hijacked.result.status).not.toBe(0);
+      expect(hijacked.result.stderr).toMatch(/smart_swap admin is not GALICE/);
+
+      // The deployer's address in another field must not pass for the admin.
+      const decoy = run('decoy', {
+        SMART_SWAP_ROUTER_ID: 'CROUTER',
+        STUB_CONFIG_ADMIN: 'GATTACKER',
+        STUB_CONFIG_ORACLE: 'GALICE',
+      });
+      expect(decoy.result.status).not.toBe(0);
+      expect(decoy.result.stderr).toMatch(/smart_swap admin is not GALICE/);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
 });
