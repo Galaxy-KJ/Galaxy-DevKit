@@ -15,7 +15,7 @@
 # smart-swap `initialize(admin, oracle, router, max_price_age_secs, target_tolerance_bps)`:
 #   SMART_SWAP_ROUTER_ID              Soroswap-compatible router (required, else skipped)
 #   SMART_SWAP_ORACLE_ID              Oracle with get_price_checked (default: price_oracle from manifest)
-#   SMART_SWAP_ADMIN                  Admin address or identity (default: DEPLOYER_IDENTITY)
+#   SMART_SWAP_ADMIN                  Admin G-address (default: address of DEPLOYER_IDENTITY)
 #   SMART_SWAP_MAX_PRICE_AGE_SECS     Reject oracle prices older than this (default: 300)
 #   SMART_SWAP_TARGET_TOLERANCE_BPS   TargetPrice band in basis points (default: 50)
 
@@ -91,6 +91,25 @@ invoke_init() {
   ok "  $key initialised"
 }
 
+# Deploy and initialize are separate transactions, so another account could
+# initialize first. Fail unless the stored admin is the one we expect.
+verify_smart_swap_admin() {
+  local expected="$1" contract_id config
+  contract_id="$(read_field "smart_swap" "contractId")"
+  [[ -n "$contract_id" ]] || return 0
+  config="$(stellar contract invoke \
+    --id "$contract_id" \
+    --source "$DEPLOYER_IDENTITY" \
+    --network "$STELLAR_NETWORK" \
+    --send=no \
+    -- get_config)"
+  if [[ "$config" != *"\"$expected\""* ]]; then
+    error "smart_swap admin is not $expected: $config"
+    exit 1
+  fi
+  ok "  smart_swap admin verified ($expected)"
+}
+
 main() {
   log "Network:  $STELLAR_NETWORK"
   log "Deployer: $DEPLOYER_IDENTITY"
@@ -121,13 +140,15 @@ main() {
   # repo deploys no router, so its id must come from the environment.
   local swap_oracle="${SMART_SWAP_ORACLE_ID:-$(read_field "price_oracle" "contractId")}"
   if [[ -n "${SMART_SWAP_ROUTER_ID:-}" && -n "$swap_oracle" ]]; then
+    local swap_admin="${SMART_SWAP_ADMIN:-$(stellar keys address "$DEPLOYER_IDENTITY")}"
     invoke_init "smart_swap" \
       initialize \
-      --admin "${SMART_SWAP_ADMIN:-$DEPLOYER_IDENTITY}" \
+      --admin "$swap_admin" \
       --oracle "$swap_oracle" \
       --router "$SMART_SWAP_ROUTER_ID" \
       --max_price_age_secs "${SMART_SWAP_MAX_PRICE_AGE_SECS:-300}" \
       --target_tolerance_bps "${SMART_SWAP_TARGET_TOLERANCE_BPS:-50}"
+    verify_smart_swap_admin "$swap_admin"
   else
     warn "SMART_SWAP_ROUTER_ID or an oracle id is not set: skipping smart_swap init"
   fi

@@ -178,9 +178,20 @@ echo "ok"
     try {
       const stubBin = join(sandbox, 'bin');
       mkdirSync(stubBin, { recursive: true });
+      // `keys address` resolves the deployer identity. `get_config` reports
+      // the stored admin, which STUB_CONFIG_ADMIN can override to simulate
+      // an instance someone else initialised.
       const stub = `#!/usr/bin/env bash
+if [[ "$1" == "keys" && "$2" == "address" ]]; then
+  echo "GALICE"
+  exit 0
+fi
 if [[ "$1" == "contract" && "$2" == "invoke" ]]; then
   echo "$@" >> "$STUB_INVOKE_LOG"
+  if [[ "$*" == *" get_config"* ]]; then
+    echo "{\\"admin\\":\\"\${STUB_CONFIG_ADMIN:-GALICE}\\",\\"max_price_age_secs\\":300}"
+    exit 0
+  fi
 fi
 echo "ok"
 `;
@@ -225,8 +236,16 @@ echo "ok"
       const initialized = run('initialized', { SMART_SWAP_ROUTER_ID: 'CROUTER' });
       expect(initialized.result.status).toBe(0);
       expect(initialized.invocations).toMatch(
-        /--id CSWAP .* -- initialize --admin alice --oracle CORACLE --router CROUTER --max_price_age_secs 300 --target_tolerance_bps 50/,
+        /--id CSWAP .* -- initialize --admin GALICE --oracle CORACLE --router CROUTER --max_price_age_secs 300 --target_tolerance_bps 50/,
       );
+      expect(initialized.invocations).toMatch(/--id CSWAP .*--send=no -- get_config/);
+
+      const hijacked = run('hijacked', {
+        SMART_SWAP_ROUTER_ID: 'CROUTER',
+        STUB_CONFIG_ADMIN: 'GATTACKER',
+      });
+      expect(hijacked.result.status).not.toBe(0);
+      expect(hijacked.result.stderr).toMatch(/smart_swap admin is not GALICE/);
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
