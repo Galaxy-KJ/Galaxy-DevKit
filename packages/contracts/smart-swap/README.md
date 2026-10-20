@@ -134,6 +134,10 @@ At creation, the entries that a live deposit depends on get a longer TTL. These 
 
 That TTL is capped at the network's maximum entry TTL. A long condition can therefore still be archived before it expires if the network maximum is shorter than its lifetime, or if ledgers close faster than 5 seconds. Archived entries are not deleted. They must be restored, and Protocol 23 restores footprint entries automatically, before the condition can be executed or refunded.
 
+## Known limits
+
+The owner index `OwnerConditions(owner)` has no size cap. Only the owner can add to it, because creating a condition requires the owner's signature and a deposit, so nobody can grow someone else's index. Each `create`, each close (execute, cancel, expire) and each `get_active_conditions` reads and rewrites the whole list, though, so an owner with many open conditions pays fees that grow linearly. Past some size that owner's `create` calls hit the network's resource limits. Closing a condition still works, because it rewrites a list one entry shorter than one that a `create` already wrote.
+
 ## Errors
 
 | Code | Error |
