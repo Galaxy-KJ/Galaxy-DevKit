@@ -21,6 +21,6 @@ const wsLogger = createLogger({ name: 'api-websocket', level: 'debug' });
 
 ## Building
 
-`main` and `types` point to `dist`, so the logger must be built before `api-rest` and `api-websocket` are type-checked, built or started. Both packages run `npm run build -w @galaxy-kj/api-logger` in `prebuild`, `pretype-check` and `prestart` (REST also `preworker` and `preworker:dev`), so a clean checkout works without a manual step. Jest maps `@galaxy-kj/api-logger` to `src` and needs no build. The root `npm run build` also builds this package.
+`main` and `types` point to `dist`, so the logger must be built before `api-rest` and `api-websocket` are type-checked or built. Both packages run `npm run build -w @galaxy-kj/api-logger` in `prebuild` and `pretype-check`, so a clean checkout works without a manual step. Start the servers from a build (`dist`), not before it. Jest maps `@galaxy-kj/api-logger` to `src` and needs no build. The root `npm run build` also builds this package.
 
 An invalid `LOG_LEVEL` falls back to `info` and logs one warning.

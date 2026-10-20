@@ -94,6 +94,15 @@ describe('createLogger', () => {
     expect(dest.last().msg).toMatch(/Invalid log level/);
   });
 
+  it('rejects prototype property names as log levels', () => {
+    const dest = memoryDestination();
+    const log = createLogger({
+      env: { NODE_ENV: 'production', LOG_LEVEL: 'constructor' },
+      destination: dest.stream,
+    });
+    expect(log.level).toBe('info');
+  });
+
   it('redacts session tokens in headers', () => {
     const dest = memoryDestination();
     const log = createLogger({

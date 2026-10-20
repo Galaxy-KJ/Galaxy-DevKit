@@ -53,7 +53,8 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
     options.level ??
     env.LOG_LEVEL ??
     (env.NODE_ENV === 'test' ? 'silent' : 'info');
-  const validLevel = requested === 'silent' || requested in pino.levels.values;
+  const validLevel = requested === 'silent' ||
+    Object.prototype.hasOwnProperty.call(pino.levels.values, requested);
   const level = validLevel ? requested : 'info';
 
   const base: pino.LoggerOptions = {

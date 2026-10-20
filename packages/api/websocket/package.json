@@ -14,7 +14,6 @@
     "pretype-check": "npm run build -w @galaxy-kj/api-logger",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prestart": "npm run build -w @galaxy-kj/api-logger",
     "start": "node dist/index.js"
   },
   "dependencies": {
