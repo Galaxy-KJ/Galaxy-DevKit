@@ -61,7 +61,7 @@ fn test_cancel_condition_extends_instance_ttl() {
     s.env
         .ledger()
         .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
-    s.swap.cancel_condition(&condition_id, &s.owner);
+    s.cancel(condition_id);
 
     assert_eq!(instance_ttl(&s), INSTANCE_TTL_EXTEND);
 }

@@ -37,6 +37,7 @@ fn test_stale_price_is_rejected() {
     let s = Setup::new();
     let id = s.create(SwapConditionType::PriceAbove(1_100_000));
 
+    s.router.set_rate(&1_200_000);
     s.set_oracle_price(1_200_000, NOW - MAX_PRICE_AGE - 1);
     assert_eq!(
         s.swap.try_execute_swap_condition(&id),

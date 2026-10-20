@@ -3,6 +3,7 @@
 mod conditions;
 mod config;
 mod mocks;
+mod swap;
 mod ttl;
 
 use crate::{SmartSwapContract, SmartSwapContractClient, SwapConditionType, PRICE_SCALE};
@@ -45,7 +46,7 @@ pub struct Setup<'a> {
 }
 
 impl<'a> Setup<'a> {
-    /// Everything registered, funded and initialized, with auths mocked.
+    /// Everything registered, funded and initialized.
     pub fn new() -> Self {
         let setup = Self::uninitialized();
         setup.swap.initialize(
@@ -128,7 +129,8 @@ impl<'a> Setup<'a> {
         min_amount_out: i128,
         max_slippage: u32,
     ) -> u64 {
-        self.swap.create_swap_condition(
+        self.env.mock_all_auths();
+        let id = self.swap.create_swap_condition(
             &self.owner,
             &xlm(),
             &usdc(),
@@ -139,6 +141,22 @@ impl<'a> Setup<'a> {
             &min_amount_out,
             &max_slippage,
             &(NOW + 86_400),
-        )
+        );
+        self.enforce_auths();
+        id
+    }
+
+    /// From here on every `require_auth` is checked for real and no
+    /// signatures are supplied, as for a keeper transaction. Contract
+    /// auth (direct invoker, `authorize_as_current_contract`) still works.
+    pub fn enforce_auths(&self) {
+        self.env.set_auths(&[]);
+    }
+
+    /// Cancel signed by the owner.
+    pub fn cancel(&self, id: u64) {
+        self.env.mock_all_auths();
+        self.swap.cancel_condition(&id, &self.owner);
+        self.enforce_auths();
     }
 }

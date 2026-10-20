@@ -2,25 +2,36 @@
 //!
 //! This contract implements automated token swapping with price conditions
 //! and slippage protection for the Stellar ecosystem. Prices come from the
-//! configured oracle.
+//! configured oracle and swaps go through a Soroswap-compatible router.
+//!
+//! Source tokens are held by this contract from creation until the
+//! condition is executed, cancelled or expires, so any keeper can execute a
+//! condition without the owner's signature. The output always goes to the
+//! stored `owner`.
 
 #![no_std]
 
 mod errors;
 mod oracle;
+mod router;
 mod types;
 
 use soroban_sdk::{
-    contract, contractimpl, panic_with_error, symbol_short, Address, Env, Map, Symbol, Vec,
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
+    contract, contractimpl, panic_with_error, symbol_short, token, vec, Address, Env, IntoVal, Map,
+    Symbol, Vec,
 };
 
 pub use errors::SwapError;
 pub use oracle::{OracleClient, PriceEntry, PriceResult};
+pub use router::RouterClient;
 pub use types::{Config, SwapCondition, SwapConditionType, SwapExecution, SwapStatus};
 
 /// Oracle prices carry six implied decimals, matching the TS client.
 pub const PRICE_SCALE: i128 = 1_000_000;
 pub const BPS_DENOMINATOR: i128 = 10_000;
+/// Router deadline, relative to the executing ledger's timestamp.
+const SWAP_DEADLINE_SECS: u64 = 300;
 
 /// Contract storage keys
 const CONFIG: Symbol = symbol_short!("CONFIG");
@@ -129,6 +140,12 @@ impl SmartSwapContract {
         let reference_price =
             Self::get_current_price(env, &config, &source_asset, &destination_asset);
 
+        token::Client::new(env, &source_token).transfer(
+            &owner,
+            &env.current_contract_address(),
+            &amount_to_swap,
+        );
+
         let storage = env.storage().instance();
         let mut next_id: u64 = storage.get(&NEXT_CONDITION_ID).unwrap_or(1);
 
@@ -170,8 +187,9 @@ impl SmartSwapContract {
         let mut conditions = Self::load_conditions(env);
         let mut condition = Self::active_condition(env, &conditions, condition_id);
 
-        // Check if condition has expired
+        // Expired: refund the owner instead of swapping
         if env.ledger().timestamp() > condition.expires_at {
+            Self::refund(env, &condition);
             condition.status = SwapStatus::Expired;
             conditions.set(condition_id, condition);
             storage.set(&SWAP_CONDITIONS, &conditions);
@@ -192,7 +210,7 @@ impl SmartSwapContract {
         }
 
         // Execute the swap
-        let actual_amount_out = Self::execute_swap(&condition);
+        let actual_amount_out = Self::execute_swap(env, &config, &condition, current_price);
 
         // Update condition status
         condition.status = SwapStatus::Executed;
@@ -256,7 +274,7 @@ impl SmartSwapContract {
         }
         owner.require_auth();
 
-        // Cancel the condition
+        Self::refund(env, &condition);
         condition.status = SwapStatus::Cancelled;
         conditions.set(condition_id, condition);
         storage.set(&SWAP_CONDITIONS, &conditions);
@@ -357,8 +375,82 @@ impl SmartSwapContract {
         }
     }
 
-    fn execute_swap(condition: &SwapCondition) -> i128 {
-        condition.min_amount_out
+    fn refund(env: &Env, condition: &SwapCondition) {
+        token::Client::new(env, &condition.source_token).transfer(
+            &env.current_contract_address(),
+            &condition.owner,
+            &condition.amount_to_swap,
+        );
+    }
+
+    /// Swap the custodied `amount_to_swap` through the router and forward
+    /// the output to the owner. The output is the contract's measured
+    /// balance delta, not the router's return value.
+    fn execute_swap(
+        env: &Env,
+        config: &Config,
+        condition: &SwapCondition,
+        current_price: i128,
+    ) -> i128 {
+        let this = env.current_contract_address();
+        let amount_in = condition.amount_to_swap;
+
+        let expected_out = Self::mul_div(env, amount_in, current_price, PRICE_SCALE);
+        let slippage_floor = Self::mul_div(
+            env,
+            expected_out,
+            BPS_DENOMINATOR - condition.max_slippage as i128,
+            BPS_DENOMINATOR,
+        );
+        let amount_out_min = condition.min_amount_out.max(slippage_floor);
+
+        let router = RouterClient::new(env, &config.router);
+        let source = token::Client::new(env, &condition.source_token);
+        let destination = token::Client::new(env, &condition.destination_token);
+        let pair = router.router_pair_for(&condition.source_token, &condition.destination_token);
+
+        let source_before = source.balance(&this);
+        let destination_before = destination.balance(&this);
+
+        // The router moves `amount_in` from `to` (this contract) to the pair.
+        // That transfer is not invoked by this contract directly, so it is
+        // authorized here for that exact pair and amount and nothing else.
+        // The authorization only covers the very next call (the router).
+        env.authorize_as_current_contract(vec![
+            env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: condition.source_token.clone(),
+                    fn_name: Symbol::new(env, "transfer"),
+                    args: (this.clone(), pair, amount_in).into_val(env),
+                },
+                sub_invocations: vec![env],
+            }),
+        ]);
+
+        router.swap_exact_tokens_for_tokens(
+            &amount_in,
+            &amount_out_min,
+            &vec![
+                env,
+                condition.source_token.clone(),
+                condition.destination_token.clone(),
+            ],
+            &this,
+            &(env.ledger().timestamp() + SWAP_DEADLINE_SECS),
+        );
+        let destination_after = destination.balance(&this);
+
+        if source_before - source.balance(&this) != amount_in {
+            panic_with_error!(env, SwapError::InvalidAmount);
+        }
+        let actual_amount_out = destination_after - destination_before;
+        if actual_amount_out < amount_out_min {
+            panic_with_error!(env, SwapError::InsufficientOutput);
+        }
+
+        destination.transfer(&this, &condition.owner, &actual_amount_out);
+        actual_amount_out
     }
 
     fn mul_div(env: &Env, a: i128, b: i128, denominator: i128) -> i128 {
