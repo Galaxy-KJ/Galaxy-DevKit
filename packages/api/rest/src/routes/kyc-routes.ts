@@ -38,7 +38,10 @@ export function setupKycRoutes(service: KYCService = kycService): Router {
 
       const result = await service.verifyUser(userId, documentData);
       res.json(result);
-    } catch {
+    } catch (error) {
+      if (error instanceof KYCStatusLookupError) {
+        return res.status(503).json({ error: 'KYC status unavailable' });
+      }
       res.status(500).json({ error: 'Identity verification failed' });
     }
   });
@@ -55,7 +58,10 @@ export function setupKycRoutes(service: KYCService = kycService): Router {
 
       const { sanctioned } = await service.checkSanctions(userId, walletAddress);
       res.json({ isSanctioned: sanctioned });
-    } catch {
+    } catch (error) {
+      if (error instanceof KYCStatusLookupError) {
+        return res.status(503).json({ error: 'KYC status unavailable' });
+      }
       res.status(500).json({ error: 'Sanctions check failed' });
     }
   });

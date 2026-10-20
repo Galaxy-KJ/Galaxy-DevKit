@@ -3,7 +3,11 @@ import request from 'supertest';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { setupKycRoutes } from '../kyc-routes';
 import { createRequireKYC } from '../../middleware/kyc-middleware';
-import { KYCService, KYCStatusLookupError } from '../../services/kyc/kyc-service';
+import {
+  KYCService,
+  KYCStatusLookupError,
+  KYCStatusPersistError,
+} from '../../services/kyc/kyc-service';
 import { IKYCProvider } from '../../types/kyc-types';
 
 let currentUser: Record<string, unknown> | undefined;
@@ -133,6 +137,19 @@ describe('KYC routes with requireKYC', () => {
     const app = buildApp(service);
 
     const res = await request(app).get('/kyc/status');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'KYC status unavailable' });
+  });
+
+  it('returns 503 from POST /kyc/verify when the upsert is rejected', async () => {
+    const service = {
+      verifyUser: jest
+        .fn()
+        .mockRejectedValue(new KYCStatusPersistError('trigger blocked')),
+    } as unknown as KYCService;
+    const app = buildApp(service);
+
+    const res = await request(app).post('/kyc/verify').send({ documentData: {} });
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'KYC status unavailable' });
   });
