@@ -83,6 +83,16 @@ describe('createLogger', () => {
     expect(log.level).toBe('warn');
   });
 
+  it('redacts session tokens in headers', () => {
+    const dest = memoryDestination();
+    const log = createLogger({
+      env: { NODE_ENV: 'production' },
+      destination: dest.stream,
+    });
+    log.info({ req: { headers: { 'x-session-token': 'sess' } } }, 'x');
+    expect(dest.last().req.headers['x-session-token']).toBe('[REDACTED]');
+  });
+
   it('includes child bindings', () => {
     const dest = memoryDestination();
     const log = createLogger({

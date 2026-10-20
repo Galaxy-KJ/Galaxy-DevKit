@@ -24,7 +24,11 @@ export const REDACT_PATHS: string[] = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
+  'req.headers["x-session-token"]',
   'headers.authorization',
+  'headers.cookie',
+  'headers["x-api-key"]',
+  'headers["x-session-token"]',
 ];
 
 export interface CreateLoggerOptions {

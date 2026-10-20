@@ -122,6 +122,7 @@ async function pollTransaction(
 import { userSubmitTxLimiter, globalSubmitTxLimiter } from "../../middleware/rate-limit";
 import { AuditLogger } from "../../services/audit-logger";
 import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from '../../middleware/request-context';
 
 const log = logger.child({ module: 'submit-tx' });
 
@@ -202,7 +203,7 @@ router.post(
       try {
         feeBumpTx = buildFeeBump(innerTx);
       } catch (buildErr) {
-        log.error('Fee-bump build failed');
+        requestLogger(req, log).error('Fee-bump build failed');
         logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
           stage: "build_fee_bump",
           error: "Internal error building fee-bump transaction",
@@ -218,7 +219,7 @@ router.post(
         const server = new rpc.Server(process.env.STELLAR_RPC_URL || DEFAULT_STELLAR_RPC_URL);
         rpcResult = await server.sendTransaction(feeBumpTx);
       } catch (rpcErr: any) {
-        log.error({ error: rpcErr?.message ?? String(rpcErr) }, 'Stellar RPC submission failed');
+        requestLogger(req, log).error({ error: rpcErr?.message ?? String(rpcErr) }, 'Stellar RPC submission failed');
         logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
           stage: "rpc_submit",
           error: "Stellar RPC submission failed",
@@ -229,7 +230,7 @@ router.post(
       }
 
       if (rpcResult.status === "ERROR") {
-        log.error({ errorResultXdr: rpcResult.errorResult?.toXDR("base64") }, 'Stellar RPC returned ERROR');
+        requestLogger(req, log).error({ errorResultXdr: rpcResult.errorResult?.toXDR("base64") }, 'Stellar RPC returned ERROR');
         logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
           stage: "rpc_submit",
           error: "Stellar RPC returned an error",
@@ -249,7 +250,7 @@ router.post(
         if (confirmed.status === "SUCCESS") {
           ledger = confirmed.ledger;
         } else {
-          log.error({ status: confirmed.status }, 'Transaction failed after submission');
+          requestLogger(req, log).error({ status: confirmed.status }, 'Transaction failed after submission');
           logSubmitTxEvent(req, false, wallet.user_id, wallet.id, {
             stage: "confirmation",
             transactionHash: txHash,
@@ -270,7 +271,7 @@ router.post(
           metadata: { transactionHash: txHash },
         });
       } catch (logErr) {
-        log.error({ err: logErr }, 'Failed to log wallet event');
+        requestLogger(req, log).error({ err: logErr }, 'Failed to log wallet event');
       }
 
       logSubmitTxEvent(req, true, wallet.user_id, wallet.id, {

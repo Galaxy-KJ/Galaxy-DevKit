@@ -73,4 +73,29 @@ describe('requestContext', () => {
     expect(handlerLine.requestId).toBe('rid-1');
     expect(lines.join('')).not.toContain('s3cret');
   });
+
+  it('keeps session tokens and query secrets out of the logs', async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _e, cb) {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const logger = createLogger({ level: 'info', destination: stream });
+    const app = express();
+    app.use(requestContext({ logger }));
+    app.get('/x', (_req, res) => res.json({}));
+    await request(app)
+      .get('/x?api_key=QUERYSECRET&page=2')
+      .set('x-session-token', 'SESSIONSECRET')
+      .set('x-api-key', 'HDRKEY')
+      .set('Cookie', 'sid=COOKIESECRET');
+    const out = lines.join('');
+    expect(out).not.toContain('QUERYSECRET');
+    expect(out).not.toContain('SESSIONSECRET');
+    expect(out).not.toContain('HDRKEY');
+    expect(out).not.toContain('COOKIESECRET');
+    expect(out).toContain('/x');
+  });
 });

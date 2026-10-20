@@ -7,6 +7,7 @@ import { AuditLogger } from '../services/audit-logger';
 import { getRedisClient, isRedisHealthy } from '../lib/redis-client';
 import { rateLimitStoreConfig } from '../config/rate-limit-store-config';
 import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
 
 const log = logger.child({ module: 'rate-limit' });
 
@@ -106,7 +107,7 @@ const rateLimitHandler = (req: Request, res: Response) => {
       });
     })
     .catch((err) => {
-      log.warn({ err }, 'breach audit logging failed');
+      requestLogger(req, log).warn({ err }, 'breach audit logging failed');
     });
 
   res.set('Retry-After', String(retryAfter));

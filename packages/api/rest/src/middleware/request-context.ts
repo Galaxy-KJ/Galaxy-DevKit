@@ -34,6 +34,14 @@ export function requestContext(options: RequestContextOptions = {}): RequestHand
   const http = pinoHttp({
     logger: options.logger ?? rootLogger,
     genReqId: (req: IncomingMessage) => req.headers['x-request-id'] as string,
+    serializers: {
+      // Query strings can carry credentials (api_key, token), so they are never logged.
+      req: (serialized: Record<string, unknown>) => {
+        const safe: Record<string, unknown> = { ...serialized, url: String(serialized.url ?? '').split('?')[0] };
+        delete safe.query;
+        return safe;
+      },
+    },
   });
 
   return (req, res, next) => {
