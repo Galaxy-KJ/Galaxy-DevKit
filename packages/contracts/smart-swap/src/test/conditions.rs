@@ -193,3 +193,29 @@ fn test_executed_condition_cannot_run_twice() {
         Err(Ok(SwapError::ConditionNotActive.into()))
     );
 }
+
+#[test]
+fn test_set_config_does_not_change_open_condition_price_parameters() {
+    let s = Setup::new();
+    let id = s.create(SwapConditionType::TargetPrice(1_000_000));
+    let condition = s.swap.get_condition(&id);
+    assert_eq!(condition.max_price_age_secs, MAX_PRICE_AGE);
+    assert_eq!(condition.target_tolerance_bps, TOLERANCE_BPS);
+
+    // Widest band and tightest age the config allows.
+    s.env.mock_all_auths();
+    s.swap.set_config(&s.oracle_id, &s.router_id, &1, &10_000);
+    s.enforce_auths();
+
+    // 50% off target: inside a 10_000 bps band, outside the pinned 50 bps.
+    s.set_market(1_500_000);
+    assert_eq!(
+        s.swap.try_execute_swap_condition(&id),
+        Err(Ok(SwapError::ConditionNotMet.into()))
+    );
+
+    // 100s old: stale under the new 1s limit, fresh under the pinned 300s.
+    s.router.set_rate(&1_004_000);
+    s.set_oracle_price(1_004_000, NOW - 100);
+    assert!(s.swap.execute_swap_condition(&id).is_some());
+}

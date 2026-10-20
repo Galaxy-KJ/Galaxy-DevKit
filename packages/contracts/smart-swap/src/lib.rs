@@ -178,6 +178,8 @@ impl SmartSwapContract {
             destination_token,
             oracle: config.oracle,
             router: config.router,
+            max_price_age_secs: config.max_price_age_secs,
+            target_tolerance_bps: config.target_tolerance_bps,
             condition_type,
             amount_to_swap,
             min_amount_out,
@@ -213,7 +215,7 @@ impl SmartSwapContract {
     /// Execute a swap condition if conditions are met. Returns `None` when
     /// the condition had expired: it is marked `Expired` instead.
     pub fn execute_swap_condition(env: &Env, condition_id: u64) -> Option<SwapExecution> {
-        let config = Self::load_config(env);
+        Self::load_config(env);
         let storage = env.storage().instance();
         let mut condition = Self::active_condition(env, condition_id);
 
@@ -235,13 +237,13 @@ impl SmartSwapContract {
         let current_price = Self::get_current_price(
             env,
             &condition.oracle,
-            config.max_price_age_secs,
+            condition.max_price_age_secs,
             &condition.source_asset,
             &condition.destination_asset,
         );
 
         // Check if condition is met
-        if !Self::is_condition_met(env, &condition, current_price, config.target_tolerance_bps) {
+        if !Self::is_condition_met(env, &condition, current_price) {
             panic_with_error!(env, SwapError::ConditionNotMet);
         }
 
@@ -434,12 +436,8 @@ impl SmartSwapContract {
         result.entry.price
     }
 
-    fn is_condition_met(
-        env: &Env,
-        condition: &SwapCondition,
-        current_price: i128,
-        target_tolerance_bps: u32,
-    ) -> bool {
+    fn is_condition_met(env: &Env, condition: &SwapCondition, current_price: i128) -> bool {
+        let target_tolerance_bps = condition.target_tolerance_bps;
         let reference = condition.reference_price;
         match condition.condition_type {
             SwapConditionType::PercentageIncrease(percentage) => {

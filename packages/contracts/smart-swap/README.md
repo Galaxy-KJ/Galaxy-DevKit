@@ -44,7 +44,7 @@ Deploy and `initialize` are separate transactions, because soroban-sdk 21 has no
 - `id`, `owner`
 - `source_asset`, `destination_asset`: `Symbol`s, the oracle pair (base, quote).
 - `source_token`, `destination_token`: SEP-41 tokens or Stellar Asset Contracts.
-- `oracle`, `router`: copied from the config at creation.
+- `oracle`, `router`, `max_price_age_secs`, `target_tolerance_bps`: copied from the config at creation.
 - `condition_type`, `amount_to_swap`, `min_amount_out`
 - `max_slippage`: basis points, `0..=10_000`.
 - `reference_price`: the oracle price at creation.
@@ -106,8 +106,7 @@ Before the call, the contract uses `authorize_as_current_contract` to authorize 
 
 ## Trust assumptions
 
-- **Oracle and router are pinned per condition.** They are copied from the config when the condition is created, so the owner agrees to them by signing `create_swap_condition`. A later `set_config` cannot point existing deposits at another oracle or router.
-- **Price parameters stay live.** `max_price_age_secs` and `target_tolerance_bps` are read from the current config at execution, so the admin can change them, within their bounds, for open conditions.
+- **The config is pinned per condition.** The oracle, the router, `max_price_age_secs` and `target_tolerance_bps` are copied from the config when the condition is created, so the owner agrees to them by signing `create_swap_condition`. A later `set_config` cannot change how an existing deposit is priced or where it is swapped.
 - **The owner's account must be able to receive and refund.** On the destination token, the owner needs a trustline (classic assets) or authorization (auth-required SACs), or execution fails. On the source token, the owner must not be frozen or deauthorized, or cancel and expiry refunds fail. Either way the deposit stays in the contract, and it can be recovered once the owner's account is fixed.
 
 ## Events

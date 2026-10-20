@@ -34,6 +34,10 @@ pub struct SwapCondition {
     pub oracle: Address,
     /// Router from the config at creation. `set_config` does not change it.
     pub router: Address,
+    /// `max_price_age_secs` from the config at creation.
+    pub max_price_age_secs: u64,
+    /// `target_tolerance_bps` from the config at creation.
+    pub target_tolerance_bps: u32,
     pub condition_type: SwapConditionType,
     pub amount_to_swap: i128,
     pub min_amount_out: i128,
