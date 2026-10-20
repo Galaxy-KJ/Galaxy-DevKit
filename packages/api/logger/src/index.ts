@@ -49,10 +49,12 @@ function canResolvePretty(): boolean {
 
 export function createLogger(options: CreateLoggerOptions = {}): Logger {
   const env = options.env ?? process.env;
-  const level =
+  const requested =
     options.level ??
     env.LOG_LEVEL ??
     (env.NODE_ENV === 'test' ? 'silent' : 'info');
+  const validLevel = requested === 'silent' || requested in pino.levels.values;
+  const level = validLevel ? requested : 'info';
 
   const base: pino.LoggerOptions = {
     name: options.name,
@@ -60,18 +62,22 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
     redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
   };
 
+  let instance: Logger;
   if (options.destination) {
-    return pino(base, options.destination);
-  }
-
-  if (env.NODE_ENV === 'development' && canResolvePretty()) {
-    return pino({
+    instance = pino(base, options.destination);
+  } else if (env.NODE_ENV === 'development' && canResolvePretty()) {
+    instance = pino({
       ...base,
       transport: { target: 'pino-pretty', options: { colorize: true } },
     });
+  } else {
+    instance = pino(base);
   }
 
-  return pino(base);
+  if (!validLevel) {
+    instance.warn({ requested }, 'Invalid log level, falling back to info');
+  }
+  return instance;
 }
 
 export const logger: Logger = createLogger();

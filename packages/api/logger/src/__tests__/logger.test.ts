@@ -83,6 +83,17 @@ describe('createLogger', () => {
     expect(log.level).toBe('warn');
   });
 
+  it('falls back to info and warns once on an invalid LOG_LEVEL', () => {
+    const dest = memoryDestination();
+    const log = createLogger({
+      env: { NODE_ENV: 'production', LOG_LEVEL: 'verbose' },
+      destination: dest.stream,
+    });
+    expect(log.level).toBe('info');
+    expect(dest.lines).toHaveLength(1);
+    expect(dest.last().msg).toMatch(/Invalid log level/);
+  });
+
   it('redacts session tokens in headers', () => {
     const dest = memoryDestination();
     const log = createLogger({
