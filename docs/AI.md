@@ -37,7 +37,7 @@ galaxy-devkit/
 │   ├── contracts/                    # Soroban smart contracts (Rust)
 │   │   ├── smart-swap/               # Automated swap contract
 │   │   ├── security-limits/          # Risk management contract
-│   │   ├── oracle-aggregator/        # 🆕 Price oracle contract
+│   │   ├── price-oracle/             # Price oracle contract
 │   │   └── yield-vault/              # 🆕 Yield aggregator contract
 │   └── templates/                    # Project templates
 └── tools/

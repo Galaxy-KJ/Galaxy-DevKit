@@ -166,7 +166,7 @@ impl PriceOracleContract {
             .persistent()
             .set(&PriceDataKey::Pusher(pusher.clone()), &true);
         env.storage().persistent().extend_ttl(
-            &PriceDataKey::Pusher(pusher),
+            &PriceDataKey::Pusher(pusher.clone()),
             PERSISTENT_TTL_THRESHOLD,
             PERSISTENT_TTL_EXTEND,
         );
@@ -288,9 +288,12 @@ impl PriceOracleContract {
     /// Return the full rolling history (up to `TWAP_WINDOW_SIZE` entries),
     /// oldest-to-newest.
     pub fn get_price_history(env: &Env, base: Symbol, quote: Symbol) -> Vec<PriceEntry> {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         let storage = env.storage().persistent();
         let key = PriceDataKey::Price(base, quote);
-        match storage.get(&key) {
+        match storage.get::<_, PriceRingBuffer>(&key) {
             Some(buffer) => {
                 storage.extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
                 buffer.chronological(env, TWAP_WINDOW_SIZE)
@@ -424,7 +427,11 @@ impl PriceOracleContract {
         let mut latest: Map<(Symbol, Symbol), PriceEntry> = Map::new(env);
         for key in pairs.iter() {
             let storage_key = PriceDataKey::Price(key.0.clone(), key.1.clone());
-            let Some(buffer) = env.storage().persistent().get(&storage_key) else {
+            let Some(buffer) = env
+                .storage()
+                .persistent()
+                .get::<_, PriceRingBuffer>(&storage_key)
+            else {
                 continue;
             };
             env.storage().persistent().extend_ttl(
