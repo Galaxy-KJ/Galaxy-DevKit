@@ -6,6 +6,9 @@ module.exports = {
     '**/__tests__/**/*.test.ts',
     '**/?(*.)+(spec|test).ts'
   ],
+  moduleNameMapper: {
+    '^@galaxy-kj/api-logger$': '<rootDir>/../logger/src/index.ts'
+  },
   transform: {
     '^.+\\.ts$': 'ts-jest'
   },

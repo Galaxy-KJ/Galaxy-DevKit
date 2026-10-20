@@ -42,6 +42,7 @@ module.exports = {
     "^@galaxy-kj/core-oracles$": "<rootDir>/packages/core/oracles/src/index.ts",
     "^@galaxy/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
     "^@galaxy-kj/core-test-utils$": "<rootDir>/packages/core/test-utils/src/index.ts",
+    "^@galaxy-kj/api-logger$": "<rootDir>/packages/api/logger/src/index.ts",
     "^@galaxy-kj/core-wallet$": "<rootDir>/packages/core/wallet/src/index.ts",
     "^@galaxy-kj/core-stellar-sdk$": "<rootDir>/packages/core/stellar-sdk/src/index.ts",
     "^@galaxy-kj/core-invisible-wallet$": "<rootDir>/packages/core/invisible-wallet/index.ts",
