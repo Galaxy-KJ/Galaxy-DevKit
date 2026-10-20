@@ -30,6 +30,10 @@ pub struct SwapCondition {
     pub source_token: Address,
     /// SEP-41 token (or SAC) paid to `owner` on execution.
     pub destination_token: Address,
+    /// Oracle from the config at creation. `set_config` does not change it.
+    pub oracle: Address,
+    /// Router from the config at creation. `set_config` does not change it.
+    pub router: Address,
     pub condition_type: SwapConditionType,
     pub amount_to_swap: i128,
     pub min_amount_out: i128,

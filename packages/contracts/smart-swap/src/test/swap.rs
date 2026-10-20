@@ -1,3 +1,4 @@
+use super::mocks::{MockOracle, MockOracleClient, MockRouter, MockRouterClient};
 use super::*;
 use crate::{SwapError, SwapStatus};
 use soroban_sdk::{
@@ -238,4 +239,44 @@ fn test_cancel_signed_by_another_address_fails_auth() {
 
     assert_unchanged(&s, &before);
     assert_eq!(s.swap.get_condition(&id).status, SwapStatus::Active);
+}
+
+#[test]
+fn test_set_config_does_not_redirect_funded_conditions() {
+    let s = Setup::new();
+    let id = s.create(SwapConditionType::PriceAbove(1_100_000));
+    s.set_market(1_200_000);
+
+    // The admin swaps in a new oracle and router after the deposit.
+    let new_oracle_id = s.env.register_contract(None, MockOracle);
+    let new_oracle = MockOracleClient::new(&s.env, &new_oracle_id);
+    new_oracle.set_price(&xlm(), &usdc(), &2_000_000, &NOW);
+    let new_router_id = s.env.register_contract(None, MockRouter);
+    let new_router = MockRouterClient::new(&s.env, &new_router_id);
+    new_router.set_rate(&2_000_000);
+    s.env.mock_all_auths();
+    StellarAssetClient::new(&s.env, &s.destination.address).mint(&new_router_id, &ROUTER_FUNDS);
+    s.swap.set_config(
+        &new_oracle_id,
+        &new_router_id,
+        &MAX_PRICE_AGE,
+        &TOLERANCE_BPS,
+    );
+    s.enforce_auths();
+
+    let condition = s.swap.get_condition(&id);
+    assert_eq!(condition.oracle, s.oracle_id);
+    assert_eq!(condition.router, s.router_id);
+
+    let execution = s.swap.execute_swap_condition(&id).unwrap();
+    assert_eq!(execution.price_at_execution, 1_200_000);
+    assert_eq!(s.source.balance(&s.router_id), AMOUNT);
+    assert_eq!(s.source.balance(&new_router_id), 0);
+    assert_eq!(s.destination.balance(&new_router_id), ROUTER_FUNDS);
+
+    // New conditions use the new config.
+    s.env.mock_all_auths();
+    let next = s.create(SwapConditionType::PriceAbove(1_100_000));
+    assert_eq!(s.swap.get_condition(&next).router, new_router_id);
+    assert_eq!(s.swap.get_condition(&next).oracle, new_oracle_id);
 }

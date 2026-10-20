@@ -142,8 +142,13 @@ impl SmartSwapContract {
             _ => {}
         }
 
-        let reference_price =
-            Self::get_current_price(env, &config, &source_asset, &destination_asset);
+        let reference_price = Self::get_current_price(
+            env,
+            &config.oracle,
+            config.max_price_age_secs,
+            &source_asset,
+            &destination_asset,
+        );
 
         token::Client::new(env, &source_token).transfer(
             &owner,
@@ -161,6 +166,8 @@ impl SmartSwapContract {
             destination_asset,
             source_token,
             destination_token,
+            oracle: config.oracle,
+            router: config.router,
             condition_type,
             amount_to_swap,
             min_amount_out,
@@ -201,7 +208,8 @@ impl SmartSwapContract {
 
         let current_price = Self::get_current_price(
             env,
-            &config,
+            &condition.oracle,
+            config.max_price_age_secs,
             &condition.source_asset,
             &condition.destination_asset,
         );
@@ -212,7 +220,7 @@ impl SmartSwapContract {
         }
 
         // Execute the swap
-        let actual_amount_out = Self::execute_swap(env, &config, &condition, current_price);
+        let actual_amount_out = Self::execute_swap(env, &condition, current_price);
 
         Self::close(env, &mut condition, SwapStatus::Executed);
 
@@ -358,14 +366,15 @@ impl SmartSwapContract {
     /// Fresh, positive oracle price of `source_asset` in `destination_asset`.
     fn get_current_price(
         env: &Env,
-        config: &Config,
+        oracle: &Address,
+        max_price_age_secs: u64,
         source_asset: &Symbol,
         destination_asset: &Symbol,
     ) -> i128 {
-        let result = OracleClient::new(env, &config.oracle).get_price_checked(
+        let result = OracleClient::new(env, oracle).get_price_checked(
             source_asset,
             destination_asset,
-            &config.max_price_age_secs,
+            &max_price_age_secs,
         );
         if result.is_stale {
             panic_with_error!(env, SwapError::PriceStale);
@@ -413,12 +422,7 @@ impl SmartSwapContract {
     /// Swap the custodied `amount_to_swap` through the router and forward
     /// the output to the owner. The output is the contract's measured
     /// balance delta, not the router's return value.
-    fn execute_swap(
-        env: &Env,
-        config: &Config,
-        condition: &SwapCondition,
-        current_price: i128,
-    ) -> i128 {
+    fn execute_swap(env: &Env, condition: &SwapCondition, current_price: i128) -> i128 {
         let this = env.current_contract_address();
         let amount_in = condition.amount_to_swap;
 
@@ -431,7 +435,7 @@ impl SmartSwapContract {
         );
         let amount_out_min = condition.min_amount_out.max(slippage_floor);
 
-        let router = RouterClient::new(env, &config.router);
+        let router = RouterClient::new(env, &condition.router);
         let source = token::Client::new(env, &condition.source_token);
         let destination = token::Client::new(env, &condition.destination_token);
         let pair = router.router_pair_for(&condition.source_token, &condition.destination_token);
