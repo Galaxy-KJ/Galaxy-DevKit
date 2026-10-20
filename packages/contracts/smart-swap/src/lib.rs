@@ -99,7 +99,11 @@ impl SmartSwapContract {
     }
 
     pub fn get_config(env: &Env) -> Config {
-        Self::load_config(env)
+        let config = Self::load_config(env);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        config
     }
 
     /// Create a new swap condition. `reference_price` is the oracle price

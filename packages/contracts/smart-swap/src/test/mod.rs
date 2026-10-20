@@ -1,5 +1,6 @@
 //! Tests for Smart Swap Contract
 
+mod auth;
 mod conditions;
 mod config;
 mod mocks;

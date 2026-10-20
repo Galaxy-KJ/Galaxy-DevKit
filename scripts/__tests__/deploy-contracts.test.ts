@@ -172,4 +172,63 @@ echo "ok"
       rmSync(sandbox, { recursive: true, force: true });
     }
   });
+
+  it('init-contracts.sh initializes smart_swap only when a router is configured', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'galaxy-init-swap-'));
+    try {
+      const stubBin = join(sandbox, 'bin');
+      mkdirSync(stubBin, { recursive: true });
+      const stub = `#!/usr/bin/env bash
+if [[ "$1" == "contract" && "$2" == "invoke" ]]; then
+  echo "$@" >> "$STUB_INVOKE_LOG"
+fi
+echo "ok"
+`;
+      writeFileSync(join(stubBin, 'stellar'), stub, { mode: 0o755 });
+
+      const manifest = join(sandbox, 'manifest.json');
+      writeFileSync(
+        manifest,
+        JSON.stringify({
+          network: 'testnet',
+          deployer: 'test',
+          contracts: {
+            smart_swap: { contractId: 'CSWAP', wasmHash: 'shash' },
+            galaxy_oracle: { contractId: 'CORACLE', wasmHash: 'ohash' },
+          },
+        }),
+      );
+
+      const run = (name: string, extraEnv: Record<string, string>) => {
+        const log = join(sandbox, `${name}.log`);
+        writeFileSync(log, '');
+        const result = spawnSync('bash', [INIT_SCRIPT], {
+          cwd: REPO_ROOT,
+          env: {
+            ...process.env,
+            PATH: `${stubBin}:${process.env['PATH'] ?? ''}`,
+            DEPLOY_OUTPUT_FILE: manifest,
+            DEPLOYER_IDENTITY: 'alice',
+            STUB_INVOKE_LOG: log,
+            ...extraEnv,
+          },
+          encoding: 'utf8',
+        });
+        return { result, invocations: readFileSync(log, 'utf8') };
+      };
+
+      const skipped = run('skipped', {});
+      expect(skipped.result.status).toBe(0);
+      expect(skipped.invocations).not.toMatch(/--id CSWAP/);
+      expect(skipped.result.stderr).toMatch(/skipping smart_swap init/);
+
+      const initialized = run('initialized', { SMART_SWAP_ROUTER_ID: 'CROUTER' });
+      expect(initialized.result.status).toBe(0);
+      expect(initialized.invocations).toMatch(
+        /--id CSWAP .* -- initialize --admin alice --oracle CORACLE --router CROUTER --max_price_age_secs 300 --target_tolerance_bps 50/,
+      );
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
 });

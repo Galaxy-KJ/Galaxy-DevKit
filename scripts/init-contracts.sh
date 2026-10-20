@@ -11,6 +11,13 @@
 #   STELLAR_NETWORK         testnet | mainnet | futurenet (default: testnet)
 #   DEPLOYER_IDENTITY       Stellar CLI identity (default: deployer)
 #   DEPLOY_OUTPUT_FILE      Path to deploy manifest (default: scripts/.deploy-output.json)
+#
+# smart-swap `initialize(admin, oracle, router, max_price_age_secs, target_tolerance_bps)`:
+#   SMART_SWAP_ROUTER_ID              Soroswap-compatible router (required, else skipped)
+#   SMART_SWAP_ORACLE_ID              Oracle with get_price_checked (default: price_oracle from manifest)
+#   SMART_SWAP_ADMIN                  Admin address or identity (default: DEPLOYER_IDENTITY)
+#   SMART_SWAP_MAX_PRICE_AGE_SECS     Reject oracle prices older than this (default: 300)
+#   SMART_SWAP_TARGET_TOLERANCE_BPS   TargetPrice band in basis points (default: 50)
 
 set -Eeuo pipefail
 
@@ -110,10 +117,25 @@ main() {
     warn "price_oracle not in manifest, skipping oracle init"
   fi
 
-  # smart-swap and security-limits do not currently expose a public init
-  # entrypoint; they self-initialise on first user call. If/when they grow one,
-  # add an `invoke_init "<key>" init ...` line above. The manifest entry is
-  # already populated by deploy-contracts.sh.
+  # smart-swap reads prices from the oracle and swaps through a router. The
+  # repo deploys no router, so its id must come from the environment.
+  local swap_oracle="${SMART_SWAP_ORACLE_ID:-$(read_field "price_oracle" "contractId")}"
+  if [[ -n "${SMART_SWAP_ROUTER_ID:-}" && -n "$swap_oracle" ]]; then
+    invoke_init "smart_swap" \
+      initialize \
+      --admin "${SMART_SWAP_ADMIN:-$DEPLOYER_IDENTITY}" \
+      --oracle "$swap_oracle" \
+      --router "$SMART_SWAP_ROUTER_ID" \
+      --max_price_age_secs "${SMART_SWAP_MAX_PRICE_AGE_SECS:-300}" \
+      --target_tolerance_bps "${SMART_SWAP_TARGET_TOLERANCE_BPS:-50}"
+  else
+    warn "SMART_SWAP_ROUTER_ID or an oracle id is not set: skipping smart_swap init"
+  fi
+
+  # security-limits does not currently expose a public init entrypoint; it
+  # self-initialises on first user call. If/when it grows one, add an
+  # `invoke_init "<key>" init ...` line below. The manifest entry is already
+  # populated by deploy-contracts.sh.
 
   ok "Initialisation complete."
 }

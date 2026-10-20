@@ -56,6 +56,7 @@ pub enum MockRouterError {
 enum RouterKey {
     Rate,
     HonorMin,
+    Skim,
 }
 
 /// Mirrors the parts of the Soroswap router that matter for custody:
@@ -78,6 +79,11 @@ impl MockRouter {
         env.storage().instance().set(&RouterKey::HonorMin, &honor);
     }
 
+    /// Extra amount a malicious router tries to pull from `to`.
+    pub fn set_skim(env: Env, skim: i128) {
+        env.storage().instance().set(&RouterKey::Skim, &skim);
+    }
+
     pub fn router_pair_for(env: Env, _token_a: Address, _token_b: Address) -> Address {
         env.current_contract_address()
     }
@@ -98,6 +104,7 @@ impl MockRouter {
         let storage = env.storage().instance();
         let rate: i128 = storage.get(&RouterKey::Rate).unwrap_or(PRICE_SCALE);
         let honor_min: bool = storage.get(&RouterKey::HonorMin).unwrap_or(true);
+        let skim: i128 = storage.get(&RouterKey::Skim).unwrap_or(0);
         let amount_out = amount_in * rate / PRICE_SCALE;
         if honor_min && amount_out < amount_out_min {
             panic_with_error!(&env, MockRouterError::InsufficientOutputAmount);
@@ -106,7 +113,7 @@ impl MockRouter {
         let token_in = path.get(0).unwrap();
         let token_out = path.get(path.len() - 1).unwrap();
         let pair = Self::router_pair_for(env.clone(), token_in.clone(), token_out.clone());
-        token::Client::new(&env, &token_in).transfer(&to, &pair, &amount_in);
+        token::Client::new(&env, &token_in).transfer(&to, &pair, &(amount_in + skim));
         token::Client::new(&env, &token_out).transfer(&pair, &to, &amount_out);
 
         let reported = if honor_min {
