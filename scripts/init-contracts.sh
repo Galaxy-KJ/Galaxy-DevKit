@@ -99,9 +99,20 @@ main() {
     warn "smart_wallet_wallet wasmHash not in manifest — skipping factory init"
   fi
 
+  # The price oracle must be initialised right after deploy: whoever calls
+  # initialize first becomes admin, so the deployer claims it here.
+  if [[ -n "$(read_field "price_oracle" "contractId")" ]]; then
+    local admin_addr
+    admin_addr="$(stellar keys address "$DEPLOYER_IDENTITY")"
+    invoke_init "price_oracle" \
+      initialize --admin "$admin_addr"
+  else
+    warn "price_oracle not in manifest, skipping oracle init"
+  fi
+
   # smart-swap and security-limits do not currently expose a public init
   # entrypoint; they self-initialise on first user call. If/when they grow one,
-  # add an `invoke_init "<key>" init ...` line below — the manifest entry is
+  # add an `invoke_init "<key>" init ...` line above. The manifest entry is
   # already populated by deploy-contracts.sh.
 
   ok "Initialisation complete."

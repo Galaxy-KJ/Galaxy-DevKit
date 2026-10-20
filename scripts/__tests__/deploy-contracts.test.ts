@@ -141,6 +141,7 @@ echo "ok"
               smart_wallet_wallet: { contractId: 'CWALLET', wasmHash: 'whash' },
               smart_swap: { contractId: 'CSWAP', wasmHash: 'shash' },
               security_limits: { contractId: 'CLIMITS', wasmHash: 'lhash' },
+              price_oracle: { contractId: 'CORACLE', wasmHash: 'ohash' },
             },
           },
           null,
@@ -165,6 +166,8 @@ echo "ok"
       // factory init must receive the wallet wasm hash from the manifest.
       expect(invocations).toMatch(/--id CFACTORY/);
       expect(invocations).toMatch(/--wallet_wasm_hash whash/);
+      // price oracle must be initialised with the deployer as admin.
+      expect(invocations).toMatch(/--id CORACLE .* initialize --admin ok/);
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
