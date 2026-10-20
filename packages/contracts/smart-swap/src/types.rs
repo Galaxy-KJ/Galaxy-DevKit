@@ -74,3 +74,15 @@ pub struct SwapExecution {
     pub price_at_execution: i128,
     pub ledger_sequence: u32,
 }
+
+/// Persistent keys. Each call touches only the entries of the condition it
+/// acts on, so no single entry grows with the number of conditions.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    Condition(u64),
+    /// At most one execution per condition.
+    Execution(u64),
+    /// Ids of the owner's `Active` conditions.
+    OwnerConditions(Address),
+}

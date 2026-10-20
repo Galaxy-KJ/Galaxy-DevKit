@@ -18,14 +18,14 @@ mod types;
 
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contractimpl, panic_with_error, symbol_short, token, vec, Address, Env, IntoVal, Map,
+    contract, contractimpl, panic_with_error, symbol_short, token, vec, Address, Env, IntoVal,
     Symbol, Vec,
 };
 
 pub use errors::SwapError;
 pub use oracle::{OracleClient, PriceEntry, PriceResult};
 pub use router::RouterClient;
-pub use types::{Config, SwapCondition, SwapConditionType, SwapExecution, SwapStatus};
+pub use types::{Config, DataKey, SwapCondition, SwapConditionType, SwapExecution, SwapStatus};
 
 /// Oracle prices carry six implied decimals, matching the TS client.
 pub const PRICE_SCALE: i128 = 1_000_000;
@@ -33,14 +33,15 @@ pub const BPS_DENOMINATOR: i128 = 10_000;
 /// Router deadline, relative to the executing ledger's timestamp.
 const SWAP_DEADLINE_SECS: u64 = 300;
 
-/// Contract storage keys
+/// Instance storage keys. Conditions and executions live under `DataKey`
+/// in persistent storage.
 const CONFIG: Symbol = symbol_short!("CONFIG");
-const SWAP_CONDITIONS: Symbol = symbol_short!("SWAP_COND");
-const SWAP_EXECUTIONS: Symbol = symbol_short!("SWAP_EXEC");
 const NEXT_CONDITION_ID: Symbol = symbol_short!("NEXT_ID");
 
 // Swap conditions are meant to trigger within days, not months, so a
 // week of slack matches how long a condition realistically stays open.
+// Persistent entries use the same window and are extended on every read
+// and write.
 const INSTANCE_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
 const INSTANCE_TTL_EXTEND: u32 = 120_960; // ~7 days
 
@@ -170,10 +171,10 @@ impl SmartSwapContract {
             status: SwapStatus::Active,
         };
 
-        // Store the condition
-        let mut conditions = Self::load_conditions(env);
-        conditions.set(next_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
+        Self::save_condition(env, &condition);
+        let mut owner_ids = Self::owner_condition_ids(env, &condition.owner);
+        owner_ids.push_back(next_id);
+        Self::save_owner_condition_ids(env, &condition.owner, &owner_ids);
 
         // Increment next ID
         next_id += 1;
@@ -188,15 +189,12 @@ impl SmartSwapContract {
     pub fn execute_swap_condition(env: &Env, condition_id: u64) -> Option<SwapExecution> {
         let config = Self::load_config(env);
         let storage = env.storage().instance();
-        let mut conditions = Self::load_conditions(env);
-        let mut condition = Self::active_condition(env, &conditions, condition_id);
+        let mut condition = Self::active_condition(env, condition_id);
 
         // Expired: refund the owner instead of swapping
         if env.ledger().timestamp() > condition.expires_at {
             Self::refund(env, &condition);
-            condition.status = SwapStatus::Expired;
-            conditions.set(condition_id, condition);
-            storage.set(&SWAP_CONDITIONS, &conditions);
+            Self::close(env, &mut condition, SwapStatus::Expired);
             storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
             return None;
         }
@@ -216,10 +214,7 @@ impl SmartSwapContract {
         // Execute the swap
         let actual_amount_out = Self::execute_swap(env, &config, &condition, current_price);
 
-        // Update condition status
-        condition.status = SwapStatus::Executed;
-        conditions.set(condition_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
+        Self::close(env, &mut condition, SwapStatus::Executed);
 
         // Record execution
         let execution = SwapExecution {
@@ -230,47 +225,40 @@ impl SmartSwapContract {
             ledger_sequence: env.ledger().sequence(),
         };
 
-        let mut executions: Vec<SwapExecution> =
-            storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(env));
-        executions.push_back(execution.clone());
-        storage.set(&SWAP_EXECUTIONS, &executions);
+        let key = DataKey::Execution(condition_id);
+        let persistent = env.storage().persistent();
+        persistent.set(&key, &execution);
+        persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         Some(execution)
     }
 
     pub fn get_condition(env: &Env, condition_id: u64) -> SwapCondition {
-        let conditions = Self::load_conditions(env);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
-        conditions
-            .get(condition_id)
-            .unwrap_or_else(|| panic_with_error!(env, SwapError::ConditionNotFound))
+        Self::load_condition(env, condition_id)
     }
 
-    /// Get all active swap conditions for an owner
+    /// Get all active swap conditions for an owner. Reads only that
+    /// owner's index and conditions.
     pub fn get_active_conditions(env: &Env, owner: Address) -> Vec<SwapCondition> {
-        let storage = env.storage().instance();
-        let conditions = Self::load_conditions(env);
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
         let mut active_conditions = Vec::new(env);
-
-        for (_, condition) in conditions.iter() {
-            if condition.owner == owner && condition.status == SwapStatus::Active {
-                active_conditions.push_back(condition);
-            }
+        for id in Self::owner_condition_ids(env, &owner).iter() {
+            active_conditions.push_back(Self::load_condition(env, id));
         }
-
         active_conditions
     }
 
     /// Cancel a swap condition. Signed by its owner.
     pub fn cancel_condition(env: &Env, condition_id: u64, owner: Address) {
         let storage = env.storage().instance();
-        let mut conditions = Self::load_conditions(env);
-        let mut condition = Self::active_condition(env, &conditions, condition_id);
+        let mut condition = Self::active_condition(env, condition_id);
 
         // Check ownership
         if condition.owner != owner {
@@ -279,27 +267,24 @@ impl SmartSwapContract {
         owner.require_auth();
 
         Self::refund(env, &condition);
-        condition.status = SwapStatus::Cancelled;
-        conditions.set(condition_id, condition);
-        storage.set(&SWAP_CONDITIONS, &conditions);
+        Self::close(env, &mut condition, SwapStatus::Cancelled);
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
-    /// Get swap execution history
+    /// Get swap execution history: empty, or the condition's one execution.
     pub fn get_execution_history(env: &Env, condition_id: u64) -> Vec<SwapExecution> {
-        let storage = env.storage().instance();
-        let executions: Vec<SwapExecution> = storage.get(&SWAP_EXECUTIONS).unwrap_or(Vec::new(env));
-        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 
-        let mut filtered_executions = Vec::new(env);
-
-        for execution in executions.iter() {
-            if execution.condition_id == condition_id {
-                filtered_executions.push_back(execution);
-            }
+        let key = DataKey::Execution(condition_id);
+        let persistent = env.storage().persistent();
+        let mut history = Vec::new(env);
+        if let Some(execution) = persistent.get::<_, SwapExecution>(&key) {
+            persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+            history.push_back(execution);
         }
-
-        filtered_executions
+        history
     }
 }
 
@@ -311,21 +296,59 @@ impl SmartSwapContract {
             .unwrap_or_else(|| panic_with_error!(env, SwapError::NotInitialized))
     }
 
-    fn load_conditions(env: &Env) -> Map<u64, SwapCondition> {
-        env.storage()
-            .instance()
-            .get(&SWAP_CONDITIONS)
-            .unwrap_or(Map::new(env))
+    fn load_condition(env: &Env, condition_id: u64) -> SwapCondition {
+        let key = DataKey::Condition(condition_id);
+        let persistent = env.storage().persistent();
+        let condition = persistent
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(env, SwapError::ConditionNotFound));
+        persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        condition
     }
 
-    fn active_condition(
-        env: &Env,
-        conditions: &Map<u64, SwapCondition>,
-        condition_id: u64,
-    ) -> SwapCondition {
-        let condition = conditions
-            .get(condition_id)
-            .unwrap_or_else(|| panic_with_error!(env, SwapError::ConditionNotFound));
+    fn save_condition(env: &Env, condition: &SwapCondition) {
+        let key = DataKey::Condition(condition.id);
+        let persistent = env.storage().persistent();
+        persistent.set(&key, condition);
+        persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+    }
+
+    fn owner_condition_ids(env: &Env, owner: &Address) -> Vec<u64> {
+        let key = DataKey::OwnerConditions(owner.clone());
+        let persistent = env.storage().persistent();
+        match persistent.get(&key) {
+            Some(ids) => {
+                persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+                ids
+            }
+            None => Vec::new(env),
+        }
+    }
+
+    fn save_owner_condition_ids(env: &Env, owner: &Address, ids: &Vec<u64>) {
+        let key = DataKey::OwnerConditions(owner.clone());
+        let persistent = env.storage().persistent();
+        if ids.is_empty() {
+            persistent.remove(&key);
+        } else {
+            persistent.set(&key, ids);
+            persistent.extend_ttl(&key, INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+        }
+    }
+
+    /// Store a terminal status and drop the id from the owner's index.
+    fn close(env: &Env, condition: &mut SwapCondition, status: SwapStatus) {
+        condition.status = status;
+        Self::save_condition(env, condition);
+        let mut ids = Self::owner_condition_ids(env, &condition.owner);
+        if let Some(index) = ids.first_index_of(condition.id) {
+            ids.remove(index);
+        }
+        Self::save_owner_condition_ids(env, &condition.owner, &ids);
+    }
+
+    fn active_condition(env: &Env, condition_id: u64) -> SwapCondition {
+        let condition = Self::load_condition(env, condition_id);
         if condition.status != SwapStatus::Active {
             panic_with_error!(env, SwapError::ConditionNotActive);
         }
