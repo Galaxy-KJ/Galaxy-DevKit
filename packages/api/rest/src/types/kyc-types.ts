@@ -25,3 +25,17 @@ export interface KYCStatusRecord {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export class KYCStatusLookupError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'KYCStatusLookupError';
+  }
+}
+
+export class KYCStatusPersistError extends KYCStatusLookupError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'KYCStatusPersistError';
+  }
+}

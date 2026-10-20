@@ -25,6 +25,7 @@ import compression from 'compression';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { rateLimiterMiddleware } from './middleware/rate-limiter';
 import { validateAuthConfig } from './config/auth-config';
+import { createKYCProvider } from './services/kyc/providers';
 import { authenticate } from './middleware/auth';
 import { auditRequest } from './middleware/audit';
 import { AuthService } from './services/auth-service';
@@ -492,6 +493,8 @@ class RestApiServer {
     try {
       // Validate configuration
       validateAuthConfig();
+      // Fail at boot (not on first request) if the KYC provider is invalid
+      createKYCProvider();
 
       // Start server
       this.app.listen(this.port, this.host, () => {

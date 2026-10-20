@@ -57,6 +57,9 @@ PORT=3000
 HOST=0.0.0.0
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:3000
+
+# KYC provider (default: mock; refused when NODE_ENV=production)
+KYC_PROVIDER=mock
 ```
 
 ## Usage

@@ -1,37 +1,44 @@
-import { Request, Response, NextFunction } from 'express';
-import { kycService } from '../services/kyc/kyc-service';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
+import { KYCStatusRecord } from '../types/kyc-types';
+import { KYCService, kycService } from '../services/kyc/kyc-service';
 
-export const requireKYC = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    // Assuming auth middleware sets req.user
-    const userId = (req as any).user?.id;
-    const userRole = (req as any).user?.role;
+export function createRequireKYC(
+  service: Pick<KYCService, 'getStatus'>
+): RequestHandler {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
 
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
 
     // RBAC Integration: bypass for specific roles (e.g. admin)
     if (userRole === 'admin' || userRole === 'system') {
-      return next();
+      next();
+      return;
     }
 
-    const kycStatus = await kycService.getStatus(userId);
+    let kycStatus: KYCStatusRecord | null;
+    try {
+      kycStatus = await service.getStatus(userId);
+    } catch {
+      res.status(503).json({ error: 'KYC status unavailable' });
+      return;
+    }
 
     if (!kycStatus || kycStatus.status !== 'approved') {
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'Verified KYC status is required for this operation.',
-        currentStatus: kycStatus?.status || 'unverified'
+      res.status(403).json({
+        error: 'KYC verification required',
+        currentStatus: kycStatus?.status ?? 'unverified',
       });
+      return;
     }
 
-    // Pass the KYC status in the request for downstream use if needed
-    (req as any).kycStatus = kycStatus;
-    
+    (req as Request & { kycStatus?: KYCStatusRecord }).kycStatus = kycStatus;
     next();
-  } catch (error) {
-    console.error('KYC Middleware Error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-};
+  };
+}
+
+export const requireKYC = createRequireKYC(kycService);
