@@ -12,6 +12,7 @@
 #![no_std]
 
 mod errors;
+mod events;
 mod oracle;
 mod router;
 mod types;
@@ -188,6 +189,15 @@ impl SmartSwapContract {
         };
 
         Self::save_condition(env, &condition);
+        events::created(
+            env,
+            &condition.owner,
+            next_id,
+            &condition.source_token,
+            &condition.destination_token,
+            amount_to_swap,
+            expires_at,
+        );
         let mut owner_ids = Self::owner_condition_ids(env, &condition.owner);
         owner_ids.push_back(next_id);
         Self::save_owner_condition_ids(env, &condition.owner, &owner_ids);
@@ -212,6 +222,12 @@ impl SmartSwapContract {
         if env.ledger().timestamp() > condition.expires_at {
             Self::refund(env, &condition);
             Self::close(env, &mut condition, SwapStatus::Expired);
+            events::expired(
+                env,
+                &condition.owner,
+                condition_id,
+                condition.amount_to_swap,
+            );
             storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
             return None;
         }
@@ -233,6 +249,14 @@ impl SmartSwapContract {
         let actual_amount_out = Self::execute_swap(env, &condition, current_price);
 
         Self::close(env, &mut condition, SwapStatus::Executed);
+        events::executed(
+            env,
+            &condition.owner,
+            condition_id,
+            condition.amount_to_swap,
+            actual_amount_out,
+            current_price,
+        );
 
         // Record execution
         let execution = SwapExecution {
@@ -286,6 +310,12 @@ impl SmartSwapContract {
 
         Self::refund(env, &condition);
         Self::close(env, &mut condition, SwapStatus::Cancelled);
+        events::cancelled(
+            env,
+            &condition.owner,
+            condition_id,
+            condition.amount_to_swap,
+        );
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 

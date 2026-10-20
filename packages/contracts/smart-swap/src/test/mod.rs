@@ -3,6 +3,7 @@
 mod auth;
 mod conditions;
 mod config;
+mod events;
 mod mocks;
 mod swap;
 mod ttl;
