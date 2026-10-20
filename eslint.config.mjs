@@ -48,7 +48,19 @@ export default tseslint.config(
         files: ['packages/api/websocket/**/*.ts'],
         rules: {
             '@typescript-eslint/no-unused-vars': 'off',
-            'no-console': 'off',
+        },
+    },
+    {
+        files: ['packages/api/**/src/**/*.ts'],
+        ignores: ['**/__tests__/**', '**/*.test.ts'],
+        rules: {
+            'no-console': 'error',
+        },
+    },
+    {
+        files: ['packages/api/**/scripts/**'],
+        rules: {
+            'no-console': 'warn',
         },
     },
     {
