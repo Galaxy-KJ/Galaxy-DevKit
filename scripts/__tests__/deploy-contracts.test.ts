@@ -205,7 +205,7 @@ echo "ok"
           deployer: 'test',
           contracts: {
             smart_swap: { contractId: 'CSWAP', wasmHash: 'shash' },
-            galaxy_oracle: { contractId: 'CORACLE', wasmHash: 'ohash' },
+            price_oracle: { contractId: 'CORACLE', wasmHash: 'ohash' },
           },
         }),
       );
