@@ -124,8 +124,6 @@ async function connectAndAuthenticate(
 describe('ConnectionHandler authentication', () => {
   beforeEach(() => {
     mockedValidateCredential.mockReset();
-    jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    jest.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

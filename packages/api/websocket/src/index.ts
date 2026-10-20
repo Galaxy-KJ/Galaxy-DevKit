@@ -20,6 +20,9 @@ import { TransactionHandler } from './handlers/transaction-handler';
 import { AutomationHandler } from './handlers/automation-handler';
 import { TransactionMonitoringHandler } from './handlers/transaction-monitoring-handler';
 import { authMiddleware } from './middleware/auth';
+import { logger, socketLogger } from './logger';
+
+const log = logger.child({ module: 'server' });
 
 /**
  * WebSocket Server Class
@@ -77,7 +80,7 @@ class WebSocketServer {
       try {
         res.json(await this.getServerStats());
       } catch (error) {
-        console.error('Failed to collect server metrics:', error);
+        log.error({ err: error }, 'Failed to collect server metrics');
         res.status(503).json({ error: 'Server metrics are temporarily unavailable' });
       }
     });
@@ -98,7 +101,7 @@ class WebSocketServer {
 
     // Error handling middleware
     this.app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      console.error('Express error:', err);
+      log.error({ err }, 'Express error');
       res.status(500).json({
         error: 'Internal server error',
         timestamp: Date.now()
@@ -135,19 +138,19 @@ class WebSocketServer {
 
     // Connection event logging
     this.io.on('connection', (socket) => {
-      console.log(`Client connected: ${socket.id}`);
+      socketLogger(socket).info('Client connected');
     });
 
     // Error handling
     this.io.on('error', (error) => {
-      console.error('Socket.IO error:', error);
+      log.error({ err: error }, 'Socket.IO error');
     });
   }
 
   /** Attach the cross-instance adapter when Redis is configured. */
   private async configureSharedAdapter(): Promise<void> {
     if (!config.redis.url) {
-      console.warn('REDIS_URL is not configured; using the single-instance Socket.IO adapter');
+      log.warn('REDIS_URL is not configured; using the single-instance Socket.IO adapter');
       return;
     }
     const publisher = new Redis(config.redis.url, { lazyConnect: true, maxRetriesPerRequest: 3 });
@@ -156,7 +159,7 @@ class WebSocketServer {
       await Promise.all([publisher.connect(), subscriber.connect()]);
       this.io.adapter(createAdapter(publisher, subscriber));
       this.redisClients = [publisher, subscriber];
-      console.log('Socket.IO Redis adapter enabled for cross-instance rooms and broadcasts');
+      log.info('Socket.IO Redis adapter enabled for cross-instance rooms and broadcasts');
     } catch (error) {
       await Promise.allSettled([publisher.quit(), subscriber.quit()]);
       throw new Error(`Redis adapter initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -185,7 +188,7 @@ class WebSocketServer {
     this.automationHandler = new AutomationHandler(this.io, this.roomManager, this.eventBroadcaster);
     this.transactionMonitoringHandler = new TransactionMonitoringHandler(this.io);
 
-    console.log('All handlers initialized');
+    log.info('All handlers initialized');
   }
 
   /**
@@ -194,12 +197,12 @@ class WebSocketServer {
   private setupGracefulShutdown(): void {
     const shutdown = async (signal: string) => {
       if (this.isShuttingDown) {
-        console.log('Shutdown already in progress');
+        log.info('Shutdown already in progress');
         return;
       }
 
       this.isShuttingDown = true;
-      console.log(`Received ${signal}, starting graceful shutdown...`);
+      log.info({ signal }, 'Received signal, starting graceful shutdown');
 
       try {
         // Stop accepting new connections
@@ -217,18 +220,18 @@ class WebSocketServer {
 
         // Close HTTP server
         this.httpServer.close(() => {
-          console.log('HTTP server closed');
+          log.info('HTTP server closed');
           process.exit(0);
         });
 
         // Force exit after 30 seconds
         setTimeout(() => {
-          console.error('Forced shutdown after timeout');
+          log.error('Forced shutdown after timeout');
           process.exit(1);
         }, 30000);
 
       } catch (error) {
-        console.error('Error during shutdown:', error);
+        log.error({ err: error }, 'Error during shutdown');
         process.exit(1);
       }
     };
@@ -240,13 +243,13 @@ class WebSocketServer {
 
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
-      console.error('Uncaught exception:', error);
+      log.error({ err: error }, 'Uncaught exception');
       shutdown('uncaughtException');
     });
 
     // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('Unhandled rejection at:', promise, 'reason:', reason);
+    process.on('unhandledRejection', (reason) => {
+      log.error({ err: reason }, 'Unhandled rejection');
       shutdown('unhandledRejection');
     });
   }
@@ -277,18 +280,24 @@ class WebSocketServer {
         });
       });
 
-      console.log(`🚀 Galaxy WebSocket API Server started`);
-      console.log(`📡 Server running on ${config.server.host}:${config.server.port}`);
-      console.log(`🌍 Environment: ${config.server.environment}`);
-      console.log(`🔗 WebSocket endpoint: ws://${config.server.host}:${config.server.port}/socket.io/`);
-      console.log(`❤️  Health check: http://${config.server.host}:${config.server.port}/health`);
-      console.log(`📊 Metrics: http://${config.server.host}:${config.server.port}/metrics`);
+      const baseUrl = `${config.server.host}:${config.server.port}`;
+      log.info(
+        {
+          host: config.server.host,
+          port: config.server.port,
+          environment: config.server.environment,
+          websocketEndpoint: `ws://${baseUrl}/socket.io/`,
+          healthCheck: `http://${baseUrl}/health`,
+          metrics: `http://${baseUrl}/metrics`,
+        },
+        'Galaxy WebSocket API Server started'
+      );
 
       // Log configuration summary
       this.logConfigurationSummary();
 
     } catch (error) {
-      console.error('Failed to start server:', error);
+      log.error({ err: error }, 'Failed to start server');
       process.exit(1);
     }
   }
@@ -338,18 +347,21 @@ class WebSocketServer {
    * Log configuration summary
    */
   private logConfigurationSummary(): void {
-    console.log('\n📋 Configuration Summary:');
-    console.log(`   Port: ${config.server.port}`);
-    console.log(`   Host: ${config.server.host}`);
-    console.log(`   Environment: ${config.server.environment}`);
-    console.log(`   CORS Origins: ${config.cors.allowedOrigins.join(', ')}`);
-    console.log(`   Connection Timeout: ${config.connection.timeout}ms`);
-    console.log(`   Max Connections per User: ${config.connection.maxConnectionsPerUser}`);
-    console.log(`   Heartbeat Interval: ${config.connection.heartbeatInterval}ms`);
-    console.log(`   Log Level: ${config.logging.level}`);
-    console.log(`   Supabase URL: ${config.supabase.url}`);
-    console.log(`   Stellar Network: ${config.stellar.network}`);
-    console.log('');
+    log.info(
+      {
+        port: config.server.port,
+        host: config.server.host,
+        environment: config.server.environment,
+        corsOrigins: config.cors.allowedOrigins,
+        connectionTimeoutMs: config.connection.timeout,
+        maxConnectionsPerUser: config.connection.maxConnectionsPerUser,
+        heartbeatIntervalMs: config.connection.heartbeatInterval,
+        logLevel: config.logging.level,
+        supabaseUrl: config.supabase.url,
+        stellarNetwork: config.stellar.network,
+      },
+      'Configuration summary'
+    );
   }
 
   /**
@@ -361,7 +373,7 @@ class WebSocketServer {
     }
 
     this.isShuttingDown = true;
-    console.log('Stopping server...');
+    log.info('Stopping server...');
 
     try {
       // Close Socket.IO
@@ -378,13 +390,13 @@ class WebSocketServer {
       // Close HTTP server
       await new Promise<void>((resolve) => {
         this.httpServer.close(() => {
-          console.log('Server stopped');
+          log.info('Server stopped');
           resolve();
         });
       });
 
     } catch (error) {
-      console.error('Error stopping server:', error);
+      log.error({ err: error }, 'Error stopping server');
       throw error;
     }
   }
@@ -401,13 +413,13 @@ async function main(): Promise<void> {
 
     // Keep process alive
     process.on('SIGINT', async () => {
-      console.log('\nReceived SIGINT, shutting down gracefully...');
+      log.info('Received SIGINT, shutting down gracefully...');
       await server.stop();
       process.exit(0);
     });
 
   } catch (error) {
-    console.error('Failed to start Galaxy WebSocket API Server:', error);
+    log.error({ err: error }, 'Failed to start Galaxy WebSocket API Server');
     process.exit(1);
   }
 }
@@ -415,7 +427,7 @@ async function main(): Promise<void> {
 // Start server if this file is run directly
 if (require.main === module) {
   main().catch((error) => {
-    console.error('Unhandled error in main:', error);
+    log.error({ err: error }, 'Unhandled error in main');
     process.exit(1);
   });
 }

@@ -30,6 +30,7 @@ import {
   toOrderbookRoom,
   toTickerRoom,
 } from '../services/market-data-source';
+import { socketLogger } from '../logger';
 
 export interface MarketHandlerOptions {
   marketDataSource?: MarketDataSource;
@@ -173,7 +174,7 @@ export class MarketHandler {
           this.eventBroadcaster.refreshRoomSubscriberCount(roomName);
           await this.syncTickerPolling(pair);
         } catch (error) {
-          console.error(`Failed to subscribe to ${pair}:`, error);
+          socketLogger(socket).error({ err: error, pair }, 'Failed to subscribe to pair');
         }
       }
 
@@ -182,7 +183,7 @@ export class MarketHandler {
         timestamp: Date.now(),
       });
     } catch (error) {
-      console.error(`Market subscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Market subscription failed');
       socket.emit('market:subscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now(),
@@ -219,7 +220,7 @@ export class MarketHandler {
           this.eventBroadcaster.refreshRoomSubscriberCount(roomName);
           await this.syncTickerPolling(pair);
         } catch (error) {
-          console.error(`Failed to unsubscribe from ${pair}:`, error);
+          socketLogger(socket).error({ err: error, pair }, 'Failed to unsubscribe from pair');
         }
       }
 
@@ -228,7 +229,7 @@ export class MarketHandler {
         timestamp: Date.now(),
       });
     } catch (error) {
-      console.error(`Market unsubscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Market unsubscription failed');
       socket.emit('market:unsubscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now(),
@@ -301,7 +302,7 @@ export class MarketHandler {
         timestamp: Date.now(),
       });
     } catch (error) {
-      console.error(`Orderbook subscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Orderbook subscription failed');
       socket.emit('market:orderbook_subscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now(),
@@ -338,7 +339,7 @@ export class MarketHandler {
         timestamp: Date.now(),
       });
     } catch (error) {
-      console.error(`Orderbook unsubscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Orderbook unsubscription failed');
       socket.emit('market:orderbook_unsubscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now(),

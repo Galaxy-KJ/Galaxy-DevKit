@@ -151,8 +151,6 @@ describe('MarketHandler', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(UPSTREAM);
-    jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    jest.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

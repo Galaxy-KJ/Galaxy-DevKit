@@ -24,6 +24,9 @@ import { EventBroadcaster } from '../services/event-broadcaster';
 import { requireAuth } from '../middleware/auth';
 import { config } from '../config';
 import { createDefaultPriceAggregator } from '../services/market-data-source';
+import { logger, socketLogger } from '../logger';
+
+const log = logger.child({ module: 'automation-handler' });
 
 export interface StoredAutomation {
   id: string;
@@ -201,7 +204,7 @@ export class AutomationHandler {
       )
       .subscribe();
 
-    console.log('Subscribed to Supabase automation changes');
+    log.info('Subscribed to Supabase automation changes');
   }
 
   /**
@@ -259,7 +262,7 @@ export class AutomationHandler {
         // Verify user owns the automation
         const hasAccess = await this.verifyAutomationAccess(socket.userId!, automationId);
         if (!hasAccess) {
-          console.warn(`User ${socket.userId} attempted to subscribe to automation ${automationId} without access`);
+          socketLogger(socket).warn(`Attempted to subscribe to automation ${automationId} without access`);
           continue;
         }
 
@@ -273,10 +276,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} subscribed to automations: ${subscribedAutomations.join(', ')}`);
+      socketLogger(socket).info(`Socket subscribed to automations: ${subscribedAutomations.join(', ')}`);
 
     } catch (error) {
-      console.error(`Automation subscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation subscription failed');
       socket.emit('automation:subscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -313,10 +316,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} unsubscribed from automations: ${unsubscribedAutomations.join(', ')}`);
+      socketLogger(socket).info(`Socket unsubscribed from automations: ${unsubscribedAutomations.join(', ')}`);
 
     } catch (error) {
-      console.error(`Automation unsubscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation unsubscription failed');
       socket.emit('automation:unsubscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -370,10 +373,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Automation ${data.automationId} enabled by user ${socket.userId}`);
+      socketLogger(socket).info(`Automation ${data.automationId} enabled`);
 
     } catch (error) {
-      console.error(`Automation enable failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation enable failed');
       socket.emit('automation:enable_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -427,10 +430,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Automation ${data.automationId} disabled by user ${socket.userId}`);
+      socketLogger(socket).info(`Automation ${data.automationId} disabled`);
 
     } catch (error) {
-      console.error(`Automation disable failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation disable failed');
       socket.emit('automation:disable_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -481,10 +484,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Sent automation status for ${data.automationId} to ${socket.id}`);
+      socketLogger(socket).info(`Sent automation status for ${data.automationId}`);
 
     } catch (error) {
-      console.error(`Automation status request failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation status request failed');
       socket.emit('automation:status_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -525,10 +528,10 @@ export class AutomationHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Sent automation list to ${socket.id}`);
+      socketLogger(socket).info('Sent automation list');
 
     } catch (error) {
-      console.error(`Automation list request failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Automation list request failed');
       socket.emit('automation:list_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -567,7 +570,7 @@ export class AutomationHandler {
       // Execution events are emitted by the poll loop after a real
       // transaction result is known. Do not synthesize them here.
     } catch (error) {
-      console.error('Failed to handle automation change:', error);
+      log.error({ err: error }, 'Failed to handle automation change');
     }
   }
 
@@ -576,7 +579,7 @@ export class AutomationHandler {
    */
   async checkAutomationTriggers(): Promise<void> {
     if (this.isPolling) {
-      console.warn('[automation-handler] skipping overlapping poll cycle');
+      log.warn('skipping overlapping poll cycle');
       return;
     }
 
@@ -589,14 +592,14 @@ export class AutomationHandler {
 
       if (error || !automations) {
         if (error) {
-          console.error('Failed to load active automations:', error);
+          log.error({ err: error }, 'Failed to load active automations');
         }
         return;
       }
 
       await this.processActiveAutomations(automations as StoredAutomation[]);
     } catch (error) {
-      console.error('Failed to check automation triggers:', error);
+      log.error({ err: error }, 'Failed to check automation triggers');
     } finally {
       this.isPolling = false;
     }
@@ -611,7 +614,7 @@ export class AutomationHandler {
       try {
         await this.processAutomation(automation);
       } catch (error) {
-        console.error(`Failed to check triggers for automation ${automation.id}:`, error);
+        log.error({ err: error }, `Failed to check triggers for automation ${automation.id}`);
       }
     }
   }
@@ -620,9 +623,7 @@ export class AutomationHandler {
     const runtime = await this.getRuntime();
 
     if (runtime.isInFlight(automation.id)) {
-      console.info(
-        `[automation ${automation.id}] skip: previous execution still pending/executing`
-      );
+      log.info({ automationId: automation.id }, 'skip: previous execution still pending/executing');
       return;
     }
 
@@ -633,16 +634,15 @@ export class AutomationHandler {
 
     const attempt = await runtime.tryBeginExecution(automation.id);
     if (!attempt) {
-      console.warn(
-        `[automation ${automation.id}] skip: could not claim execution lock`
-      );
+      log.warn({ automationId: automation.id }, 'skip: could not claim execution lock');
       return;
     }
 
     try {
       if (attempt.transactionHash) {
-        console.info(
-          `[automation ${automation.id}] recovering submitted hash ${attempt.transactionHash}`
+        log.info(
+          { automationId: automation.id, transactionHash: attempt.transactionHash },
+          'recovering submitted hash'
         );
         const result = await runtime.executePersistedAutomation(
           automation,
@@ -697,7 +697,7 @@ export class AutomationHandler {
 
     await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
     await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
-    console.info(`[automation ${automation.id}] emitted automation:triggered`);
+    log.info({ automationId: automation.id }, 'emitted automation:triggered');
   }
 
   private async emitExecuted(
@@ -724,11 +724,14 @@ export class AutomationHandler {
 
     await this.eventBroadcaster.broadcastToUser(automation.user_id, event);
     await this.eventBroadcaster.broadcastToRoom(`automation:${automation.id}`, event);
-    console.info(
-      `[automation ${automation.id}] emitted automation:executed ` +
-        `success=${result.success}` +
-        (result.transactionHash ? ` hash=${result.transactionHash}` : '') +
-        (result.error ? ` error=${result.error.message}` : '')
+    log.info(
+      {
+        automationId: automation.id,
+        success: result.success,
+        transactionHash: result.transactionHash,
+        error: result.error?.message,
+      },
+      'emitted automation:executed'
     );
   }
 
@@ -784,10 +787,7 @@ export class AutomationHandler {
           ),
       };
     } catch (error) {
-      console.warn(
-        '[automation-handler] price oracle unavailable; price triggers will not fire',
-        error
-      );
+      log.warn({ err: error }, 'price oracle unavailable; price triggers will not fire');
     }
 
     return new AutomationService({

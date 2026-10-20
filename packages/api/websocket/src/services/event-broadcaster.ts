@@ -7,6 +7,9 @@
 
 import { Server, Socket } from 'socket.io';
 import { WebSocketEvent, BroadcastOptions, BroadcastError, ExtendedSocket } from '../types/websocket-types';
+import { logger } from '../logger';
+
+const log = logger.child({ module: 'event-broadcaster' });
 
 export type SubscriberCountChangeHandler = (
   roomName: string,
@@ -118,9 +121,9 @@ export class EventBroadcaster {
       this.server.to(roomName).emit(event.type, eventData);
 
       // Log broadcast
-      console.log(`Broadcasted ${event.type} to room ${roomName} (${room.size} clients)`);
+      log.info(`Broadcasted ${event.type} to room ${roomName} (${room.size} clients)`);
     } catch (error) {
-      console.error(`Failed to broadcast to room ${roomName}:`, error);
+      log.error({ err: error }, `Failed to broadcast to room ${roomName}`);
       throw new BroadcastError(`Failed to broadcast to room: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -156,9 +159,9 @@ export class EventBroadcaster {
       userSocket.emit(event.type, eventData);
 
       // Log broadcast
-      console.log(`Broadcasted ${event.type} to user ${userId}`);
+      log.info(`Broadcasted ${event.type} to user ${userId}`);
     } catch (error) {
-      console.error(`Failed to broadcast to user ${userId}:`, error);
+      log.error({ err: error }, `Failed to broadcast to user ${userId}`);
       throw new BroadcastError(`Failed to broadcast to user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -182,9 +185,9 @@ export class EventBroadcaster {
       this.server.emit(event.type, eventData);
 
       // Log broadcast
-      console.log(`Broadcasted ${event.type} globally`);
+      log.info(`Broadcasted ${event.type} globally`);
     } catch (error) {
-      console.error('Failed to broadcast globally:', error);
+      log.error({ err: error }, 'Failed to broadcast globally');
       throw new BroadcastError(`Failed to broadcast globally: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -209,7 +212,7 @@ export class EventBroadcaster {
     try {
       await Promise.all(promises);
     } catch (error) {
-      console.error('Failed to broadcast to multiple rooms:', error);
+      log.error({ err: error }, 'Failed to broadcast to multiple rooms');
       throw new BroadcastError(`Failed to broadcast to multiple rooms: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -234,7 +237,7 @@ export class EventBroadcaster {
     try {
       await Promise.all(promises);
     } catch (error) {
-      console.error('Failed to broadcast to multiple users:', error);
+      log.error({ err: error }, 'Failed to broadcast to multiple users');
       throw new BroadcastError(`Failed to broadcast to multiple users: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -360,7 +363,7 @@ export class EventBroadcaster {
   ): void {
     // Check queue size limit
     if (this.broadcastQueue.length >= this.maxQueueSize) {
-      console.warn('Broadcast queue is full, dropping event');
+      log.warn('Broadcast queue is full, dropping event');
       return;
     }
 
@@ -374,7 +377,7 @@ export class EventBroadcaster {
 
     this.broadcastQueue.push(queueItem);
     this.startQueueProcessing();
-    console.log(`Queued ${event.type} for ${type} ${target}`);
+    log.info(`Queued ${event.type} for ${type} ${target}`);
   }
 
   /**
@@ -418,11 +421,11 @@ export class EventBroadcaster {
               item.retryCount++;
               this.broadcastQueue.push(item);
             } else {
-              console.log(`Dropped queued event ${item.event.type} for ${item.target} after ${item.retryCount} retries`);
+              log.info(`Dropped queued event ${item.event.type} for ${item.target} after ${item.retryCount} retries`);
             }
           }
         } catch (error) {
-          console.error(`Failed to process queued event:`, error);
+          log.error({ err: error }, 'Failed to process queued event');
         }
       }
     } finally {
@@ -459,7 +462,7 @@ export class EventBroadcaster {
    */
   public clearQueue(): void {
     this.broadcastQueue = [];
-    console.log('Broadcast queue cleared');
+    log.info('Broadcast queue cleared');
   }
 
   /**

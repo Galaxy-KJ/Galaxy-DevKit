@@ -72,7 +72,7 @@ export interface WebSocketConfig {
   /** Logging configuration */
   logging: {
     /** Log level */
-    level: 'debug' | 'info' | 'warn' | 'error';
+    level: 'debug' | 'info' | 'warn' | 'error' | 'silent';
     /** Whether to log to console */
     console: boolean;
     /** Whether to log to file */
@@ -117,7 +117,7 @@ function loadConfig(): WebSocketConfig {
   const roomCleanupInterval = parseInt(process.env.ROOM_CLEANUP_INTERVAL || '300000', 10);
 
   // Parse logging configuration
-  const logLevel = (process.env.LOG_LEVEL || 'info') as 'debug' | 'info' | 'warn' | 'error';
+  const logLevel = (process.env.LOG_LEVEL || 'info') as 'debug' | 'info' | 'warn' | 'error' | 'silent';
   const logToConsole = process.env.LOG_CONSOLE !== 'false';
   const logToFile = process.env.LOG_FILE === 'true';
   const logFilePath = process.env.LOG_FILE_PATH;

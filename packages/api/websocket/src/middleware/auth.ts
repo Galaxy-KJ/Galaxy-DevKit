@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
 import { AuthenticationResult, AuthenticationError, ExtendedSocket } from '../types/websocket-types';
+import { socketLogger } from '../logger';
 
 /**
  * Rate limiting configuration
@@ -365,7 +366,7 @@ export function authMiddleware(socket: ExtendedSocket, next: (err?: Error) => vo
   // Set up disconnect handler
   socket.on('disconnect', () => {
     if (socket.connectionState) {
-      console.log(`User ${socket.userId || 'anonymous'} disconnected`);
+      socketLogger(socket).info('Disconnected');
     }
   });
 
@@ -480,12 +481,14 @@ async function verifyResourceOwnership(
   cache.set(cacheKey, { allowed, expiresAt: now + OWNERSHIP_CACHE_TTL_MS });
 
   if (!allowed) {
-    console.warn(JSON.stringify({
-      event: 'websocket_room_access_denied',
-      userId: socket.userId,
-      room: `${kind}:${resourceId}`,
-      reason: 'ownership_check_failed',
-    }));
+    socketLogger(socket).warn(
+      {
+        event: 'websocket_room_access_denied',
+        room: `${kind}:${resourceId}`,
+        reason: 'ownership_check_failed',
+      },
+      'Room access denied'
+    );
   }
   return allowed;
 }

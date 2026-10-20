@@ -11,6 +11,9 @@ import { ExtendedSocket, TransactionPendingEvent, TransactionConfirmedEvent, Tra
 import { RoomManager } from '../services/room-manager';
 import { EventBroadcaster } from '../services/event-broadcaster';
 import { config } from '../config';
+import { logger, socketLogger } from '../logger';
+
+const log = logger.child({ module: 'transaction-handler' });
 
 export interface TransactionHandlerOptions {
   supabase?: SupabaseClient;
@@ -100,7 +103,7 @@ export class TransactionHandler {
       )
       .subscribe();
 
-    console.log('Subscribed to Supabase transaction changes');
+    log.info('Subscribed to Supabase transaction changes');
   }
 
   /**
@@ -145,10 +148,10 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} subscribed to transactions for wallet ${data.walletId}`);
+      socketLogger(socket).info(`Socket subscribed to transactions for wallet ${data.walletId}`);
 
     } catch (error) {
-      console.error(`Transaction subscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Transaction subscription failed');
       socket.emit('transaction:subscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -180,10 +183,10 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} unsubscribed from transactions for wallet ${data.walletId}`);
+      socketLogger(socket).info(`Socket unsubscribed from transactions for wallet ${data.walletId}`);
 
     } catch (error) {
-      console.error(`Transaction unsubscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Transaction unsubscription failed');
       socket.emit('transaction:unsubscription_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -243,10 +246,10 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Sent transaction status for ${data.hash} to ${socket.id}`);
+      socketLogger(socket).info(`Sent transaction status for ${data.hash}`);
 
     } catch (error) {
-      console.error(`Transaction status request failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Transaction status request failed');
       socket.emit('transaction:status_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -313,10 +316,10 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Sent transaction history for wallet ${data.walletId} to ${socket.id}`);
+      socketLogger(socket).info(`Sent transaction history for wallet ${data.walletId}`);
 
     } catch (error) {
-      console.error(`Transaction history request failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Transaction history request failed');
       socket.emit('transaction:history_error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
@@ -402,10 +405,10 @@ export class TransactionHandler {
       const walletRoomName = `wallet:${walletId}`;
       await this.eventBroadcaster.broadcastToRoom(walletRoomName, event);
 
-      console.log(`Broadcasted transaction ${event.type} for ${transaction.hash}`);
+      log.info(`Broadcasted transaction ${event.type} for ${transaction.hash}`);
 
     } catch (error) {
-      console.error('Failed to handle transaction change:', error);
+      log.error({ err: error }, 'Failed to handle transaction change');
     }
   }
 
