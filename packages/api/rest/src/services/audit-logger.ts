@@ -9,6 +9,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { withQueryLogging } from '../utils/query-metrics';
 import { buildCursorPage, decodeCursor, CursorPageResult } from '../utils/pagination';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'audit-logger' });
 
 export type AuditSeverity = 'info' | 'warning' | 'critical';
 
@@ -144,7 +147,7 @@ export class AuditLogger {
         throw error;
       }
     } catch (error) {
-      console.warn('Failed to write audit log:', error);
+      log.warn({ err: error }, 'Failed to write audit log');
       if (options?.sync) {
         throw error;
       }
@@ -211,7 +214,7 @@ export class AuditLogger {
 
       return buildCursorPage((data || []) as AuditEvent[], limit, (row) => row.timestamp);
     } catch (error) {
-      console.warn('Failed to query audit logs:', error);
+      log.warn({ err: error }, 'Failed to query audit logs');
       return { items: [], nextCursor: null };
     }
   }

@@ -50,11 +50,6 @@ function priceEvent(): MarketPriceUpdateEvent {
 }
 
 describe('EventBroadcaster', () => {
-  beforeEach(() => {
-    jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  });
-
   afterEach(() => {
     jest.useRealTimers();
   });

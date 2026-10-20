@@ -1,0 +1,42 @@
+{
+  "name": "@galaxy-kj/api-logger",
+  "version": "5.0.0",
+  "description": "Shared structured logger for the Galaxy API servers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pino": "^10.4.0"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.2.0"
+  },
+  "keywords": [
+    "stellar",
+    "logger",
+    "pino",
+    "galaxy"
+  ],
+  "author": "Galaxy DevKit Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Galaxy-KJ/Galaxy-DevKit.git",
+    "directory": "packages/api/logger"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

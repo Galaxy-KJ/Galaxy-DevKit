@@ -19,6 +19,9 @@ import {
   generateRefreshToken,
 } from '../utils/password-utils';
 import { authConfig } from '../config/auth-config';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'session-service' });
 
 /**
  * Supabase client instance
@@ -196,7 +199,7 @@ export class SessionService {
         session,
       };
     } catch (error) {
-      console.error('Session validation error:', error);
+      log.error({ err: error }, 'Session validation error');
       return {
         valid: false,
         error: `Session validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -303,7 +306,7 @@ export class SessionService {
         .update({ is_active: false })
         .eq('session_token', sessionToken);
     } catch (error) {
-      console.error('Failed to revoke session:', error);
+      log.error({ err: error }, 'Failed to revoke session');
       // Don't throw error, just log it
     }
   }
@@ -321,7 +324,7 @@ export class SessionService {
         .eq('user_id', userId)
         .eq('is_active', true);
     } catch (error) {
-      console.error('Failed to revoke user sessions:', error);
+      log.error({ err: error }, 'Failed to revoke user sessions');
       // Don't throw error, just log it
     }
   }
@@ -346,7 +349,7 @@ export class SessionService {
 
       return data.map((session) => this.mapDatabaseToSession(session));
     } catch (error) {
-      console.error('Failed to get user sessions:', error);
+      log.error({ err: error }, 'Failed to get user sessions');
       return [];
     }
   }
@@ -367,13 +370,13 @@ export class SessionService {
         .select();
 
       if (error) {
-        console.error('Failed to cleanup expired sessions:', error);
+        log.error({ err: error }, 'Failed to cleanup expired sessions');
         return 0;
       }
 
       return data?.length || 0;
     } catch (error) {
-      console.error('Failed to cleanup expired sessions:', error);
+      log.error({ err: error }, 'Failed to cleanup expired sessions');
       return 0;
     }
   }
@@ -388,7 +391,7 @@ export class SessionService {
 
     this.cleanupInterval = setInterval(() => {
       this.cleanupExpiredSessions().catch((error) => {
-        console.error('Session cleanup error:', error);
+        log.error({ err: error }, 'Session cleanup error');
       });
     }, authConfig.session.cleanupInterval);
   }

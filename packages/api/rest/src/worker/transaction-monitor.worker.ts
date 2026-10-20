@@ -2,6 +2,9 @@ import { Horizon } from '@stellar/stellar-sdk';
 import { TransactionMonitoringRepository } from '../repositories/transaction-monitoring.repository';
 import { TransactionMonitoringService } from '../services/monitoring/transaction-monitoring.service';
 import { MonitoredAccount, MonitoringTransaction, TransactionMonitoringNetwork } from '../types/transaction-monitoring-types';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'transaction-monitor-worker' });
 
 const HORIZON_URLS: Record<TransactionMonitoringNetwork, string> = {
   testnet: 'https://horizon-testnet.stellar.org', mainnet: 'https://horizon.stellar.org',
@@ -58,14 +61,14 @@ export class TransactionMonitorWorker {
       for (const [id, close] of this.streams) if (!desired.has(id)) { close(); this.streams.delete(id); }
       for (const account of accounts) if (!this.streams.has(account.id)) this.openStream(account);
     } catch (error) {
-      console.error('[transaction-monitor] failed to refresh monitored accounts:', error);
+      log.error({ err: error }, 'failed to refresh monitored accounts');
     }
   }
 
   private openStream(account: MonitoredAccount): void {
     const close = this.server.transactions().forAccount(account.accountAddress).cursor('now').stream({
       onmessage: (record) => this.enqueue(account, record as unknown as Record<string, unknown>),
-      onerror: (error) => console.error(`[transaction-monitor] Horizon stream error for ${account.accountAddress}:`, error),
+      onerror: (error) => log.error({ err: error, account: account.accountAddress }, 'Horizon stream error'),
     });
     this.streams.set(account.id, close);
   }
@@ -73,7 +76,7 @@ export class TransactionMonitorWorker {
   private enqueue(account: MonitoredAccount, record: Record<string, unknown>): void {
     if (!this.running) return;
     if (this.queue.length >= this.maxQueueSize) {
-      console.warn('[transaction-monitor] queue full; dropping newest transaction until Horizon reconnect/replay');
+      log.warn('queue full; dropping newest transaction until Horizon reconnect/replay');
       return;
     }
     this.queue.push({ account, record }); this.drain();
@@ -82,7 +85,7 @@ export class TransactionMonitorWorker {
   private drain(): void {
     while (this.processing < this.concurrency && this.queue.length > 0) {
       const next = this.queue.shift()!; this.processing++;
-      void this.process(next.account, next.record).catch((error) => console.error('[transaction-monitor] event processing failed:', error)).finally(() => { this.processing--; this.drain(); });
+      void this.process(next.account, next.record).catch((error) => log.error({ err: error }, 'event processing failed')).finally(() => { this.processing--; this.drain(); });
     }
   }
 

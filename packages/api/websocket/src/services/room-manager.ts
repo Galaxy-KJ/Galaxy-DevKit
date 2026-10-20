@@ -8,6 +8,9 @@
 import { Server, Socket } from 'socket.io';
 import { RoomConfig, RoomStats, RoomType, RoomError, ExtendedSocket } from '../types/websocket-types';
 import { canAccessRoom } from '../middleware/auth';
+import { logger, socketLogger } from '../logger';
+
+const log = logger.child({ module: 'room-manager' });
 
 /**
  * Room Manager Class
@@ -128,9 +131,9 @@ export class RoomManager {
       // Update room stats
       this.updateRoomStats(roomName);
 
-      console.log(`Socket ${socket.id} joined room ${roomName}`);
+      socketLogger(socket).info({ room: roomName }, 'Socket joined room');
     } catch (error) {
-      console.error(`Failed to join room ${roomName}:`, error);
+      socketLogger(socket).error({ err: error, room: roomName }, 'Failed to join room');
       throw error;
     }
   }
@@ -160,9 +163,9 @@ export class RoomManager {
       // Update room stats
       this.updateRoomStats(roomName);
 
-      console.log(`Socket ${socket.id} left room ${roomName}`);
+      socketLogger(socket).info({ room: roomName }, 'Socket left room');
     } catch (error) {
-      console.error(`Failed to leave room ${roomName}:`, error);
+      socketLogger(socket).error({ err: error, room: roomName }, 'Failed to leave room');
       throw error;
     }
   }
@@ -232,7 +235,7 @@ export class RoomManager {
     this.rooms.set(roomName, roomConfig);
     this.updateRoomStats(roomName);
 
-    console.log(`Created room: ${roomName}`);
+    log.info({ room: roomName }, 'Created room');
   }
 
   /**
@@ -257,7 +260,7 @@ export class RoomManager {
     this.rooms.delete(roomName);
     this.roomStats.delete(roomName);
 
-    console.log(`Deleted room: ${roomName}`);
+    log.info({ room: roomName }, 'Deleted room');
   }
 
   /**
@@ -315,7 +318,7 @@ export class RoomManager {
     }
 
     if (emptyRooms.length > 0) {
-      console.log(`Cleaned up ${emptyRooms.length} empty rooms`);
+      log.info({ count: emptyRooms.length }, 'Cleaned up empty rooms');
     }
   }
 

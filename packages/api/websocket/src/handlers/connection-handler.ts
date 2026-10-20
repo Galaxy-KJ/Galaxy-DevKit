@@ -12,6 +12,7 @@ import { EventBroadcaster } from '../services/event-broadcaster';
 import { cleanupRateLimit, failAuthentication, validateCredential } from '../middleware/auth';
 import { isJwtExpired } from '../middleware/token-expiry';
 import { config } from '../config';
+import { socketLogger } from '../logger';
 
 const TOKEN_REVALIDATION_EVERY_N_TICKS = 10;
 
@@ -75,7 +76,7 @@ export class ConnectionHandler {
       this.setupSocketEventHandlers(socket);
 
       // Log connection
-      console.log(`New connection: ${socket.id} from ${socket.handshake.address}`);
+      socketLogger(socket).info({ address: socket.handshake.address }, 'New connection');
 
       // Emit connection event
       socket.emit('connected', {
@@ -85,7 +86,7 @@ export class ConnectionHandler {
       });
 
     } catch (error) {
-      console.error(`Connection setup failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Connection setup failed');
       socket.emit('error', {
         type: 'connection_error',
         message: 'Connection setup failed',
@@ -102,7 +103,7 @@ export class ConnectionHandler {
   private setupConnectionTimeout(socket: ExtendedSocket): void {
     const timeout = setTimeout(() => {
       if (!socket.isAuthenticated) {
-        console.log(`Connection timeout for ${socket.id}`);
+        socketLogger(socket).info('Connection timeout');
         socket.emit('timeout', {
           message: 'Connection timeout - authentication required',
           timestamp: Date.now()
@@ -237,9 +238,9 @@ export class ConnectionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`User ${authResult.userId} authenticated successfully`);
+      socketLogger(socket).info('Authenticated successfully');
     } catch (error) {
-      console.error(`Authentication failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Authentication failed');
       await this.rejectAuthentication(socket, 'Authentication failed');
     }
   }
@@ -253,7 +254,7 @@ export class ConnectionHandler {
       try {
         await this.roomManager.leaveRoom(socket, room);
       } catch (error) {
-        console.error(`Failed to leave room ${room} during auth rejection:`, error);
+        socketLogger(socket).error({ err: error, room }, 'Failed to leave room during auth rejection');
       }
     }
 
@@ -341,10 +342,10 @@ export class ConnectionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} subscribed to room ${data.room}`);
+      socketLogger(socket).info(`Socket subscribed to room ${data.room}`);
 
     } catch (error) {
-      console.error(`Room subscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Room subscription failed');
       socket.emit('subscription_error', {
         room: data.room,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -368,10 +369,10 @@ export class ConnectionHandler {
         timestamp: Date.now()
       });
 
-      console.log(`Socket ${socket.id} unsubscribed from room ${data.room}`);
+      socketLogger(socket).info(`Socket unsubscribed from room ${data.room}`);
 
     } catch (error) {
-      console.error(`Room unsubscription failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Room unsubscription failed');
       socket.emit('unsubscription_error', {
         room: data.room,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -388,7 +389,7 @@ export class ConnectionHandler {
    */
   private handleDisconnection(socket: ExtendedSocket, reason: string): void {
     try {
-      console.log(`Socket ${socket.id} disconnected: ${reason}`);
+      socketLogger(socket).info(`Socket disconnected: ${reason}`);
 
       // Cleanup connection timeout
       this.clearConnectionTimeout(socket.id);
@@ -407,10 +408,10 @@ export class ConnectionHandler {
       // Cleanup rate limiting
       cleanupRateLimit();
 
-      console.log(`Cleaned up connection for ${socket.id}`);
+      socketLogger(socket).info('Cleaned up connection');
 
     } catch (error) {
-      console.error(`Disconnection cleanup failed for ${socket.id}:`, error);
+      socketLogger(socket).error({ err: error }, 'Disconnection cleanup failed');
     }
   }
 
@@ -421,7 +422,7 @@ export class ConnectionHandler {
    * @param error - Error object
    */
   private handleSocketError(socket: ExtendedSocket, error: Error): void {
-    console.error(`Socket error for ${socket.id}:`, error);
+    socketLogger(socket).error({ err: error }, 'Socket error');
 
     socket.emit('error', {
       type: 'socket_error',

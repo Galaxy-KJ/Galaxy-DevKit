@@ -6,6 +6,10 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AuditLogger } from '../services/audit-logger';
 import { getRedisClient, isRedisHealthy } from '../lib/redis-client';
 import { rateLimitStoreConfig } from '../config/rate-limit-store-config';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'rate-limit' });
 
 const auditLogger = new AuditLogger();
 
@@ -103,7 +107,7 @@ const rateLimitHandler = (req: Request, res: Response) => {
       });
     })
     .catch((err) => {
-      console.warn('[rate-limit] breach audit logging failed:', err);
+      requestLogger(req, log).warn({ err }, 'breach audit logging failed');
     });
 
   res.set('Retry-After', String(retryAfter));
@@ -118,8 +122,9 @@ let loggedUnavailableOnce = false;
 function logStoreUnavailableOnce() {
   if (loggedUnavailableOnce) return;
   loggedUnavailableOnce = true;
-  console.error(
-    `[rate-limit] Redis store unavailable for submit-tx. Configured behavior: ` +
+  log.error(
+    { failBehavior: rateLimitStoreConfig.submitTxFailBehavior },
+    `Redis store unavailable for submit-tx. Configured behavior: ` +
       `${rateLimitStoreConfig.submitTxFailBehavior === 'closed' ? 'fail-closed (503)' : 'fail-open (in-memory fallback)'}.`
   );
 }

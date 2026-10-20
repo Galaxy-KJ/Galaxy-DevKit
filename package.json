@@ -10,7 +10,7 @@
     "packages/*/*/*"
   ],
   "scripts": {
-    "build": "lerna run build --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
+    "build": "lerna run build --scope @galaxy-kj/api-logger --scope @galaxy-kj/core-oracles --scope @galaxy-kj/core-defi-protocols --scope @galaxy-kj/core-stellar-sdk --scope @galaxy-kj/core-invisible-wallet --scope @galaxy-kj/core-automation --scope @galaxy-kj/frontend --scope @galaxy-kj/cli || (exit 0)",
     "dev": "lerna run dev",
     "deploy": "lerna run deploy",
     "lint": "npm run lint --prefix packages/core/wallet/auth && lerna run lint",

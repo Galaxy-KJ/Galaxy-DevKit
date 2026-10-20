@@ -30,6 +30,9 @@ import {
 import { SessionService } from './session-service';
 import { UserService } from './user-service';
 import { authConfig } from '../config/auth-config';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'auth-service' });
 
 /**
  * Supabase client instance (with service role for API key operations)
@@ -256,7 +259,7 @@ export class AuthService {
         user: userInfo,
       };
     } catch (error) {
-      console.error('API key validation error:', error);
+      log.error({ err: error }, 'API key validation error');
       return {
         valid: false,
         error: `API key validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

@@ -8,6 +8,9 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { User, UserProfile, AuthenticationError, AuthErrorCode } from '../types/auth-types';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'user-service' });
 
 /**
  * Supabase client instance
@@ -299,7 +302,7 @@ export class UserService {
 
       return permissions;
     } catch (error) {
-      console.error('Failed to get user permissions:', error);
+      log.error({ err: error }, 'Failed to get user permissions');
       return ['user']; // Default permission
     }
   }
@@ -315,7 +318,7 @@ export class UserService {
       const permissions = await this.getUserPermissions(userId);
       return permissions.includes(permission) || permissions.includes('admin');
     } catch (error) {
-      console.error('Failed to check user permission:', error);
+      log.error({ err: error }, 'Failed to check user permission');
       return false;
     }
   }

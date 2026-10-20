@@ -15,6 +15,10 @@ import {
 } from '../types/auth-types';
 import { extractApiKey } from './api-key';
 import { AuditLogger } from '../services/audit-logger';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'auth' });
 
 /**
  * Auth service instance
@@ -122,7 +126,7 @@ export function authenticate() {
       // Try JWT authentication
       await authenticateWithJWT(req, res, next);
     } catch (error) {
-      console.error('Authentication middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'Authentication middleware error');
       void auditLogger.log({
         user_id: null,
         action: 'auth.authenticate',
@@ -239,7 +243,7 @@ async function authenticateWithJWT(
       return;
     }
 
-    console.error('JWT authentication error:', error);
+    requestLogger(req, log).error({ err: error }, 'JWT authentication error');
     void auditLogger.log({
       user_id: null,
       action: 'auth.authenticate',
@@ -314,7 +318,7 @@ export function optionalAuthenticate() {
       next();
     } catch (error) {
       // On error, continue without authentication
-      console.error('Optional authentication error:', error);
+      requestLogger(req, log).error({ err: error }, 'Optional authentication error');
       next();
     }
   };
@@ -390,7 +394,7 @@ export function requirePermission(permission: string) {
 
       next();
     } catch (error) {
-      console.error('Permission check error:', error);
+      requestLogger(req, log).error({ err: error }, 'Permission check error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INSUFFICIENT_PERMISSIONS,
@@ -452,7 +456,7 @@ export function requireAnyPermission(permissions: string[]) {
 
       next();
     } catch (error) {
-      console.error('Permission check error:', error);
+      requestLogger(req, log).error({ err: error }, 'Permission check error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INSUFFICIENT_PERMISSIONS,
@@ -515,7 +519,7 @@ export function requireAllPermissions(permissions: string[]) {
 
       next();
     } catch (error) {
-      console.error('Permission check error:', error);
+      requestLogger(req, log).error({ err: error }, 'Permission check error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INSUFFICIENT_PERMISSIONS,
