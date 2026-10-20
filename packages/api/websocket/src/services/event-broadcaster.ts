@@ -121,9 +121,9 @@ export class EventBroadcaster {
       this.server.to(roomName).emit(event.type, eventData);
 
       // Log broadcast
-      log.info(`Broadcasted ${event.type} to room ${roomName} (${room.size} clients)`);
+      log.debug({ eventType: event.type, room: roomName, clients: room.size }, 'Broadcasted to room');
     } catch (error) {
-      log.error({ err: error }, `Failed to broadcast to room ${roomName}`);
+      log.error({ err: error, room: roomName }, 'Failed to broadcast to room');
       throw new BroadcastError(`Failed to broadcast to room: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -159,9 +159,9 @@ export class EventBroadcaster {
       userSocket.emit(event.type, eventData);
 
       // Log broadcast
-      log.info(`Broadcasted ${event.type} to user ${userId}`);
+      log.debug({ eventType: event.type, userId }, 'Broadcasted to user');
     } catch (error) {
-      log.error({ err: error }, `Failed to broadcast to user ${userId}`);
+      log.error({ err: error, userId }, 'Failed to broadcast to user');
       throw new BroadcastError(`Failed to broadcast to user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -185,7 +185,7 @@ export class EventBroadcaster {
       this.server.emit(event.type, eventData);
 
       // Log broadcast
-      log.info(`Broadcasted ${event.type} globally`);
+      log.debug({ eventType: event.type }, 'Broadcasted globally');
     } catch (error) {
       log.error({ err: error }, 'Failed to broadcast globally');
       throw new BroadcastError(`Failed to broadcast globally: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -377,7 +377,7 @@ export class EventBroadcaster {
 
     this.broadcastQueue.push(queueItem);
     this.startQueueProcessing();
-    log.info(`Queued ${event.type} for ${type} ${target}`);
+    log.debug({ eventType: event.type, targetType: type, target }, 'Queued event');
   }
 
   /**
@@ -421,7 +421,10 @@ export class EventBroadcaster {
               item.retryCount++;
               this.broadcastQueue.push(item);
             } else {
-              log.info(`Dropped queued event ${item.event.type} for ${item.target} after ${item.retryCount} retries`);
+              log.info(
+                { eventType: item.event.type, target: item.target, retries: item.retryCount },
+                'Dropped queued event after retries'
+              );
             }
           }
         } catch (error) {

@@ -131,9 +131,9 @@ export class RoomManager {
       // Update room stats
       this.updateRoomStats(roomName);
 
-      socketLogger(socket).info(`Socket joined room ${roomName}`);
+      socketLogger(socket).info({ room: roomName }, 'Socket joined room');
     } catch (error) {
-      log.error({ err: error }, `Failed to join room ${roomName}`);
+      socketLogger(socket).error({ err: error, room: roomName }, 'Failed to join room');
       throw error;
     }
   }
@@ -163,9 +163,9 @@ export class RoomManager {
       // Update room stats
       this.updateRoomStats(roomName);
 
-      socketLogger(socket).info(`Socket left room ${roomName}`);
+      socketLogger(socket).info({ room: roomName }, 'Socket left room');
     } catch (error) {
-      log.error({ err: error }, `Failed to leave room ${roomName}`);
+      socketLogger(socket).error({ err: error, room: roomName }, 'Failed to leave room');
       throw error;
     }
   }
@@ -235,7 +235,7 @@ export class RoomManager {
     this.rooms.set(roomName, roomConfig);
     this.updateRoomStats(roomName);
 
-    log.info(`Created room: ${roomName}`);
+    log.info({ room: roomName }, 'Created room');
   }
 
   /**
@@ -260,7 +260,7 @@ export class RoomManager {
     this.rooms.delete(roomName);
     this.roomStats.delete(roomName);
 
-    log.info(`Deleted room: ${roomName}`);
+    log.info({ room: roomName }, 'Deleted room');
   }
 
   /**
@@ -318,7 +318,7 @@ export class RoomManager {
     }
 
     if (emptyRooms.length > 0) {
-      log.info(`Cleaned up ${emptyRooms.length} empty rooms`);
+      log.info({ count: emptyRooms.length }, 'Cleaned up empty rooms');
     }
   }
 

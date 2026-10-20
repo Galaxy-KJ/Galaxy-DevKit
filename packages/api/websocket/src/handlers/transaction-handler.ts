@@ -246,7 +246,7 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      socketLogger(socket).info(`Sent transaction status for ${data.hash}`);
+      socketLogger(socket).debug({ hash: data.hash }, 'Sent transaction status');
 
     } catch (error) {
       socketLogger(socket).error({ err: error }, 'Transaction status request failed');
@@ -316,7 +316,7 @@ export class TransactionHandler {
         timestamp: Date.now()
       });
 
-      socketLogger(socket).info(`Sent transaction history for wallet ${data.walletId}`);
+      socketLogger(socket).debug({ walletId: data.walletId }, 'Sent transaction history');
 
     } catch (error) {
       socketLogger(socket).error({ err: error }, 'Transaction history request failed');
@@ -405,7 +405,7 @@ export class TransactionHandler {
       const walletRoomName = `wallet:${walletId}`;
       await this.eventBroadcaster.broadcastToRoom(walletRoomName, event);
 
-      log.info(`Broadcasted transaction ${event.type} for ${transaction.hash}`);
+      log.debug({ eventType: event.type, hash: transaction.hash }, 'Broadcasted transaction');
 
     } catch (error) {
       log.error({ err: error }, 'Failed to handle transaction change');
