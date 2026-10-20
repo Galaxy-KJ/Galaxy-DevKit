@@ -6,7 +6,7 @@ import { WalletConnectorService } from '../services/wallet-connector';
 import { SmartWalletClient } from '../services/smart-wallet.client';
 import { setupWebAuthnMock } from './mock-webauthn';
 import { Buffer } from 'buffer';
-import { StrKey, Networks, xdr } from '@stellar/stellar-sdk';
+import { StrKey, Networks, contract, xdr } from '@stellar/stellar-sdk';
 
 function rpcEntry(value: xdr.ScVal) {
   return {
@@ -24,6 +24,7 @@ function rpcInstanceEntry(signerIndex: xdr.ScVal) {
       contractData: () => ({
         val: () => ({
           instance: () => ({
+            executable: () => xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 1)),
             storage: () => [{
               key: () => xdr.ScVal.scvSymbol('signers'),
               val: () => signerIndex,
@@ -33,6 +34,18 @@ function rpcInstanceEntry(signerIndex: xdr.ScVal) {
       }),
     },
   };
+}
+
+function contractSpec(functionNames: string[]): contract.Spec {
+  const entries = functionNames.map(name => xdr.ScSpecEntry.scSpecEntryFunctionV0(
+    new xdr.ScSpecFunctionV0({
+      doc: '',
+      name,
+      inputs: [],
+      outputs: [],
+    })
+  ));
+  return new contract.Spec(entries);
 }
 
 function signerIndexEntry(credentialId: string, kind: 'Admin' | 'Session'): xdr.ScVal {
@@ -62,6 +75,7 @@ jest.mock('@stellar/stellar-sdk/rpc', () => {
     Server: jest.fn().mockImplementation(() => ({
       getLatestLedger: jest.fn(() => Promise.resolve({ sequence: 12345 })),
       getLedgerEntries: jest.fn(() => Promise.resolve({ entries: [{}] })),
+      getContractWasmByHash: jest.fn(() => Promise.resolve(new Uint8Array([0]))),
     })),
   };
 });
@@ -80,16 +94,15 @@ describe('WalletConnectorService', () => {
       'https://soroban-testnet.stellar.org',
       Networks.TESTNET
     );
+    jest.spyOn(contract.Spec, 'fromWasm').mockReturnValue(
+      contractSpec(['__check_auth', 'add_signer', 'remove_signer'])
+    );
 
     const mockServer = (connectorService as any).server;
     mockServer.getLedgerEntries.mockImplementation(async (...keys: xdr.LedgerKey[]) => {
       const key = keys[0].contractData().key();
-      // fetchSigners() reads the real "instance" storage slot via
-      // scvLedgerKeyContractInstance() - a distinct ScVal switch from the
-      // plain scvSymbol('Instance') placeholder other callers used to probe
-      // existence. The mock must recognize the actual key fetchSigners()
-      // sends, or the lookup falls through to rpcEntry (no .instance()
-      // method) and breaks the empty-index test and the import/connect flow.
+      // Contract-instance queries use scvLedgerKeyContractInstance(), while
+      // signer storage lookups use ordinary symbols or vectors.
       if (key.switch() === xdr.ScValType.scvLedgerKeyContractInstance()) {
         return { entries: [rpcInstanceEntry(xdr.ScVal.scvVec([]))] };
       }
@@ -163,6 +176,16 @@ describe('WalletConnectorService', () => {
     it('should return true for valid smart wallet address', async () => {
       const result = await connectorService.isSmartWalletContract(testContractAddress);
       expect(result).toBe(true);
+    });
+
+    it('should return false when the contract WASM does not expose the wallet interface', async () => {
+      jest.spyOn(contract.Spec, 'fromWasm').mockReturnValue(contractSpec(['transfer']));
+      const mockServer = (connectorService as any).server;
+
+      const result = await connectorService.isSmartWalletContract(testContractAddress);
+
+      expect(result).toBe(false);
+      expect(mockServer.getContractWasmByHash).toHaveBeenCalledTimes(1);
     });
 
     it('should return false if contract verification fails', async () => {
@@ -244,6 +267,15 @@ describe('WalletConnectorService', () => {
       expect(result).toHaveProperty('signers');
       expect(result.errorMessage).toBeUndefined();
       expect(Array.isArray(result.signers)).toBe(true);
+    });
+
+    it('should report a specific error when importing a non-wallet contract', async () => {
+      jest.spyOn(contract.Spec, 'fromWasm').mockReturnValue(contractSpec(['transfer']));
+
+      const result = await connectorService.importWallet(testContractAddress);
+
+      expect(result.isSmartWallet).toBe(false);
+      expect(result.errorMessage).toContain('not a Galaxy smart wallet');
     });
   });
 
