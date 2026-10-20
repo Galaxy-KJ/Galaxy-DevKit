@@ -59,6 +59,7 @@ esac
         'packages/contracts/smart-wallet-account/target/wasm32v1-none/release/smart_wallet_account_wallet.wasm',
         'packages/contracts/smart-swap/target/wasm32v1-none/release/smart_swap.wasm',
         'packages/contracts/security-limits/target/wasm32v1-none/release/security_limits.wasm',
+        'packages/contracts/price-oracle/target/wasm32v1-none/release/price_oracle.wasm',
       ];
       for (const rel of wasms) {
         const full = join(REPO_ROOT, rel);
@@ -85,6 +86,7 @@ esac
       expect(data.network).toBe('testnet');
       expect(data.deployer).toBe('test-deployer');
       expect(Object.keys(data.contracts).sort()).toEqual([
+        'price_oracle',
         'security_limits',
         'smart_swap',
         'smart_wallet_factory',
