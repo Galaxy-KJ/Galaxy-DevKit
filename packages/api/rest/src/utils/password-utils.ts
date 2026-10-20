@@ -9,6 +9,9 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { PasswordStrength } from '../types/auth-types';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'password-utils' });
 
 /**
  * Default bcrypt salt rounds
@@ -58,7 +61,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   try {
     return await bcrypt.compare(password, hash);
   } catch (error) {
-    console.error('Password verification error:', error);
+    log.error({ err: error }, 'Password verification error');
     return false;
   }
 }

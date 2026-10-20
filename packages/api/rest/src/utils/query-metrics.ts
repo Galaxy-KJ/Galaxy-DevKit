@@ -7,6 +7,10 @@
  * @since 2026-07-17
  */
 
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'query-metrics' });
+
 const DEFAULT_SLOW_QUERY_THRESHOLD_MS = 100;
 
 function getSlowQueryThresholdMs(): number {
@@ -28,7 +32,7 @@ export async function withQueryLogging<T>(label: string, fn: () => PromiseLike<T
     const durationMs = Date.now() - start;
     const threshold = getSlowQueryThresholdMs();
     if (durationMs > threshold) {
-      console.warn(`[slow-query] ${label} took ${durationMs}ms (threshold ${threshold}ms)`);
+      log.warn({ label, durationMs, threshold }, `[slow-query] ${label} took ${durationMs}ms (threshold ${threshold}ms)`);
     }
   }
 }

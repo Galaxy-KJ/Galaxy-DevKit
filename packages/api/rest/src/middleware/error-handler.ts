@@ -13,6 +13,10 @@ import {
   RateLimitError,
   AuthErrorCode,
 } from '../types/auth-types';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'error-handler' });
 
 /**
  * Error response interface
@@ -37,7 +41,7 @@ export function errorHandler(
   next: NextFunction
 ): void {
   // Log error
-  console.error('Error:', err);
+  requestLogger(req, log).error({ err }, 'Error');
 
   // Handle specific error types
   if (err instanceof AuthenticationError) {

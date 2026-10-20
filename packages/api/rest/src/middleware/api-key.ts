@@ -9,6 +9,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/auth-service';
 import { AuthenticationError, AuthErrorCode } from '../types/auth-types';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'api-key' });
 
 /**
  * Auth service instance
@@ -113,7 +117,7 @@ export function apiKeyMiddleware() {
 
       next();
     } catch (error) {
-      console.error('API key middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'API key middleware error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INVALID_API_KEY,
@@ -196,7 +200,7 @@ export function requireApiKey() {
 
       next();
     } catch (error) {
-      console.error('Require API key middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'Require API key middleware error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INVALID_API_KEY,
@@ -250,7 +254,7 @@ export function requireScope(scope: string) {
 
       next();
     } catch (error) {
-      console.error('Require scope middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'Require scope middleware error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INSUFFICIENT_PERMISSIONS,

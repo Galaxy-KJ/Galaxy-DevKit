@@ -14,6 +14,10 @@ import { RateLimitOptions, AuthErrorCode } from '../types/auth-types';
 import { authConfig } from '../config/auth-config';
 import { getRedisClient } from '../lib/redis-client';
 import { rateLimitStoreConfig } from '../config/rate-limit-store-config';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'rate-limiter' });
 
 function getClientIP(req: Request): string {
   return req.ip || (req.socket.remoteAddress as string) || 'unknown';
@@ -58,8 +62,8 @@ export function createRateLimiter(options: RateLimitOptions) {
 
   if (!store) {
     if (rateLimitStoreConfig.generalFailBehavior === 'closed') {
-      console.error(
-        '[rate-limiter] Redis unavailable and RATE_LIMIT_FAIL_BEHAVIOR_GENERAL=closed — ' +
+      log.error(
+        'Redis unavailable and RATE_LIMIT_FAIL_BEHAVIOR_GENERAL=closed, ' +
         'denying all requests until the store recovers.'
       );
       return (req: Request, res: Response) => {
@@ -72,8 +76,8 @@ export function createRateLimiter(options: RateLimitOptions) {
         });
       };
     }
-    console.warn(
-      '[rate-limiter] REDIS_URL not configured or Redis unreachable — falling back to ' +
+    log.warn(
+      'REDIS_URL not configured or Redis unreachable, falling back to ' +
       'per-process MemoryStore (RATE_LIMIT_FAIL_BEHAVIOR_GENERAL=open). Limits will NOT ' +
       'be shared across instances. This should only happen in local development.'
     );
@@ -157,7 +161,7 @@ export function apiKeyRateLimiter() {
       }
       next();
     } catch (error) {
-      console.error('API key rate limiter error:', error);
+      requestLogger(req, log).error({ err: error }, 'API key rate limiter error');
       next();
     }
   };
@@ -205,7 +209,7 @@ export function rateLimiterMiddleware() {
       }
       ipLimiter(req, res, next);
     } catch (error) {
-      console.error('Rate limiter middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'Rate limiter middleware error');
       next();
     }
   };

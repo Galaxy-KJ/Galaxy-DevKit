@@ -12,6 +12,9 @@ import {
   computeClosedPeriod,
   computeNextRunAt,
 } from '../services/compliance/schedule-utils';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'compliance-report-worker' });
 
 export interface ComplianceReportWorkerOptions {
   pollIntervalMs?: number;
@@ -35,8 +38,9 @@ export class ComplianceReportWorker {
 
   start(): void {
     if (this.timer) return;
-    console.log(
-      `[compliance] worker started (interval=${this.pollIntervalMs}ms batch=${this.batchSize})`
+    log.info(
+      { pollIntervalMs: this.pollIntervalMs, batchSize: this.batchSize },
+      'worker started'
     );
     void this.tick();
     this.timer = setInterval(() => {
@@ -49,7 +53,7 @@ export class ComplianceReportWorker {
       clearInterval(this.timer);
       this.timer = null;
     }
-    console.log('[compliance] worker stopped');
+    log.info('worker stopped');
   }
 
   async tick(now: Date = new Date()): Promise<number> {
@@ -78,19 +82,13 @@ export class ComplianceReportWorker {
           await this.repository.markScheduleRun(schedule.id, nextRunAt, now);
           processed += 1;
         } catch (err) {
-          console.warn(
-            `[compliance] failed schedule ${schedule.id}:`,
-            err instanceof Error ? err.message : err
-          );
+          log.warn({ err, scheduleId: schedule.id }, 'failed schedule');
           // Still advance next_run_at to avoid hot-looping a permanently broken schedule
           try {
             const nextRunAt = computeNextRunAt(schedule.cadence, now);
             await this.repository.markScheduleRun(schedule.id, nextRunAt, now);
           } catch (advanceErr) {
-            console.warn(
-              `[compliance] failed to advance schedule ${schedule.id}:`,
-              advanceErr instanceof Error ? advanceErr.message : advanceErr
-            );
+            log.warn({ err: advanceErr, scheduleId: schedule.id }, 'failed to advance schedule');
           }
         }
       }

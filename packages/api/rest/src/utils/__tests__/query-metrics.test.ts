@@ -1,15 +1,19 @@
+const mockWarn = jest.fn();
+jest.mock('@galaxy-kj/api-logger', () => ({
+  logger: { child: () => ({ warn: (...args: unknown[]) => mockWarn(...args) }) },
+}));
+
 import { withQueryLogging } from '../query-metrics';
 
 describe('withQueryLogging', () => {
   const originalThreshold = process.env.SLOW_QUERY_THRESHOLD_MS;
-  let warnSpy: jest.SpyInstance;
+  const warnSpy = mockWarn;
 
   beforeEach(() => {
-    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnSpy.mockClear();
   });
 
   afterEach(() => {
-    warnSpy.mockRestore();
     if (originalThreshold === undefined) {
       delete process.env.SLOW_QUERY_THRESHOLD_MS;
     } else {
@@ -38,7 +42,8 @@ describe('withQueryLogging', () => {
     await withQueryLogging('slow.query', () => Promise.resolve({ data: [], error: null }));
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain('[slow-query] slow.query took 250ms');
+    expect(warnSpy.mock.calls[0][0]).toEqual({ label: 'slow.query', durationMs: 250, threshold: 100 });
+    expect(warnSpy.mock.calls[0][1]).toContain('[slow-query] slow.query took 250ms');
     nowSpy.mockRestore();
   });
 

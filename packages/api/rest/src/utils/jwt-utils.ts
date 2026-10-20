@@ -8,6 +8,9 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { JWTPayload, UserInfo, AuthenticationError, AuthErrorCode } from '../types/auth-types';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'jwt-utils' });
 
 /**
  * Supabase client instance
@@ -137,7 +140,7 @@ async function getUserPermissions(userId: string): Promise<string[]> {
 
     return permissions;
   } catch (error) {
-    console.warn('Failed to get user permissions:', error);
+    log.warn({ err: error }, 'Failed to get user permissions');
     // Return default permission on error
     return ['user'];
   }

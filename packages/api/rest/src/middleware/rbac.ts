@@ -9,6 +9,10 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { AuthErrorCode } from '../types/auth-types';
 import { AuditLogger } from '../services/audit-logger';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestLogger } from './request-context';
+
+const log = logger.child({ module: 'rbac' });
 
 const auditLogger = new AuditLogger();
 
@@ -76,7 +80,7 @@ export function requireRole(roles: string[]): RequestHandler {
 
       next();
     } catch (error) {
-      console.error('RBAC middleware error:', error);
+      requestLogger(req, log).error({ err: error }, 'RBAC middleware error');
       res.status(500).json({
         error: {
           code: AuthErrorCode.INTERNAL_ERROR,

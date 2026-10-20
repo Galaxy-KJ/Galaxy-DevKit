@@ -24,6 +24,9 @@ import { PositionMonitorWorker } from './position-monitor.worker';
 import { StellarNetworkName } from '../types/monitoring-types';
 import { TransactionMonitorWorker } from './transaction-monitor.worker';
 import { ComplianceReportWorker } from './compliance-report.worker';
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'worker' });
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -54,7 +57,7 @@ async function main(): Promise<void> {
   complianceWorker.start();
 
   const shutdown = (signal: string): void => {
-    console.log(`\n[monitor] received ${signal}, shutting down...`);
+    log.info({ signal }, 'received signal, shutting down');
     worker.stop();
     transactionWorker.stop();
     complianceWorker.stop();
@@ -67,7 +70,7 @@ async function main(): Promise<void> {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error('[monitor] fatal error in main:', err);
+    log.error({ err }, 'fatal error in main');
     process.exit(1);
   });
 }

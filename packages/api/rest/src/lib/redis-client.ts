@@ -8,6 +8,10 @@
  * @author Galaxy DevKit Team
  */
 
+import { logger } from '@galaxy-kj/api-logger';
+
+const log = logger.child({ module: 'redis-client' });
+
 interface RedisClient {
   incr(redisKey: string): any;
   expire(redisKey: string, arg1: number): unknown;
@@ -55,7 +59,7 @@ export function getRedisClient(): RedisClient | null {
 
 
     client.on('error', (err) => {
-      console.error('[redis-client] connection error:', err.message);
+      log.error({ error: err.message }, 'connection error');
       isReady = false;
     });
   }

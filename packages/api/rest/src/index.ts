@@ -20,8 +20,9 @@ try {
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import compression from 'compression';
+import { logger } from '@galaxy-kj/api-logger';
+import { requestContext } from './middleware/request-context';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { rateLimiterMiddleware } from './middleware/rate-limiter';
 import { validateAuthConfig } from './config/auth-config';
@@ -58,6 +59,8 @@ import { globalCache } from '@galaxy-kj/core-stellar-sdk';
 /**
  * REST API Server Class
  */
+const log = logger.child({ module: 'rest-server' });
+
 class RestApiServer {
   private app: express.Application;
   private port: number;
@@ -86,6 +89,9 @@ class RestApiServer {
     const trustProxyHops = Number.isInteger(parsedHops) && parsedHops >= 0 ? parsedHops : 1;
     this.app.set('trust proxy', trustProxyHops);
 
+    // Request id and request-scoped logger (also logs each completed request)
+    this.app.use(requestContext());
+
     // Security middleware
     this.app.use(helmet());
 
@@ -104,11 +110,6 @@ class RestApiServer {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
-    // Logging middleware
-    if (process.env.NODE_ENV !== 'test') {
-      this.app.use(morgan('combined'));
-    }
-
     // Health & metrics endpoints. Mounted BEFORE rate-limiter so probes and
     // Prometheus scrapers are never throttled.
     const orchestrator = new HealthOrchestrator([
@@ -126,13 +127,6 @@ class RestApiServer {
 
     // Rate limiting middleware (applied to all routes)
     this.app.use(rateLimiterMiddleware());
-
-    // Request ID middleware (for tracing)
-    this.app.use((req, res, next) => {
-      req.headers['x-request-id'] =
-        req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      next();
-    });
   }
 
   /**
@@ -498,10 +492,15 @@ class RestApiServer {
 
       // Start server
       this.app.listen(this.port, this.host, () => {
-        console.log(`🚀 Galaxy REST API Server started`);
-        console.log(`📡 Server running on ${this.host}:${this.port}`);
-        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`❤️  Health check: http://${this.host}:${this.port}/health`);
+        log.info(
+          {
+            host: this.host,
+            port: this.port,
+            env: process.env.NODE_ENV || 'development',
+            healthCheck: `http://${this.host}:${this.port}/health`,
+          },
+          'Galaxy REST API Server started'
+        );
       });
 
       // Warm cache with critical data (non-blocking)
@@ -509,13 +508,12 @@ class RestApiServer {
         horizonUrl: process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org',
         passphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
       }).then(() => {
-        console.log('🔥 Cache warming completed');
+        log.info('Cache warming completed');
       }).catch((err: unknown) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.warn('⚠️  Cache warming failed (non-critical):', errMsg);
+        log.warn({ err }, 'Cache warming failed (non-critical)');
       });
     } catch (error) {
-      console.error('Failed to start server:', error);
+      log.error({ err: error }, 'Failed to start server');
       process.exit(1);
     }
   }
@@ -524,7 +522,7 @@ class RestApiServer {
    * Stop server
    */
   public async stop(): Promise<void> {
-    console.log('Stopping server...');
+    log.info('Stopping server...');
     process.exit(0);
   }
 }
@@ -539,16 +537,16 @@ async function main(): Promise<void> {
 
     // Handle shutdown signals
     process.on('SIGTERM', async () => {
-      console.log('\nReceived SIGTERM, shutting down gracefully...');
+      log.info('Received SIGTERM, shutting down gracefully...');
       await server.stop();
     });
 
     process.on('SIGINT', async () => {
-      console.log('\nReceived SIGINT, shutting down gracefully...');
+      log.info('Received SIGINT, shutting down gracefully...');
       await server.stop();
     });
   } catch (error) {
-    console.error('Failed to start Galaxy REST API Server:', error);
+    log.error({ err: error }, 'Failed to start Galaxy REST API Server');
     process.exit(1);
   }
 }
@@ -556,7 +554,7 @@ async function main(): Promise<void> {
 // Start server if this file is run directly
 if (require.main === module) {
   main().catch((error) => {
-    console.error('Unhandled error in main:', error);
+    log.error({ err: error }, 'Unhandled error in main');
     process.exit(1);
   });
 }
