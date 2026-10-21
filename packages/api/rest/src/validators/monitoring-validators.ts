@@ -80,17 +80,20 @@ const ALL_ALERT_TYPES = [
   // Activity
   'transaction_amount_above',
   'unusual_transaction_pattern',
+  // Custom metric (#413 / Roadmap #74)
+  'custom_metric',
 ] as const;
 
 // ── Route schemas ─────────────────────────────────────────────────────────────
 
 export const createAlertSchema = Joi.object({
   name: Joi.string().trim().min(1).max(120).required(),
-  protocol: Joi.string().lowercase().valid('blend', 'soroswap', 'sdex').required(),
+  protocol: Joi.string().lowercase().valid('blend', 'soroswap', 'sdex', 'custom').required(),
   accountAddress: Joi.string().pattern(STELLAR_ACCOUNT_REGEX).required()
     .messages({ 'string.pattern.base': 'accountAddress must be a valid Stellar account (G...)' }),
   network: Joi.string().valid('testnet', 'mainnet').default('testnet'),
   alertType: Joi.string().valid(...ALL_ALERT_TYPES).required(),
+  customMetricId: Joi.string().uuid().optional(),
   threshold: Joi.number().required(),
   channel: Joi.string().valid('webhook', 'email', 'websocket').required(),
   channelConfig: channelConfigSchema.required(),
@@ -104,6 +107,7 @@ export const createAlertSchema = Joi.object({
 
 export const updateAlertSchema = Joi.object({
   name: Joi.string().trim().min(1).max(120),
+  customMetricId: Joi.string().uuid().optional(),
   threshold: Joi.number(),
   channelConfig: Joi.alternatives().try(
     webhookConfigSchema,

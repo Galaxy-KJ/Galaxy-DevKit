@@ -45,6 +45,7 @@ import { setupAuditLogRoutes } from './routes/audit-logs';
 import { kycRoutes } from './routes/kyc-routes';
 import { setupHealthRoutes } from './routes/health';
 import { setupMetricsRoutes } from './routes/metrics';
+import { setupCustomMetricsRoutes } from './routes/metrics/custom-metrics';
 import { httpMetricsMiddleware } from './middleware/metrics';
 import {
   HealthOrchestrator,
@@ -193,6 +194,9 @@ class RestApiServer {
 
     // KYC/AML Integration (Issue #337)
     router.use('/kyc', authenticate(), auditRequest(), kycRoutes);
+
+    // Custom metrics & KPI definition engine (Issue #413 / Roadmap #74)
+    router.use('/metrics', setupCustomMetricsRoutes());
 
     // Add more routes here as needed
 
