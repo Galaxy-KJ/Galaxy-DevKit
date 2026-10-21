@@ -55,11 +55,16 @@ const ACTIVITY_ALERT_TYPES = new Set<AlertType>([
   'unusual_transaction_pattern',
 ]);
 
+const CUSTOM_METRIC_ALERT_TYPES = new Set<AlertType>([
+  'custom_metric',
+]);
+
 const ALL_ALERT_TYPES = new Set<AlertType>([
   ...PRICE_ALERT_TYPES,
   ...POSITION_ALERT_TYPES,
   ...SYSTEM_ALERT_TYPES,
   ...ACTIVITY_ALERT_TYPES,
+  ...CUSTOM_METRIC_ALERT_TYPES,
 ]);
 
 export class MonitoringAlertService {
@@ -71,7 +76,8 @@ export class MonitoringAlertService {
 
   async create(userId: string, input: CreateMonitoringAlertInput): Promise<MonitoringAlert> {
     this.assertAlertTypeSupported(input.alertType);
-    this.assertProtocolSupported(input.protocol);
+    this.assertProtocolSupported(input.protocol, input.alertType);
+    this.assertCustomMetricConfig(input);
     this.assertChannelImplemented(input.channel);
     this.assertChannelConfigMatchesChannel(input);
     this.assertDeduplicationConfig(input);
@@ -149,11 +155,12 @@ export class MonitoringAlertService {
 
   static getAlertCategory(
     alertType: AlertType
-  ): 'price' | 'position' | 'system' | 'activity' | 'unknown' {
+  ): 'price' | 'position' | 'system' | 'activity' | 'custom_metric' | 'unknown' {
     if (PRICE_ALERT_TYPES.has(alertType)) return 'price';
     if (POSITION_ALERT_TYPES.has(alertType)) return 'position';
     if (SYSTEM_ALERT_TYPES.has(alertType)) return 'system';
     if (ACTIVITY_ALERT_TYPES.has(alertType)) return 'activity';
+    if (CUSTOM_METRIC_ALERT_TYPES.has(alertType)) return 'custom_metric';
     return 'unknown';
   }
 
@@ -178,7 +185,10 @@ export class MonitoringAlertService {
     }
   }
 
-  private assertProtocolSupported(protocol: string): void {
+  private assertProtocolSupported(protocol: string, alertType?: AlertType): void {
+    if (alertType === 'custom_metric' && (!protocol || protocol === 'custom' || protocol === 'all')) {
+      return;
+    }
     if (!SUPPORTED_PROTOCOLS.has(protocol)) {
       throw new MonitoringError(
         MonitoringErrorCode.ALERT_PROTOCOL_UNSUPPORTED,
@@ -186,6 +196,18 @@ export class MonitoringAlertService {
         400,
         { supported: [...SUPPORTED_PROTOCOLS] }
       );
+    }
+  }
+
+  private assertCustomMetricConfig(input: CreateMonitoringAlertInput): void {
+    if (input.alertType === 'custom_metric') {
+      if (!input.customMetricId && !input.metadata?.customMetricId) {
+        throw new MonitoringError(
+          MonitoringErrorCode.ALERT_VALIDATION_ERROR,
+          'Custom metric alert requires customMetricId',
+          400
+        );
+      }
     }
   }
 

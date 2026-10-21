@@ -32,7 +32,9 @@ export type AlertType =
   | 'horizon_latency_above'
   // Activity
   | 'transaction_amount_above'
-  | 'unusual_transaction_pattern';
+  | 'unusual_transaction_pattern'
+  // Custom metrics (#413 / Roadmap #74)
+  | 'custom_metric';
 
 export type AlertChannel = 'webhook' | 'email' | 'websocket';
 export type AlertDeliveryStatus = 'pending' | 'delivered' | 'failed' | 'retrying';
@@ -113,6 +115,7 @@ export interface MonitoringAlert {
   accountAddress: string;
   network: StellarNetworkName;
   alertType: AlertType;
+  customMetricId?: string;
   threshold: number;
   channel: AlertChannel;
   channelConfig: ChannelConfig;
@@ -135,6 +138,7 @@ export interface CreateMonitoringAlertInput {
   accountAddress: string;
   network?: StellarNetworkName;
   alertType: AlertType;
+  customMetricId?: string;
   threshold: number;
   channel: AlertChannel;
   channelConfig: ChannelConfig;
@@ -148,6 +152,7 @@ export interface CreateMonitoringAlertInput {
 
 export interface UpdateMonitoringAlertInput {
   name?: string;
+  customMetricId?: string;
   threshold?: number;
   channelConfig?: ChannelConfig;
   cooldownSeconds?: number;

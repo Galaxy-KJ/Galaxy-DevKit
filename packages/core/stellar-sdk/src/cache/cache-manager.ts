@@ -18,7 +18,7 @@ export interface ChannelConfig {
   maxSize: number;
 }
 
-export type CacheType = 'oracle-price' | 'account-balance' | 'defi-pool' | 'horizon-response' | 'static-data';
+export type CacheType = 'oracle-price' | 'account-balance' | 'defi-pool' | 'horizon-response' | 'static-data' | 'custom-metrics';
 
 export const DEFAULT_CHANNEL_CONFIGS: Record<CacheType, ChannelConfig> = {
   'oracle-price': {
@@ -50,6 +50,12 @@ export const DEFAULT_CHANNEL_CONFIGS: Record<CacheType, ChannelConfig> = {
     staleWhileRevalidate: false,
     swrTtlMs: 0,
     maxSize: 500,
+  },
+  'custom-metrics': {
+    ttlMs: 60000, // 60s default TTL (overridden per metric window)
+    staleWhileRevalidate: false,
+    swrTtlMs: 0,
+    maxSize: 2000,
   },
 };
 
