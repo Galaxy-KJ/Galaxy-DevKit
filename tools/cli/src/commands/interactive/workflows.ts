@@ -398,7 +398,7 @@ export const deployContractWorkflow: Workflow = {
     }
 
     console.log(chalk.green(`\nContract deployment configured!`));
-    console.log(chalk.gray(`Run: galaxy deploy --env ${network}`));
+    console.log(chalk.gray(`Build from contracts/<name>/Cargo.toml: galaxy deploy contract <name> --network ${network}`));
   },
 };
 
