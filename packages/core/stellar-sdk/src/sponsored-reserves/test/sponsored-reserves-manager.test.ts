@@ -21,7 +21,7 @@ const mockServer = {
 const mockRpcServer = { getLedgerEntries: jest.fn() };
 const mockLedgerEntry = {
   ext: () => ({
-    switch: () => ({ name: 'ledgerEntryExtensionV1' }),
+    switch: () => 1,
     v1: () => ({
       sponsoringId: () => ({ ed25519: () => new Uint8Array(32) }),
     }),
@@ -30,6 +30,11 @@ const mockLedgerEntry = {
 };
 
 jest.mock('@stellar/stellar-sdk', () => ({
+  Networks: {
+    TESTNET: 'Test SDF Network ; September 2015',
+    PUBLIC: 'Public Global Stellar Network ; September 2015',
+    FUTURENET: 'Test SDF Future Network ; October 2022',
+  },
   Keypair: {
     fromSecret: jest.fn(secret => ({
       publicKey: jest.fn(() =>
@@ -510,7 +515,7 @@ describe('SponsoredReservesManager', () => {
         next: jest.fn().mockResolvedValue(secondPage),
       };
       const queryBuilder = {
-        forSponsor: jest.fn().mockReturnThis(),
+        sponsor: jest.fn().mockReturnThis(),
         call: jest.fn().mockResolvedValue(firstPage),
       };
       mockServer.accounts.mockReturnValue(queryBuilder);
@@ -526,9 +531,9 @@ describe('SponsoredReservesManager', () => {
       );
 
       expect(entries).toHaveLength(1);
-      expect(entries[0].sponsoredAccount).toBe('GSPONSORED2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+      expect(entries[0].sponsoredAccount).toBe('GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
       expect(firstPage.next).toHaveBeenCalledTimes(1);
-      expect(queryBuilder.forSponsor).toHaveBeenCalledWith(
+      expect(queryBuilder.sponsor).toHaveBeenCalledWith(
         'GSPONSORXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
       );
       expect(queryBuilder.call).toHaveBeenCalledTimes(1);
@@ -537,7 +542,7 @@ describe('SponsoredReservesManager', () => {
     it('applies one cursor to combined account and claimable-balance results', async () => {
       const sponsoredAccount = 'GSPONSOREDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
       mockServer.accounts.mockReturnValue({
-        forSponsor: jest.fn().mockReturnThis(),
+        sponsor: jest.fn().mockReturnThis(),
         call: jest.fn().mockResolvedValue({
           records: [{
             account_id: sponsoredAccount,

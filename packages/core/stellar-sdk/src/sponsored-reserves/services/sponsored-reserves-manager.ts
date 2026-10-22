@@ -146,7 +146,7 @@ export class SponsoredReservesManager {
       return (response.entries || []).flatMap((record: any) => {
         const ledgerEntry = xdr.LedgerEntry.fromXDR(record.xdr, 'base64');
         const extension = ledgerEntry.ext();
-        if (extension.switch().name !== 'ledgerEntryExtensionV1') {
+        if (extension.switch() !== 1) {
           return [];
         }
 
@@ -156,7 +156,7 @@ export class SponsoredReservesManager {
         }
 
         const sponsorPublicKey = StrKey.encodeEd25519PublicKey(sponsor.ed25519());
-        const dataName = ledgerEntry.data().data().dataName();
+        const dataName = ledgerEntry.data().data().dataName().toString();
         return [{
           entryType: 'data' as const,
           sponsor: sponsorPublicKey,
@@ -571,7 +571,7 @@ export class SponsoredReservesManager {
 
     try {
       if (include('account') || include('trustline') || include('signer') || include('data')) {
-        const accountsQuery = this.server.accounts().forSponsor(sponsorPublicKey);
+        const accountsQuery = this.server.accounts().sponsor(sponsorPublicKey);
         const accounts = await this.collectPages<any>(accountsQuery);
 
         for (const account of accounts) {
