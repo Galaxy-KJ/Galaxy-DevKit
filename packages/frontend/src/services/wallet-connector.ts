@@ -25,6 +25,15 @@ export interface WalletSigner {
   isActive: boolean;
 }
 
+class ContractWasmInspectionError extends Error {
+  constructor() {
+    super(
+      'Could not inspect the contract WASM, so its wallet interface could not be verified. Please retry.'
+    );
+    this.name = 'ContractWasmInspectionError';
+  }
+}
+
 function isByteArray(value: unknown): value is Uint8Array {
   return ArrayBuffer.isView(value) &&
     Object.prototype.toString.call(value) === '[object Uint8Array]';
@@ -124,13 +133,21 @@ export class WalletConnectorService {
       }
 
       const wasmHash = instanceEntry.val.contractData().val().instance().executable().wasmHash();
-      const wasm = await this.server.getContractWasmByHash(wasmHash);
+      let wasm: Buffer;
+      try {
+        wasm = await this.server.getContractWasmByHash(wasmHash);
+      } catch {
+        throw new ContractWasmInspectionError();
+      }
       const functions = contract.Spec.fromWasm(Buffer.from(wasm))
         .funcs()
         .map(func => func.name().toString());
       const requiredFunctions = ['__check_auth', 'add_signer', 'remove_signer'];
       return requiredFunctions.every(name => functions.includes(name));
     } catch (error) {
+      if (error instanceof ContractWasmInspectionError) {
+        throw error;
+      }
       console.error('Error checking if contract is smart wallet:', error);
       return false;
     }
