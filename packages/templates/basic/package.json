@@ -17,7 +17,7 @@
     "@stellar/stellar-sdk": "^14.6.1",
     "axios": "^1.6.2",
     "framer-motion": "^12.5.0",
-    "next": "^15.3.1",
+    "next": "^15.5.28",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.0.13",
