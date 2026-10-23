@@ -24,6 +24,14 @@ export interface BiometricAuthResult {
   success: boolean;
   error?: string;
   attemptsRemaining?: number;
+  /**
+   * The id of the credential the assertion actually resolved to, when the
+   * provider's ceremony identifies one (currently only `WebAuthNProvider`).
+   * Callers that need to know which specific credential was used, as
+   * opposed to just whether authentication succeeded, read this instead of
+   * assuming a single globally-registered credential.
+   */
+  credentialId?: string;
 }
 
 export interface BiometricCredential {

@@ -396,14 +396,27 @@ export class WebAuthNProvider extends BiometricAuthProvider {
     }
   }
 
-  async authenticate(prompt: string): Promise<BiometricAuthResult> {
+  /**
+   * @param prompt - Informational only; the WebAuthn API has no prompt text of its own.
+   * @param allowCredentialIds - Scope the assertion to these credential ids (the base64
+   *   format `registerCredential()` stores, i.e. `arrayBufferToBase64(rawId)`), instead of
+   *   every credential ever registered on this device. Callers that know which credential(s)
+   *   belong to a particular user (e.g. `SocialLoginProvider`) should always pass this, so a
+   *   device with more than one onboarded user can't resolve to the wrong one.
+   */
+  async authenticate(
+    prompt: string,
+    allowCredentialIds?: string[]
+  ): Promise<BiometricAuthResult> {
     try {
-      const credentialIds = this.getStoredCredentialIds();
+      const credentialIds = allowCredentialIds ?? this.getStoredCredentialIds();
 
       if (credentialIds.length === 0) {
         return {
           success: false,
-          error: 'No credentials registered. Please enroll first.',
+          error: allowCredentialIds
+            ? 'No credentials registered for this user. Please enroll first.'
+            : 'No credentials registered. Please enroll first.',
         };
       }
 
@@ -429,7 +442,12 @@ export class WebAuthNProvider extends BiometricAuthProvider {
         };
       }
 
-      return { success: true };
+      // Use the same base64 (not base64url) encoding registerCredential() stored the
+      // id under, derived from rawId rather than credential.id, so the id returned
+      // here can be matched against stored credential ids byte-for-byte.
+      const credentialId = this.arrayBufferToBase64(credential.rawId);
+
+      return { success: true, credentialId };
     } catch (error) {
       return {
         success: false,

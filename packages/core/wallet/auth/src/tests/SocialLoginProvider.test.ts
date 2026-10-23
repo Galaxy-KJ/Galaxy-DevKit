@@ -50,6 +50,11 @@ class MockWebAuthNProvider extends WebAuthNProvider {
   private mockPublicKeys: Map<string, Uint8Array> = new Map();
   private shouldAuthSucceed = true;
   private mockCredentialId = 'mock-credential-id-123';
+  // Lets a test simulate authenticate() resolving to a credential id outside
+  // whatever allowCredentialIds was passed. A real browser can't actually do
+  // this (allowCredentials scopes the ceremony), so this exists purely to
+  // exercise SocialLoginProvider's own defense-in-depth check.
+  private forcedAssertedCredentialId: string | null = null;
 
   constructor() {
     super({ rpId: 'localhost', rpName: 'Test App' });
@@ -83,7 +88,10 @@ class MockWebAuthNProvider extends WebAuthNProvider {
     return this.mockPublicKeys.get(credentialId) ?? null;
   }
 
-  async authenticate(prompt: string): Promise<BiometricAuthResult> {
+  async authenticate(
+    _prompt: string,
+    allowCredentialIds?: string[]
+  ): Promise<BiometricAuthResult> {
     if (!this.shouldAuthSucceed) {
       return {
         success: false,
@@ -98,8 +106,18 @@ class MockWebAuthNProvider extends WebAuthNProvider {
       };
     }
 
+    // Stand in for the real ceremony: the browser only ever resolves to a
+    // credential within allowCredentialIds. Fall back to the last-registered
+    // id when no scoping list was given, matching the old global behavior.
+    const credentialId =
+      this.forcedAssertedCredentialId ??
+      (allowCredentialIds && allowCredentialIds.length > 0
+        ? allowCredentialIds[0]
+        : this.mockCredentialId);
+
     return {
       success: true,
+      credentialId,
     };
   }
 
@@ -110,6 +128,11 @@ class MockWebAuthNProvider extends WebAuthNProvider {
 
   setMockCredentialId(id: string): void {
     this.mockCredentialId = id;
+  }
+
+  /** Force authenticate() to report an asserted credential id, ignoring scoping. */
+  forceAssertedCredentialId(id: string | null): void {
+    this.forcedAssertedCredentialId = id;
   }
 
   clearCredentials(): void {
@@ -211,7 +234,10 @@ describe('SocialLoginProvider', () => {
 
       await socialLogin.login('user-999');
 
-      expect(authenticateSpy).toHaveBeenCalledWith('Authenticate as user-999');
+      expect(authenticateSpy).toHaveBeenCalledWith(
+        'Authenticate as user-999',
+        ['mock-credential-id-123']
+      );
     });
 
     it('should throw if authentication fails', async () => {
@@ -226,7 +252,7 @@ describe('SocialLoginProvider', () => {
 
     it('should throw if no credentials are registered', async () => {
       await expect(socialLogin.login('user-no-creds')).rejects.toThrow(
-        'No credentials registered'
+        'No credentials found for user "user-no-creds"'
       );
     });
 
@@ -369,8 +395,73 @@ describe('SocialLoginProvider', () => {
         fail('Should have thrown an error');
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain('No credentials registered');
+        expect((error as Error).message).toContain('No credentials found for user');
       }
+    });
+  });
+
+  describe('Per-user credential scoping (#494)', () => {
+    it('logging in as each of two onboarded users returns that user\'s own credential', async () => {
+      mockWebAuthn.setMockCredentialId('cred-user-a');
+      const onboardA = await socialLogin.onboard('user-a');
+
+      mockWebAuthn.setMockCredentialId('cred-user-b');
+      const onboardB = await socialLogin.onboard('user-b');
+
+      const loginA = await socialLogin.login('user-a');
+      const loginB = await socialLogin.login('user-b');
+
+      expect(loginA.credentialId).toBe(onboardA.credentialId);
+      expect(loginB.credentialId).toBe(onboardB.credentialId);
+      expect(loginA.credentialId).not.toBe(loginB.credentialId);
+    });
+
+    it('scopes the WebAuthn assertion to only the requesting user\'s own credentials', async () => {
+      mockWebAuthn.setMockCredentialId('cred-user-a');
+      await socialLogin.onboard('user-a');
+
+      mockWebAuthn.setMockCredentialId('cred-user-b');
+      await socialLogin.onboard('user-b');
+
+      const authenticateSpy = jest.spyOn(mockWebAuthn, 'authenticate');
+
+      await socialLogin.login('user-a');
+
+      expect(authenticateSpy).toHaveBeenCalledWith(
+        'Authenticate as user-a',
+        ['cred-user-a']
+      );
+    });
+
+    it('rejects login when the asserted credential belongs to a different user', async () => {
+      mockWebAuthn.setMockCredentialId('cred-user-a');
+      await socialLogin.onboard('user-a');
+
+      mockWebAuthn.setMockCredentialId('cred-user-b');
+      await socialLogin.onboard('user-b');
+
+      // Simulate a client/assertion that resolves to user B's credential
+      // while logging in as user A. A real browser can't produce this
+      // (allowCredentials scopes the ceremony), so this exercises
+      // SocialLoginProvider's own defense-in-depth check.
+      mockWebAuthn.forceAssertedCredentialId('cred-user-b');
+
+      await expect(socialLogin.login('user-a')).rejects.toThrow(
+        'Asserted credential "cred-user-b" does not belong to user "user-a"'
+      );
+    });
+
+    it('does not bind user A to a credential onboarded only for user B', async () => {
+      mockWebAuthn.setMockCredentialId('cred-user-a');
+      await socialLogin.onboard('user-a');
+
+      mockWebAuthn.setMockCredentialId('cred-user-b');
+      const onboardB = await socialLogin.onboard('user-b');
+
+      const loginB = await socialLogin.login('user-b');
+
+      expect(loginB.credentialId).toBe(onboardB.credentialId);
+      expect(loginB.credentialId).not.toBe('cred-user-a');
     });
   });
 });
