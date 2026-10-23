@@ -188,6 +188,14 @@ describe('WalletConnectorService', () => {
       expect(mockServer.getContractWasmByHash).toHaveBeenCalledTimes(1);
     });
 
+    it('should throw a retryable inspection error when the contract WASM cannot be fetched', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getContractWasmByHash.mockRejectedValueOnce(new Error('WASM not found'));
+
+      await expect(connectorService.isSmartWalletContract(testContractAddress))
+        .rejects.toThrow('Could not inspect the contract WASM');
+    });
+
     it('should return false if contract verification fails', async () => {
       const mockServer = (connectorService as any).server;
       mockServer.getLedgerEntries.mockResolvedValueOnce({ entries: [] });
@@ -276,6 +284,19 @@ describe('WalletConnectorService', () => {
 
       expect(result.isSmartWallet).toBe(false);
       expect(result.errorMessage).toContain('not a Galaxy smart wallet');
+    });
+
+    it('should ask users to retry when contract WASM inspection fails', async () => {
+      const mockServer = (connectorService as any).server;
+      mockServer.getContractWasmByHash.mockRejectedValueOnce(new Error('WASM not found'));
+
+      const result = await connectorService.importWallet(testContractAddress);
+
+      expect(result.isValid).toBe(true);
+      expect(result.isSmartWallet).toBe(false);
+      expect(result.errorMessage).toContain('Could not inspect the contract WASM');
+      expect(result.errorMessage).toContain('Please retry');
+      expect(result.errorMessage).not.toContain('not a Galaxy smart wallet');
     });
   });
 
