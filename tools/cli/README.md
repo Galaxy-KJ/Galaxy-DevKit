@@ -206,3 +206,45 @@ For debugging, you can run the CLI with verbose output by checking the console l
 ## License
 
 MIT License - Galaxy DevKit Team
+## Contract deployment
+
+### `galaxy deploy contract <name>`
+
+Builds `contracts/<name>/Cargo.toml` with `stellar contract build`, uploads the
+WASM, and creates a contract through Stellar RPC. Requires Stellar CLI, Rust with
+the WASM target, and a funded account in the `STELLAR_SECRET_KEY` environment
+variable. Keep the secret in your local environment or CI secret store.
+
+```bash
+galaxy deploy contract hello --network testnet
+galaxy deploy contract hello --network testnet --json
+```
+
+`--network` accepts `testnet` (default), `futurenet`, or `mainnet`. Shared network
+configuration honors `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE`. The command
+prints the real contract ID and transaction hash only after ledger confirmation,
+and appends them to `.galaxy/deployments.json`. Failed or timed-out transactions
+exit nonzero. If confirmation times out, check the reported hash before retrying.
+
+One contract WASM must be produced by the manifest. Contracts requiring constructor
+arguments are not supported by this command yet. Fees are estimated by RPC during
+transaction preparation; `--gas-limit` is no longer accepted.
+
+The simulated `--verify` flag has been removed. Application/API hosting, database
+setup, and Vercel/Netlify deployment are out of scope; use the hosting provider's
+own CLI. Bare `galaxy deploy` displays command help. Legacy `--env`, `--contract`,
+`--contracts`, `--api`, and `--platform` options are not supported.
+
+### Deployment integration test
+
+Install Stellar CLI, Rust, and the `wasm32v1-none` target. Then run from the
+repository root (PowerShell: set `$env:GALAXY_DEPLOY_INTEGRATION = '1'` first):
+
+```bash
+GALAXY_DEPLOY_INTEGRATION=1 npm run test:integration -- --runInBand --runTestsByPath packages/integration-tests/src/deploy.test.ts
+```
+
+This test builds the minimal Rust fixture, funds an ephemeral testnet account,
+executes the actual CLI, confirms the transaction via RPC, and resolves its
+interface with `stellar contract info interface`. It is skipped by default and
+never uses an existing account's signing key.

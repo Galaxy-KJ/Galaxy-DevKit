@@ -19,6 +19,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 
 // Import commands
+import { deployCommand } from './commands/deploy.js';
 import { createCommand } from './commands/create.js';
 import { oracleCommand } from './commands/oracle/index.js';
 import { walletCommand } from './commands/wallet/index.js';
@@ -117,26 +118,8 @@ program
     console.log(chalk.green('\n🎯 Ready for development!'));
   });
 
-// Deploy command
-program
-  .command('deploy')
-  .description('Deploy to production')
-  .option('-e, --env <environment>', 'Environment', 'production')
-  .action(async (options: any) => {
-    const spinner = ora('Deploying to production...').start();
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 4000)); // Simulate work
-      spinner.succeed(chalk.green('✅ Deployment completed!'));
-      console.log(chalk.blue('\n🌐 Deployment info:'));
-      console.log(chalk.gray('  ├── Environment: ' + options.env));
-      console.log(chalk.gray('  ├── Contracts deployed'));
-      console.log(chalk.gray('  └── APIs active'));
-    } catch (error) {
-      spinner.fail(chalk.red('Deployment failed'));
-      process.exit(1);
-    }
-  });
+// Register the real contract deployment command.
+program.addCommand(deployCommand);
 
 // Help command (updated to include interactive mode)
 program
@@ -154,7 +137,7 @@ program
     console.log(chalk.gray('  galaxy init                   Initialize in current dir'));
     console.log(chalk.gray('  galaxy build                  Build project'));
     console.log(chalk.gray('  galaxy dev                    Start dev server'));
-    console.log(chalk.gray('  galaxy deploy                 Deploy to production'));
+    console.log(chalk.gray('  galaxy deploy contract <name> Deploy a Soroban contract'));
     console.log(chalk.gray('  galaxy wallet <cmd>           Wallet management'));
     console.log(chalk.gray('  galaxy oracle <cmd>           Oracle price data'));
     console.log(chalk.gray('  galaxy protocol <cmd>         DeFi protocol interactions'));

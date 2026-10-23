@@ -130,11 +130,11 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
   },
   {
     name: 'deploy',
-    description: 'Deploy to production',
+    description: 'Deploy a Soroban contract',
     options: [
-      { long: '--env', short: '-e', description: 'Environment', requiresValue: true, values: ['production', 'staging', 'development'] },
+      { long: '--network', short: '-n', description: 'Stellar network', requiresValue: true, values: ['testnet', 'futurenet', 'mainnet'] },
     ],
-    examples: ['deploy', 'deploy --env staging'],
+    examples: ['deploy contract hello --network testnet'],
   },
   // Wallet command group
   {
