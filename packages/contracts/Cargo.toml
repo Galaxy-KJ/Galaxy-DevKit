@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "flash-loan",
+    "governance",
+    "nft-marketplace",
+    "price-oracle",
+    "security-limits",
+    "smart-swap",
+    "timelock",
+    "vesting",
+    "yield-vault",
+]
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true
+codegen-units = 1

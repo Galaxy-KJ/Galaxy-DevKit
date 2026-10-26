@@ -12,18 +12,12 @@ const LOCKS: Symbol = symbol_short!("LOCKS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const TOKEN: Symbol = symbol_short!("TOKEN");
-const VOTING_PERIOD: Symbol = symbol_short!("VOTING_PERIOD");
 const QUORUM: Symbol = symbol_short!("QUORUM");
-const ACTIVE_VOTE_COUNT: Symbol = symbol_short!("ACTIVE_VOTE_COUNT"); // Map<Address, u32>
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// Default voting period in ledger seconds (7 days at ~5 s/ledger).
 pub const DEFAULT_VOTING_PERIOD_SECS: u64 = 7 * 24 * 60 * 60;
-
-/// Default minimum total weight (for + against) required for a proposal to pass.
-/// Prevents low-participation proposals from executing.
-const DEFAULT_QUORUM_THRESHOLD: i128 = 1_000;
 
 /// Minimum FOR weight as a percentage of total votes cast (50 % = majority).
 const APPROVAL_THRESHOLD_PCT: i128 = 50;
@@ -122,7 +116,9 @@ impl GovernanceContract {
 
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&TOKEN, &token);
-        env.storage().instance().set(&VOTING_PERIOD, &voting_period);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "VOTING_PERIOD"), &voting_period);
         env.storage().instance().set(&QUORUM, &quorum);
         env.storage()
             .instance()
@@ -156,7 +152,11 @@ impl GovernanceContract {
         let next_id = id.checked_add(1).expect("proposal ID overflow");
 
         let now = env.ledger().timestamp();
-        let voting_period: u64 = env.storage().instance().get(&VOTING_PERIOD).unwrap();
+        let voting_period: u64 = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "VOTING_PERIOD"))
+            .unwrap();
         let proposal = Proposal {
             id,
             proposer,
@@ -241,12 +241,16 @@ impl GovernanceContract {
         env.storage().instance().set(&VOTES, &all_votes);
 
         // Track active vote count for this voter.
+        let active_vote_count_key = Symbol::new(&env, "ACTIVE_VOTE_COUNT");
         let mut active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+            env.storage()
+                .instance()
+                .get(&active_vote_count_key)
+                .unwrap_or(Map::new(&env));
         let current_count = active_vote_count.get(voter.clone()).unwrap_or(0);
         let new_count = current_count.checked_add(1).expect("active vote count overflow");
         active_vote_count.set(voter, new_count);
-        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
+        env.storage().instance().set(&active_vote_count_key, &active_vote_count);
 
         // Accumulate weight.
         if support {
@@ -309,8 +313,12 @@ impl GovernanceContract {
         // Decrement active vote count for all voters on this proposal.
         let all_votes: Map<(Address, u32), VoteRecord> =
             env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
+        let active_vote_count_key = Symbol::new(&env, "ACTIVE_VOTE_COUNT");
         let mut active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+            env.storage()
+                .instance()
+                .get(&active_vote_count_key)
+                .unwrap_or(Map::new(&env));
 
         for (voter, vote_proposal_id) in all_votes.keys() {
             if vote_proposal_id == proposal_id {
@@ -321,7 +329,7 @@ impl GovernanceContract {
             }
         }
 
-        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
+        env.storage().instance().set(&active_vote_count_key, &active_vote_count);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -415,8 +423,12 @@ impl GovernanceContract {
         voter.require_auth();
 
         // Check if voter has active votes on non-finalized proposals.
+        let active_vote_count_key = Symbol::new(&env, "ACTIVE_VOTE_COUNT");
         let active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+            env.storage()
+                .instance()
+                .get(&active_vote_count_key)
+                .unwrap_or(Map::new(&env));
         let count = active_vote_count.get(voter.clone()).unwrap_or(0);
 
         if count > 0 {

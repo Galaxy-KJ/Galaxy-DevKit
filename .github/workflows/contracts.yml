@@ -1,0 +1,91 @@
+name: Soroban Contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/contracts/**"
+      - ".github/workflows/contracts.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/contracts/**"
+      - ".github/workflows/contracts.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Build, test, and lint Soroban contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust with Wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32v1-none
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/contracts -> target
+            packages/contracts/smart-wallet-account -> target
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v23.0.1
+
+      - name: Check formatting
+        run: |
+          cargo fmt --manifest-path packages/contracts/Cargo.toml --all -- --check
+          cargo fmt --manifest-path packages/contracts/smart-wallet-account/Cargo.toml --all -- --check
+
+      - name: Run Clippy
+        run: |
+          cargo clippy --manifest-path packages/contracts/Cargo.toml --workspace --all-targets -- -D warnings
+          cargo clippy --manifest-path packages/contracts/smart-wallet-account/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Run contract tests
+        run: |
+          cargo test --manifest-path packages/contracts/Cargo.toml --workspace
+          cargo test --manifest-path packages/contracts/smart-wallet-account/Cargo.toml --workspace
+
+      - name: Build contract Wasm and report sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifests=(
+            packages/contracts/flash-loan/Cargo.toml
+            packages/contracts/governance/Cargo.toml
+            packages/contracts/nft-marketplace/Cargo.toml
+            packages/contracts/price-oracle/Cargo.toml
+            packages/contracts/security-limits/Cargo.toml
+            packages/contracts/smart-swap/Cargo.toml
+            packages/contracts/timelock/Cargo.toml
+            packages/contracts/vesting/Cargo.toml
+            packages/contracts/yield-vault/Cargo.toml
+          )
+          for manifest in "${manifests[@]}"; do
+            stellar contract build --manifest-path "$manifest"
+          done
+          stellar contract build --manifest-path packages/contracts/smart-wallet-account/Cargo.toml --package smart-wallet-account-factory
+          stellar contract build --manifest-path packages/contracts/smart-wallet-account/Cargo.toml --package smart-wallet-account-wallet
+
+          {
+            echo "## Soroban contract Wasm sizes"
+            echo "| Contract | Wasm artifact | Size |"
+            echo "| --- | --- | ---: |"
+            find packages/contracts -path '*/target/wasm32v1-none/release/*.wasm' -type f -print0 | sort -z | while IFS= read -r -d '' wasm; do
+              size=$(du -h "$wasm" | cut -f1)
+              printf '| %s | `%s` | %s |\n' "$(basename "$wasm" .wasm)" "$wasm" "$size"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

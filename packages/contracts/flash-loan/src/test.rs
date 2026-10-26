@@ -24,7 +24,15 @@ use soroban_sdk::{
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn setup(env: &Env) -> (Address, FlashLoanContractClient, Address, token::Client, Address) {
+fn setup(
+    env: &Env,
+) -> (
+    Address,
+    FlashLoanContractClient<'_>,
+    Address,
+    token::Client<'_>,
+    Address,
+) {
     env.mock_all_auths();
 
     let admin = Address::generate(env);

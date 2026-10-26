@@ -104,6 +104,8 @@ supabase/.temp/
 # Stellar/Soroban
 target/
 Cargo.lock
+!packages/contracts/Cargo.lock
+!packages/contracts/smart-wallet-account/Cargo.lock
 
 # Development files
 .env.local

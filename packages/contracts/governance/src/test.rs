@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    testutils::{storage::Instance as _, Address as _, Ledger, StellarAsset as _},
+    testutils::{storage::Instance as _, Address as _, Ledger},
     token, Address, Env, String,
 };
 
@@ -7,28 +7,37 @@ use crate::{GovernanceContract, GovernanceContractClient, ProposalStatus, DEFAUL
 
 const VOTING_PERIOD_SECS: u64 = DEFAULT_VOTING_PERIOD_SECS;
 
-fn setup() -> (Env, GovernanceContractClient<'static>) {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register_contract(None, GovernanceContract);
-    let client = GovernanceContractClient::new(&env, &contract_id);
-
-    // Initialize the contract
-    let admin = Address::generate(&env);
-    let token = Address::generate(&env);
-    client.initialize(&admin, &token, &VOTING_PERIOD_SECS, &1_000);
-
-    (env, client)
+struct TestTokenClient<'a> {
+    token: token::Client<'a>,
+    issuer: token::StellarAssetClient<'a>,
 }
 
-fn setup_with_token() -> (Env, GovernanceContractClient<'static>, token::Client<'static>) {
+impl TestTokenClient<'_> {
+    fn mint(&self, to: &Address, amount: &i128) {
+        self.issuer.mint(to, amount);
+    }
+
+    fn approve(&self, from: &Address, spender: &Address, amount: &i128, expiration: &u32) {
+        self.token.approve(from, spender, amount, expiration);
+    }
+
+    fn balance(&self, address: &Address) -> i128 {
+        self.token.balance(address)
+    }
+}
+
+fn setup_with_token() -> (Env, GovernanceContractClient<'static>, TestTokenClient<'static>) {
     let env = Env::default();
+    env.ledger().with_mut(|ledger| ledger.sequence_number = 100);
     env.mock_all_auths();
 
     // Register a mock token contract
     let admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(admin.clone());
-    let token_client = token::Client::new(&env, &token_id);
+    let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_client = TestTokenClient {
+        token: token::Client::new(&env, &token_id),
+        issuer: token::StellarAssetClient::new(&env, &token_id),
+    };
 
     let contract_id = env.register_contract(None, GovernanceContract);
     let client = GovernanceContractClient::new(&env, &contract_id);
@@ -210,7 +219,7 @@ fn test_full_lifecycle_rejected_below_quorum() {
 #[test]
 #[should_panic(expected = "proposer must lock tokens before creating a proposal")]
 fn test_propose_without_lock_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token_client) = setup_with_token();
     let proposer = Address::generate(&env);
     client.propose(&proposer, &String::from_str(&env, "no_lock_action"));
 }
@@ -520,7 +529,7 @@ fn test_unlock_tokens_extends_instance_ttl() {
 #[test]
 #[should_panic(expected = "lock amount must be positive")]
 fn test_lock_zero_amount_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token_client) = setup_with_token();
     let voter = Address::generate(&env);
 
     client.lock_tokens(&voter, &0);
@@ -607,7 +616,7 @@ fn test_balances_return_after_unlock() {
 #[test]
 #[should_panic(expected = "contract already initialized")]
 fn test_initialize_twice_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token_client) = setup_with_token();
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
 
