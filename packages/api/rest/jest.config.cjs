@@ -8,6 +8,10 @@ module.exports = {
   moduleNameMapper: {
     '^@galaxy-kj/core-defi-protocols$': '<rootDir>/../../core/defi-protocols/src/index.ts',
     '^@galaxy-kj/core-wallet$': '<rootDir>/../../core/wallet/src/index.ts',
+    '^@galaxy-kj/core-stellar-sdk$': '<rootDir>/../../core/stellar-sdk/src/index.ts',
+    '^@galaxy-kj/core-invisible-wallet$': '<rootDir>/../../core/invisible-wallet/index.ts',
+    '^@galaxy-kj/core-invisible-wallet/encryption$': '<rootDir>/../../core/invisible-wallet/src/utils/encryption.utils.ts',
+    '^@galaxy-kj/core-invisible-wallet/(.*)\\.js$': '<rootDir>/../../core/invisible-wallet/src/$1.ts',
     '^@galaxy-kj/api-logger$': '<rootDir>/../logger/src/index.ts',
     '^(\\.\\.?/.*)\\.js$': '$1',
     '^ioredis$': 'ioredis-mock',

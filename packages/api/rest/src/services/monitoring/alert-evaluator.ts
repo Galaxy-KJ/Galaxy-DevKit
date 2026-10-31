@@ -61,6 +61,7 @@ function buildTemplateVars(
     protocol: alert.protocol,
     accountAddress: alert.accountAddress,
     alertType: alert.alertType,
+    customMetricId: alert.customMetricId ?? '',
     threshold: String(alert.threshold),
     observedValue: observedValue !== null ? String(observedValue) : 'N/A',
     triggeredAt,
@@ -86,6 +87,9 @@ const CONDITION_MATCHERS: Partial<Record<AlertType, (value: number, threshold: n
   // Activity
   transaction_amount_above:    (v, t) => v > t,
   unusual_transaction_pattern: (v, t) => v >= t,  // anomaly score
+
+  // Custom metric (#413 / Roadmap #74)
+  custom_metric: (v, t) => v >= t,
 };
 
 // ── AlertEvaluator ────────────────────────────────────────────────────────────
@@ -102,8 +106,16 @@ export class AlertEvaluator {
     }
 
     // 2. Condition check
-    const matcher = CONDITION_MATCHERS[alert.alertType];
-    const conditionMet = matcher ? matcher(ctx.observedValue, alert.threshold) : false;
+    let conditionMet = false;
+    if (alert.alertType === 'custom_metric') {
+      const condition = (alert.metadata?.condition as string) || (alert.metadata?.direction === 'lower_is_better' ? 'below' : 'above');
+      conditionMet = condition === 'below' || condition === 'lt'
+        ? ctx.observedValue < alert.threshold
+        : ctx.observedValue >= alert.threshold;
+    } else {
+      const matcher = CONDITION_MATCHERS[alert.alertType];
+      conditionMet = matcher ? matcher(ctx.observedValue, alert.threshold) : false;
+    }
 
     if (!conditionMet) {
       return { shouldTrigger: false, reason: 'condition_not_met' };
