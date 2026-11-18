@@ -78,7 +78,7 @@ const BUILTIN_COMMANDS: Record<
       console.log(chalk.gray('  init               Initialize in current dir'));
       console.log(chalk.gray('  build              Build project'));
       console.log(chalk.gray('  dev                Start dev server'));
-      console.log(chalk.gray('  deploy             Deploy to production'));
+      console.log(chalk.gray('  deploy contract    Deploy a Soroban contract'));
 
       console.log(chalk.yellow('\nCommand Groups:'));
       console.log(chalk.gray('  wallet <cmd>       Wallet management'));

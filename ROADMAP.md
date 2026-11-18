@@ -250,3 +250,8 @@ gantt
 - [ ] Full live-server/provider validation and public major-version release (package remains private).
 
 This is partial delivery of #487; backend prerequisites are outside this SDK-only change.
+
+### CLI deployment correction (#485)
+
+- [x] Replace simulated deployment with Stellar WASM build and confirmed RPC upload/deployment.
+- [x] Remove fake app hosting and verification; add failure-path tests and opt-in testnet coverage.

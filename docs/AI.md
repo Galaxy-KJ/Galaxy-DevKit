@@ -1127,7 +1127,7 @@ Usage notes:
 - `galaxy init` - Initialize Galaxy DevKit in current directory
 - `galaxy build` - Build the project
 - `galaxy dev` - Start development server
-- `galaxy deploy` - Deploy to production
+- `galaxy deploy contract <name> --network testnet` - Build and deploy a Soroban contract
 
 **How to Run the CLI:**
 ```bash
@@ -1675,3 +1675,11 @@ TODO: I can add TSDoc/JSDoc comments to the biometric files listed above to rais
 The backend currently selects testnet. Wallets, oracles and automation expose `{ available: false, reason }`, not speculative HTTP methods. Mainnet is rejected. Wire types in `src/types.ts` are hand-maintained because no OpenAPI spec is checked in. JSON dates remain strings; transaction `hash` currently contains unsigned XDR, not a submitted transaction hash. Preserve these distinctions when extending the SDK.
 
 See the package README for the supported route table and unavailable features, and `docs/examples/sdk/` for a local REST example. `client.test.ts` mocks fetch; `rest-contract.test.ts` exercises the real REST router with mocked auth/audit/protocol services. `scripts/smoke.cjs` checks built CJS/ESM and Chromium native ESM/fetch. These checks do not prove live-chain execution.
+
+### Confirmed CLI contract deployment (#485)
+
+Use `tools/cli/src/utils/contract-deployment.ts` for the build/upload/create flow.
+Network defaults and environment overrides come from the shared `resolveNetwork`.
+Require `STELLAR_SECRET_KEY` without logging it. Persist addresses and transaction
+hashes only after RPC reports SUCCESS; propagate failure and confirmation timeout.
+The CLI does not implement app hosting or a `--verify` flag.

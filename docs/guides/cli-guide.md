@@ -190,31 +190,32 @@ dist/
     └── functions/
 ```
 
-### `galaxy deploy`
+### `galaxy deploy contract <name>`
 
-Deploys the project to production.
+Builds `contracts/<name>/Cargo.toml` with `stellar contract build`, uploads the
+WASM, and creates a contract through Stellar RPC. Requires Stellar CLI, Rust with
+the WASM target, and a funded account in the `STELLAR_SECRET_KEY` environment
+variable. Keep the secret in your local environment or CI secret store.
 
 ```bash
-galaxy deploy
+galaxy deploy contract hello --network testnet
+galaxy deploy contract hello --network testnet --json
 ```
 
-**Options:**
-- `-e, --env <environment>` - Environment (production/staging)
-- `--network <network>` - Stellar network
-- `--contracts` - Deploy smart contracts only
-- `--api` - Deploy APIs only
+`--network` accepts `testnet` (default), `futurenet`, or `mainnet`. Shared network
+configuration honors `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE`. The command
+prints the real contract ID and transaction hash only after ledger confirmation,
+and appends them to `.galaxy/deployments.json`. Failed or timed-out transactions
+exit nonzero. If confirmation times out, check the reported hash before retrying.
 
-**Example:**
-```bash
-galaxy deploy -e production --network mainnet
-```
+One contract WASM must be produced by the manifest. Contracts requiring constructor
+arguments are not supported by this command yet. Fees are estimated by RPC during
+transaction preparation; `--gas-limit` is no longer accepted.
 
-**Deployment Process:**
-1. Builds the project
-2. Deploys smart contracts to Stellar
-3. Sets up Supabase database
-4. Deploys APIs to cloud
-5. Configures production environment
+The simulated `--verify` flag has been removed. Application/API hosting, database
+setup, and Vercel/Netlify deployment are out of scope; use the hosting provider's
+own CLI. Bare `galaxy deploy` displays command help. Legacy `--env`, `--contract`,
+`--contracts`, `--api`, and `--platform` options are not supported.
 
 ### `galaxy generate <type>`
 
@@ -540,7 +541,7 @@ galaxy build
 
 ### 7. Deploy
 ```bash
-galaxy deploy
+galaxy deploy contract hello --network testnet
 ```
 
 ## 🚀 Deployment
@@ -563,17 +564,17 @@ GALAXY_API_KEY=your-api-key
 
 ### Deploy to Vercel
 ```bash
-galaxy deploy --platform vercel
+vercel deploy
 ```
 
 ### Deploy to Netlify
 ```bash
-galaxy deploy --platform netlify
+netlify deploy
 ```
 
 ### Deploy Smart Contracts
 ```bash
-galaxy deploy --contracts --network mainnet
+galaxy deploy contract hello --network mainnet
 ```
 
 ## 🔧 Configuration
@@ -620,7 +621,7 @@ module.exports = {
   "scripts": {
     "dev": "galaxy dev",
     "build": "galaxy build",
-    "deploy": "galaxy deploy",
+    "deploy": "galaxy deploy contract hello --network testnet",
     "test": "galaxy test",
     "generate": "galaxy generate"
   }
@@ -701,7 +702,7 @@ galaxy test
 galaxy build
 
 # 9. Deploy
-galaxy deploy
+galaxy deploy contract hello --network testnet
 ```
 
 ### Custom Configuration
@@ -716,7 +717,7 @@ galaxy generate hook --name usePayments
 galaxy generate service --name PaymentService
 
 # Deploy with custom environment
-galaxy deploy -e staging --network testnet
+galaxy deploy contract hello --network testnet
 ```
 
 ## 🆘 Support
