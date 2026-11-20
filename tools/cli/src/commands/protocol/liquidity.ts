@@ -89,6 +89,19 @@ function resolvePairToken(code: string, network: string): Asset {
   return asset;
 }
 
+/**
+ * Whether an error looks like an infrastructure failure (RPC unavailable,
+ * timeout, network) rather than proof that the pool does not exist. Only a
+ * failed pair lookup justifies "No liquidity pool exists"; anything else
+ * must surface the original error so the user gets the real cause and the
+ * right recovery step (retry, check the RPC endpoint) instead of being told
+ * the pair does not exist.
+ */
+function isInfrastructureError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timed? ?out|network|fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|connection (refused|reset|timed out|closed)|bad gateway|service unavailable|gateway timeout|server error/i.test(message);
+}
+
 // Create main liquidity command
 export const liquidityCommand = new Command('liquidity')
   .description('Liquidity pool operations');
@@ -282,7 +295,10 @@ const removeCommand = new Command('remove')
           let poolInfo: LiquidityPool;
           try {
             poolInfo = await protocol.getLiquidityPool(tokenA, tokenB);
-          } catch {
+          } catch (error) {
+            if (isInfrastructureError(error)) {
+              throw error;
+            }
             throw new Error(
               `No liquidity pool exists for ${pool} on ${network}. Check the token pair and network.`
             );

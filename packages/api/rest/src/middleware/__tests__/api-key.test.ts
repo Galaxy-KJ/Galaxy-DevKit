@@ -12,7 +12,10 @@ const mockValidateApiKey = jest.fn();
 
 jest.mock('../../services/auth-service', () => ({
   AuthService: jest.fn().mockImplementation(() => ({
-    validateApiKey: mockValidateApiKey,
+    // Read the mock at call time: jest.mock is hoisted above this const,
+    // and api-key.ts runs `new AuthService()` at module scope, so reading
+    // the variable here would hit the temporal dead zone.
+    validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   })),
 }));
 

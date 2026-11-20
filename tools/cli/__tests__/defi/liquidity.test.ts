@@ -201,4 +201,20 @@ describe('liquidity remove', () => {
     expect(err.message).toContain('No liquidity pool exists for XLM-USDC');
     expect(err.message).toContain('testnet');
   });
+
+  it('preserves the original error when the pool lookup fails on an RPC timeout', async () => {
+    mockGetLiquidityPool.mockRejectedValue(
+      new Error('Soroswap getLiquidityPool failed: request timed out after 30000ms')
+    );
+
+    await runRemove('XLM-USDC');
+
+    expect(mockGetLiquidityPool).toHaveBeenCalledTimes(1);
+    expect(mockRemoveLiquidity).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(outputError).toHaveBeenCalledTimes(1);
+    const err = (outputError as jest.Mock).mock.calls[0][0] as Error;
+    expect(err.message).toContain('timed out');
+    expect(err.message).not.toContain('No liquidity pool exists');
+  });
 });
