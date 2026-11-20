@@ -83,7 +83,12 @@ jest.mock('@stellar/stellar-sdk', () => {
       PUBLIC: 'PUBLIC',
     },
     Asset: Object.assign(
-      jest.fn(),
+      // Constructing a classic asset derives its contract address, so the
+      // constructor must return an object with contractId (same API the
+      // production code uses for native assets).
+      jest.fn().mockImplementation(() => ({
+        contractId: jest.fn().mockReturnValue('CCONTRACT_ADDRESS'),
+      })),
       {
         native: jest.fn().mockReturnValue({
           contractId: jest.fn().mockReturnValue('CNATIVE_CONTRACT_ADDRESS'),
@@ -874,16 +879,57 @@ describe('SoroswapProtocol', () => {
       expect(pool.tokenA).toEqual(nativeAsset);
     });
 
+    it('should accept a 2-element get_reserves result and read total supply separately', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }) // get_pair
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }) // get_reserves
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }); // total_supply
+
+      (scValToNative as any)
+        .mockReturnValueOnce([100n, 200n]) // get_reserves: reserve0, reserve1
+        .mockReturnValueOnce(300n); // total_supply
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.reserveA).toBe('100');
+      expect(pool.reserveB).toBe('200');
+      expect(pool.totalLiquidity).toBe('300');
+    });
+
+    it('should read total supply from a 3-element get_reserves result (legacy ABI)', async () => {
+      (soroswapProtocol as any).sorobanServer.simulateTransaction
+        .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }) // get_pair
+        .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }); // get_reserves
+
+      (scValToNative as any).mockReturnValueOnce([100n, 200n, 300n]); // reserve0, reserve1, totalSupply
+
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool.reserveA).toBe('100');
+      expect(pool.reserveB).toBe('200');
+      expect(pool.totalLiquidity).toBe('300');
+    });
+
     it('should raise an error instead of returning zero reserves when the array is too short', async () => {
       (soroswapProtocol as any).sorobanServer.simulateTransaction
         .mockResolvedValueOnce({ result: { retval: { type: 'address' } } }) // get_pair
         .mockResolvedValueOnce({ result: { retval: { type: 'scval' } } }); // get_reserves
 
-      (scValToNative as any).mockReturnValueOnce([100n, 200n]); // Only 2, need 3
+      (scValToNative as any).mockReturnValueOnce([100n]); // Only 1, need 2
 
       await expect(
         soroswapProtocol.getLiquidityPool(tokenA, tokenB)
       ).rejects.toThrow(/Unexpected return value from get_reserves/);
+    });
+
+    it('should resolve a classic asset to its contract address, not the issuer', async () => {
+      const pool = await soroswapProtocol.getLiquidityPool(tokenA, tokenB);
+      expect(pool).toBeDefined();
+      // The factory lookup must receive C... contract addresses, never the
+      // G... issuer account of the classic asset.
+      const addressCalls = (Address as unknown as jest.Mock).mock.calls.map(
+        (c) => c[0] as string
+      );
+      expect(addressCalls).toContain('CCONTRACT_ADDRESS');
+      expect(addressCalls).not.toContain(tokenB.issuer);
     });
 
     it('should raise an error instead of an empty address when get_pair simulation fails', async () => {

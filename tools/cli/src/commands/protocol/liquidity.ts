@@ -34,9 +34,26 @@ interface LiquidityCommandOptions {
 }
 
 /**
- * Resolve asset code to Asset object
+ * Issuers of well-known tokens, per network. Same issuers the rest of the
+ * app already relies on (see `packages/frontend/src/config/soroswap-tokens.ts`):
+ * Circle's official USDC issuing accounts.
  */
-function resolveAsset(assetCode: string): Asset {
+const KNOWN_TOKEN_ISSUERS: Record<string, Record<string, string>> = {
+  testnet: {
+    USDC: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+  },
+  mainnet: {
+    USDC: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+  },
+};
+
+/**
+ * Resolve asset code to Asset object. When a network is given, well-known
+ * tokens resolve to their issuing account, which the protocol needs to
+ * derive the token's contract address (a bare code has no issuer and the
+ * protocol rejects it: "Non-native assets must have an issuer").
+ */
+function resolveAsset(assetCode: string, network?: string): Asset {
   const code = assetCode.toUpperCase();
 
   if (code === 'XLM') {
@@ -46,10 +63,43 @@ function resolveAsset(assetCode: string): Asset {
     };
   }
 
+  const issuer = network ? KNOWN_TOKEN_ISSUERS[network]?.[code] : undefined;
+
   return {
     code: code,
+    ...(issuer ? { issuer } : {}),
     type: code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12',
   };
+}
+
+/**
+ * Resolve a token code from a pair input ("XLM-USDC") to an Asset the
+ * protocol can use. Anything that is not a well-known token for the network
+ * fails here with a clear message instead of a misleading "no pool" error
+ * from the factory lookup.
+ */
+function resolvePairToken(code: string, network: string): Asset {
+  const asset = resolveAsset(code, network);
+  if (asset.type !== 'native' && !asset.issuer) {
+    const known = ['XLM', ...Object.keys(KNOWN_TOKEN_ISSUERS[network] ?? {})].join(', ');
+    throw new Error(
+      `Unknown token "${code}" on ${network}: no issuer known for this token. Use a pool contract address instead, or a well-known token (${known}).`
+    );
+  }
+  return asset;
+}
+
+/**
+ * Whether an error looks like an infrastructure failure (RPC unavailable,
+ * timeout, network) rather than proof that the pool does not exist. Only a
+ * failed pair lookup justifies "No liquidity pool exists"; anything else
+ * must surface the original error so the user gets the real cause and the
+ * right recovery step (retry, check the RPC endpoint) instead of being told
+ * the pair does not exist.
+ */
+function isInfrastructureError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timed? ?out|network|fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|connection (refused|reset|timed out|closed)|bad gateway|service unavailable|gateway timeout|server error/i.test(message);
 }
 
 // Create main liquidity command
@@ -224,23 +274,43 @@ const removeCommand = new Command('remove')
           return;
         }
 
-        // Resolve tokens and pool address
+        // Resolve tokens and the real pool address.
+        // Pair input ("XLM-USDC"): look the pool up in the Soroswap factory
+        // so the transaction targets the real pool contract, not the raw
+        // "XLM-USDC" string. A pair with no pool fails here with a clear
+        // error instead of an RPC failure further down.
+        // Contract input ("C..."): read token_0/token_1 from the pair
+        // contract instead of assuming the pool holds XLM and USDC.
         let tokenA: Asset;
         let tokenB: Asset;
         let poolAddress: string;
 
         if (pool.includes('-')) {
           const [a, b] = pool.split('-');
-          tokenA = resolveAsset(a);
-          tokenB = resolveAsset(b);
-          // For now, we use a dummy pool address if only pair is provided
-          // In a real scenario, we'd fetch the pool address from the factory
-          poolAddress = pool; 
+          tokenA = resolvePairToken(a, network);
+          tokenB = resolvePairToken(b, network);
+          if (!protocol.getLiquidityPool) {
+            throw new Error('Pool lookup is not supported by this protocol');
+          }
+          let poolInfo: LiquidityPool;
+          try {
+            poolInfo = await protocol.getLiquidityPool(tokenA, tokenB);
+          } catch (error) {
+            if (isInfrastructureError(error)) {
+              throw error;
+            }
+            throw new Error(
+              `No liquidity pool exists for ${pool} on ${network}. Check the token pair and network.`
+            );
+          }
+          poolAddress = poolInfo.address;
         } else {
-          // If it's a contract address, we use placeholders for tokens
-          // This is a limitation of the current CLI command structure
-          tokenA = resolveAsset('XLM');
-          tokenB = resolveAsset('USDC');
+          if (!protocol.getPairTokens) {
+            throw new Error('Reading pool tokens is not supported by this protocol');
+          }
+          const tokens = await protocol.getPairTokens(pool);
+          tokenA = tokens.token0;
+          tokenB = tokens.token1;
           poolAddress = pool;
         }
 
@@ -283,11 +353,11 @@ const poolsCommand = new Command('pools')
       const protocol = await getProtocolInstance(PROTOCOL_IDS.SOROSWAP, network);
       await protocol.initialize();
 
-      // For now, show placeholder pools since getLiquidityPools() might not be available
-      // In a real implementation, this would fetch from the protocol
+      // Only a fixed list of common pairs is checked here. Each entry is a
+      // real pool resolved through the protocol's factory lookup; pairs with
+      // no pool on this network are skipped.
       const pools: LiquidityPool[] = [];
 
-      // Try to get some common pools
       const commonPairs = [
         ['XLM', 'USDC'],
         ['XLM', 'BTC'],
@@ -314,7 +384,11 @@ const poolsCommand = new Command('pools')
         if (options.json) {
           console.log(JSON.stringify({ pools: [], message: 'No pools found' }, null, 2));
         } else {
-          console.log(chalk.yellow('\nNo liquidity pools found on this network.'));
+          console.log(
+            chalk.yellow(
+              '\nNo liquidity pools found on this network (checked common pairs: XLM/USDC, XLM/BTC, USDC/ETH).'
+            )
+          );
         }
       } else {
         outputLiquidityPoolList(pools, { json: options.json });

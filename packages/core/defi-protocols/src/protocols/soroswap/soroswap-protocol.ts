@@ -504,6 +504,40 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   /**
+   * Read the two tokens held by a pair contract, given the pair address.
+   *
+   * Reads `token_0` / `token_1` directly from the pair contract, so callers
+   * that only know the pool address never have to assume which tokens the
+   * pool holds.
+   *
+   * @param {string} pairAddress - Pair contract address
+   * @returns {Promise<{ token0: Asset; token1: Asset }>} The pair's tokens
+   */
+  public async getPairTokens(
+    pairAddress: string
+  ): Promise<{ token0: Asset; token1: Asset }> {
+    this.ensureInitialized();
+
+    try {
+      if (!pairAddress) {
+        throw new Error('Pair contract address is required');
+      }
+
+      const sourceAccount = await this.loadSimulationAccount();
+      const pairContract = new Contract(pairAddress);
+
+      const [token0, token1] = await Promise.all([
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_0'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_1'),
+      ]);
+
+      return { token0, token1 };
+    } catch (error) {
+      this.handleError(error, 'getPairTokens');
+    }
+  }
+
+  /**
    * Get all registered pairs from the factory
    *
    * Reads `all_pairs_length` then fetches every `all_pairs(index)` in parallel
@@ -568,13 +602,21 @@ export class SoroswapProtocol extends BaseProtocol {
   /**
    * Resolve a Galaxy Asset to its Soroban contract address.
    * Native XLM uses the Stellar Asset Contract (SAC) address derived from the
-   * network passphrase. Non-native assets use the issuer address.
+   * network passphrase. Non-native assets are identified by their SAC address
+   * too: an issuer that already carries a contract address (C...) is used
+   * as-is, otherwise the contract address is derived from the asset code,
+   * issuer and network passphrase. Returning the raw issuer account (G...)
+   * would make the factory/router look up a pair that does not exist.
    */
   private resolveTokenAddress(asset: Asset): string {
     if (asset.type === 'native') {
       return StellarAsset.native().contractId(this.networkPassphrase);
     }
-    return asset.issuer!;
+    const issuer = asset.issuer!;
+    if (issuer.startsWith('C')) {
+      return issuer;
+    }
+    return new StellarAsset(asset.code, issuer).contractId(this.networkPassphrase);
   }
 
   /**
@@ -1008,8 +1050,27 @@ export class SoroswapProtocol extends BaseProtocol {
       const native = scValToNative(
         this.extractRetval(reserveSim, 'get_reserves', pairAddress)
       ) as bigint[];
-      if (!Array.isArray(native) || native.length < 3) {
+      // Upstream SoroswapPair.get_reserves returns exactly two values
+      // (reserve0, reserve1). A legacy pair ABI returns a third value
+      // (totalSupply); both shapes are handled explicitly below.
+      if (!Array.isArray(native) || native.length < 2) {
         throw new Error('Unexpected return value from get_reserves');
+      }
+
+      let totalLiquidity: string;
+      if (native.length >= 3) {
+        // Legacy pair ABI: get_reserves returns (reserve0, reserve1,
+        // totalSupply) — the third element is the LP total supply.
+        totalLiquidity = native[2].toString();
+      } else {
+        // Standard SoroswapPair ABI: get_reserves returns (reserve0,
+        // reserve1) only. LP total supply comes from a separate
+        // total_supply read (same pattern as getPairInfo).
+        const totalSupplySim = await this.simulateCall(sourceAccount, pairContract, 'total_supply');
+        const totalSupply = scValToNative(
+          this.extractRetval(totalSupplySim, 'total_supply', pairAddress)
+        ) as bigint;
+        totalLiquidity = totalSupply.toString();
       }
 
       return {
@@ -1018,7 +1079,7 @@ export class SoroswapProtocol extends BaseProtocol {
         tokenB,
         reserveA: native[0].toString(),
         reserveB: native[1].toString(),
-        totalLiquidity: native[2].toString(),
+        totalLiquidity,
         fee: SOROSWAP_DEFAULT_FEE,
       };
     } catch (error) {
