@@ -504,6 +504,40 @@ export class SoroswapProtocol extends BaseProtocol {
   }
 
   /**
+   * Read the two tokens held by a pair contract, given the pair address.
+   *
+   * Reads `token_0` / `token_1` directly from the pair contract, so callers
+   * that only know the pool address never have to assume which tokens the
+   * pool holds.
+   *
+   * @param {string} pairAddress - Pair contract address
+   * @returns {Promise<{ token0: Asset; token1: Asset }>} The pair's tokens
+   */
+  public async getPairTokens(
+    pairAddress: string
+  ): Promise<{ token0: Asset; token1: Asset }> {
+    this.ensureInitialized();
+
+    try {
+      if (!pairAddress) {
+        throw new Error('Pair contract address is required');
+      }
+
+      const sourceAccount = await this.loadSimulationAccount();
+      const pairContract = new Contract(pairAddress);
+
+      const [token0, token1] = await Promise.all([
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_0'),
+        this.resolveTokenFromPair(sourceAccount, pairContract, 'token_1'),
+      ]);
+
+      return { token0, token1 };
+    } catch (error) {
+      this.handleError(error, 'getPairTokens');
+    }
+  }
+
+  /**
    * Get all registered pairs from the factory
    *
    * Reads `all_pairs_length` then fetches every `all_pairs(index)` in parallel

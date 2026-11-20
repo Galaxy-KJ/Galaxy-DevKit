@@ -20,8 +20,48 @@ const log = logger.child({ module: 'api-key' });
 const authService = new AuthService();
 
 /**
+ * Whether API keys in the `?api_key=` query string are accepted.
+ * Defaults to off. A non-production transition can opt back in with
+ * `API_KEY_ALLOW_QUERY=true`; production always refuses it, because
+ * credentials in URLs leak into browser history, proxy/CDN/load-balancer
+ * access logs and `Referer` headers.
+ */
+export function isQueryApiKeyAllowed(): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return false;
+  }
+  return process.env.API_KEY_ALLOW_QUERY === 'true';
+}
+
+/**
+ * Reject requests that carry an API key in the `?api_key=` query string.
+ * Sends a 400 pointing at the `x-api-key` header and returns true when it
+ * responded; returns false when the request carries no query-string key (or
+ * query keys are explicitly allowed for a non-production transition).
+ * Call this at the top of any middleware that accepts API keys, before
+ * calling {@link extractApiKey}.
+ */
+export function rejectQueryApiKey(req: Request, res: Response): boolean {
+  if (req.query.api_key !== undefined && !isQueryApiKeyAllowed()) {
+    res.status(400).json({
+      error: {
+        code: AuthErrorCode.INVALID_API_KEY,
+        message:
+          'API keys must be sent in the x-api-key header (or as Authorization: Bearer token), not in the ?api_key= query parameter. Query-string API keys leak into browser history, logs and referrers.',
+        details: {},
+      },
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
  * Extract API key from request
- * Looks in Authorization header (Bearer token) or x-api-key header
+ * Looks in Authorization header (Bearer token) or x-api-key header.
+ * The `?api_key=` query string is NOT accepted by default (see
+ * {@link isQueryApiKeyAllowed}) because credentials in URLs leak into
+ * browser history, logs and referrers.
  * @param req - Express request
  * @returns string | null - API key or null if not found
  */
@@ -43,10 +83,13 @@ export function extractApiKey(req: Request): string | null {
     return apiKeyHeader;
   }
 
-  // Check query parameter (less secure, but sometimes needed)
-  const apiKeyQuery = req.query.api_key;
-  if (apiKeyQuery && typeof apiKeyQuery === 'string') {
-    return apiKeyQuery;
+  // Query parameter: only during an explicit non-production transition
+  // (API_KEY_ALLOW_QUERY=true). Production always refuses it.
+  if (isQueryApiKeyAllowed()) {
+    const apiKeyQuery = req.query.api_key;
+    if (apiKeyQuery && typeof apiKeyQuery === 'string') {
+      return apiKeyQuery;
+    }
   }
 
   return null;
@@ -64,6 +107,12 @@ export function apiKeyMiddleware() {
     next: NextFunction
   ): Promise<void> => {
     try {
+      // A key in the ?api_key= query string is rejected outright (400),
+      // it must never fall through to header auth.
+      if (rejectQueryApiKey(req, res)) {
+        return;
+      }
+
       const apiKey = extractApiKey(req);
 
       if (!apiKey) {
@@ -141,6 +190,12 @@ export function requireApiKey() {
     next: NextFunction
   ): Promise<void> => {
     try {
+      // A key in the ?api_key= query string is rejected outright (400),
+      // it must never fall through to header auth.
+      if (rejectQueryApiKey(req, res)) {
+        return;
+      }
+
       const apiKey = extractApiKey(req);
 
       if (!apiKey) {
