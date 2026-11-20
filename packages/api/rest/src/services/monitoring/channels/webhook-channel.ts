@@ -16,6 +16,7 @@ import {
   MonitoringAlert,
   WebhookChannelConfig,
 } from '../../../types/monitoring-types';
+import { assertWebhookUrlSafe, SsrfBlockedError } from '../../../utils/ssrf-guard';
 import { INotificationChannel } from './notification-channel';
 
 export interface WebhookChannelOptions {
@@ -38,6 +39,25 @@ export class WebhookChannel implements INotificationChannel {
 
   async send(alert: MonitoringAlert, payload: AlertEventPayload): Promise<ChannelDeliveryResult> {
     const config = alert.channelConfig as WebhookChannelConfig;
+
+    // Resolve the destination hostname and reject any private/reserved address.
+    // This catches DNS rebinding and hostnames that weren't literal IPs at
+    // validation time. We also disable redirect following so a 3xx to a
+    // private address cannot bypass this check.
+    try {
+      await assertWebhookUrlSafe(config.url);
+    } catch (err) {
+      if (err instanceof SsrfBlockedError) {
+        return {
+          success: false,
+          durationMs: 0,
+          retryable: false,
+          error: err.message,
+        };
+      }
+      throw err;
+    }
+
     const body = JSON.stringify(payload);
     const timestamp = Math.floor(Date.now() / 1_000).toString();
     const signature = this.sign(config.secret, timestamp, body);
@@ -59,10 +79,28 @@ export class WebhookChannel implements INotificationChannel {
           ...(config.headers ?? {}),
         },
         body,
+        // 'manual' means the fetch will NOT follow redirects. A 3xx response is
+        // returned as-is so we can inspect the Location header ourselves.
+        // This prevents a public URL from bouncing the request to an internal host.
+        redirect: 'manual',
         signal: controller.signal,
       });
 
       const durationMs = Date.now() - start;
+
+      // redirect:'manual' surfaces 3xx responses rather than following them.
+      // Treat any redirect as a terminal SSRF-prevention failure — we don't
+      // validate what the Location header points to, so we refuse to follow it.
+      if (response.status >= 300 && response.status < 400) {
+        return {
+          success: false,
+          statusCode: response.status,
+          durationMs,
+          retryable: false,
+          error: `Redirect responses are not followed (HTTP ${response.status})`,
+        };
+      }
+
       const success = response.ok;
       return {
         success,

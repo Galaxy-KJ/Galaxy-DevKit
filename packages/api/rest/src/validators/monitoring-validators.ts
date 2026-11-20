@@ -7,16 +7,40 @@
  */
 
 import Joi from 'joi';
+import { assertNotLiteralPrivateUrl, SsrfBlockedError } from '../utils/ssrf-guard';
 
 const STELLAR_ACCOUNT_REGEX = /^G[A-Z2-7]{55}$/;
 
 const ALLOWED_WEBHOOK_SCHEMES =
   process.env.NODE_ENV === 'production' ? ['https'] : ['https', 'http'];
 
+/**
+ * Joi custom rule that rejects literal IPs and loopback hostnames immediately
+ * so users receive an informative validation error rather than a send-time
+ * failure. Dynamic DNS-to-private-range rebinding is caught at send time by
+ * WebhookChannel.
+ */
+const webhookUrlSchema = Joi.string()
+  .uri({ scheme: ALLOWED_WEBHOOK_SCHEMES })
+  .custom((value: string, helpers) => {
+    try {
+      assertNotLiteralPrivateUrl(value);
+    } catch (err) {
+      if (err instanceof SsrfBlockedError) {
+        return helpers.error('string.webhookSsrf', { message: err.message });
+      }
+      throw err;
+    }
+    return value;
+  })
+  .messages({
+    'string.webhookSsrf': '{{#message}}',
+  });
+
 // ── Channel config schemas ────────────────────────────────────────────────────
 
 const webhookConfigSchema = Joi.object({
-  url: Joi.string().uri({ scheme: ALLOWED_WEBHOOK_SCHEMES }).required(),
+  url: webhookUrlSchema.required(),
   secret: Joi.string().min(16).required(),
   headers: Joi.object().pattern(Joi.string(), Joi.string()).optional(),
 }).unknown(false);
