@@ -123,6 +123,9 @@ const subscriptionId = await monitor.subscribeToEvents({
   onEvent: event => console.log(event),
 });
 
+// Each subscription keeps its own RPC cursor and reads every page of new
+// events. It starts at the latest ledger unless you pass `startLedger`.
+
 // Query historical events
 const events = await monitor.queryEvents({
   contractId: '...',

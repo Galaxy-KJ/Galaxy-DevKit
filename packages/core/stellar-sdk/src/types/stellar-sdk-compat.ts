@@ -50,6 +50,7 @@ export namespace SorobanRpc {
   export interface GetEventsResponse {
     events: any[];
     latestLedger: number;
+    cursor?: string;
   }
 
   export interface TopicString {
@@ -58,10 +59,11 @@ export namespace SorobanRpc {
   }
 
   /**
-   * A single topic in a filter. Each entry is either a plain string or the
-   * legacy `{ type, value }` object form.
+   * A single topic in a filter: either a list of base64 XDR `ScVal`
+   * segments (`*` and a trailing `**` are wildcards), a plain string, or
+   * the legacy `{ type, value }` object form.
    */
-  export type TopicFilter = string | TopicString;
+  export type TopicFilter = string[] | string | TopicString;
 
   export interface EventFilter {
     contractIds?: string[];
