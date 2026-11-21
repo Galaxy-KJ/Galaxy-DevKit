@@ -43,6 +43,7 @@ export class ContractEventMonitor {
   private server: SorobanRpc.Server;
   private subscriptions: Map<string, EventSubscription>;
   private pollStates: Map<string, PollState>;
+  private destroyCount = 0;
 
   constructor(rpcUrl: string = resolveNetwork('testnet').rpcUrl) {
     this.server = new SorobanRpc.Server(rpcUrl);
@@ -64,10 +65,14 @@ export class ContractEventMonitor {
   private async startSubscription(
     subscription: EventSubscription
   ): Promise<string> {
+    const destroyCountAtStart = this.destroyCount;
     try {
       const startLedger =
         subscription.startLedger ??
         (await this.server.getLatestLedger()).sequence;
+      if (this.destroyCount !== destroyCountAtStart) {
+        throw new Error('Event monitor was destroyed during subscription');
+      }
       const subscriptionId = this.generateSubscriptionId(
         subscription.contractId
       );
@@ -209,8 +214,11 @@ export class ContractEventMonitor {
     if (!state || state.stopped) return;
 
     state.timer = setTimeout(async () => {
-      await this.pollForEvents(subscriptionId);
-      this.scheduleNextPoll(subscriptionId);
+      try {
+        await this.pollForEvents(subscriptionId);
+      } finally {
+        this.scheduleNextPoll(subscriptionId);
+      }
     }, POLL_INTERVAL_MS);
   }
 
@@ -248,10 +256,14 @@ export class ContractEventMonitor {
       }
     } catch (error) {
       // Report the error but keep polling from the same cursor
-      if (subscription.onError) {
-        subscription.onError(error);
-      } else {
-        console.error('Error polling for events:', error);
+      try {
+        if (subscription.onError) {
+          subscription.onError(error);
+        } else {
+          console.error('Error polling for events:', error);
+        }
+      } catch (callbackError) {
+        console.error('Error in onError callback:', callbackError);
       }
     }
   }
@@ -368,6 +380,7 @@ export class ContractEventMonitor {
    * Cleanup resources
    */
   destroy(): void {
+    this.destroyCount += 1;
     this.unsubscribeAll();
     this.subscriptions.clear();
   }

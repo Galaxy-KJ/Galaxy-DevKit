@@ -185,6 +185,64 @@ describe('ContractEventMonitor', () => {
     monitor.destroy();
   });
 
+  it('keeps polling when onError throws', async () => {
+    const rpc = createFakeRpc();
+    const monitor = createMonitor(rpc);
+    const original = rpc.getEvents.getMockImplementation()!;
+    rpc.getEvents.mockImplementationOnce(async () => {
+      throw new Error('rpc down');
+    });
+    rpc.getEvents.mockImplementation(original);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const seen: string[] = [];
+
+    await monitor.subscribeToEvents({
+      id: '',
+      contractId: 'CONTRACT_A',
+      onEvent: e => seen.push(e.id as string),
+      onError: () => {
+        throw new Error('callback failed');
+      },
+    });
+    await jest.advanceTimersByTimeAsync(5000);
+    rpc.emit('CONTRACT_A', 2);
+    await jest.advanceTimersByTimeAsync(5000);
+
+    expect(seen).toHaveLength(2);
+    monitor.destroy();
+  });
+
+  it('does not register a subscription that was pending during destroy()', async () => {
+    const rpc = createFakeRpc();
+    const monitor = createMonitor(rpc);
+    let releaseLedger: () => void = () => undefined;
+    rpc.getLatestLedger.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          releaseLedger = () => resolve({ sequence: rpc.latestLedger });
+        })
+    );
+    const onEvent = jest.fn();
+    const onError = jest.fn();
+
+    const pending = monitor.subscribeToEvents({
+      id: '',
+      contractId: 'CONTRACT_A',
+      onEvent,
+      onError,
+    });
+    monitor.destroy();
+    releaseLedger();
+
+    await expect(pending).rejects.toThrow('destroyed');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(monitor.getSubscriptions()).toHaveLength(0);
+    rpc.emit('CONTRACT_A', 2);
+    await jest.advanceTimersByTimeAsync(15000);
+    expect(rpc.getEvents).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
   it('encodes event type filters as base64 XDR topic segments', async () => {
     const rpc = createFakeRpc();
     const monitor = createMonitor(rpc);
