@@ -6,6 +6,7 @@ import {
   ExecutionType,
   TriggerType,
 } from '../types/automation-types.js';
+import { generateId } from '../utils/id-generator.js';
 
 export interface DCAConfig {
   asset: string;
@@ -81,12 +82,6 @@ export function dcaTemplate(config: DCAConfig): DcaTemplateResult {
       estimatedDurationMs,
     },
   };
-}
-
-function generateId(): string {
-  const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `${ts}-${rand}`;
 }
 
 function msToCron(intervalMs: number): string {

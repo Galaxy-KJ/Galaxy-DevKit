@@ -248,6 +248,27 @@ describe('AutomationService', () => {
       );
     });
 
+    it('should throw when registering a rule with a duplicate ID', async () => {
+      await automationService.registerRule(createTestRule());
+
+      await expect(
+        automationService.registerRule(createTestRule({ name: 'Duplicate' }))
+      ).rejects.toThrow('Rule already registered: test-rule-1');
+    });
+
+    it('should keep the original rule when a duplicate ID is rejected', async () => {
+      const original = createTestRule();
+      await automationService.registerRule(original);
+
+      await expect(
+        automationService.registerRule(createTestRule({ name: 'Duplicate' }))
+      ).rejects.toThrow('Rule already registered');
+
+      expect(automationService.getRule(original.id)).toBe(original);
+      expect(automationService.getAllRules()).toHaveLength(1);
+      expect(mockCronManager.scheduleJob).toHaveBeenCalledTimes(1);
+    });
+
     it('should throw error for CRON trigger without expression', async () => {
       const rule = createTestRule({ cronExpression: undefined });
       await expect(automationService.registerRule(rule)).rejects.toThrow(
