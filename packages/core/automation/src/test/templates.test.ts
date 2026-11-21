@@ -11,6 +11,9 @@ import {
   StopLossConfig,
 } from '../templates/stop-loss.js';
 
+const UUID_V4 =
+  '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+
 describe('DCA Template', () => {
   const baseConfig: DCAConfig = {
     asset: 'XLM',
@@ -69,6 +72,15 @@ describe('DCA Template', () => {
     const result = dcaTemplate(baseConfig);
     expect(result.rule.executionConfig.paymentConfig?.asset.code).toBe('XLM');
     expect(result.rule.executionConfig.paymentConfig?.amount).toBe('100');
+  });
+
+  it('should generate a UUID rule ID that is unique per call', () => {
+    const first = dcaTemplate(baseConfig).rule.id;
+    const second = dcaTemplate(baseConfig).rule.id;
+
+    expect(first).toMatch(new RegExp(`^${UUID_V4}$`));
+    expect(second).toMatch(new RegExp(`^${UUID_V4}$`));
+    expect(first).not.toBe(second);
   });
 });
 
@@ -141,6 +153,27 @@ describe('Grid Template', () => {
       expect(level.sellRule.status).toBe('ACTIVE');
     }
   });
+
+  it('should produce unique rule IDs for a 1,000-level grid', () => {
+    const result = gridTemplate({ ...baseConfig, gridLevels: 1000 });
+
+    const ids = result.levels.flatMap(level => [
+      level.buyRule.id,
+      level.sellRule.id,
+    ]);
+
+    expect(result.levels).toHaveLength(1000);
+    expect(new Set(ids).size).toBe(2000);
+  });
+
+  it('should build grid rule IDs from a UUID', () => {
+    const result = gridTemplate(baseConfig);
+
+    for (const level of result.levels) {
+      expect(level.buyRule.id).toMatch(new RegExp(`^grid-buy-${UUID_V4}$`));
+      expect(level.sellRule.id).toMatch(new RegExp(`^grid-sell-${UUID_V4}$`));
+    }
+  });
 });
 
 describe('Stop-Loss Template', () => {
@@ -196,5 +229,14 @@ describe('Stop-Loss Template', () => {
     const result = stopLossTemplate(baseConfig);
     expect(result.rule.executionConfig.retryAttempts).toBe(3);
     expect(result.rule.executionConfig.retryDelay).toBe(2000);
+  });
+
+  it('should generate a UUID rule ID that is unique per call', () => {
+    const first = stopLossTemplate(baseConfig).rule.id;
+    const second = stopLossTemplate(baseConfig).rule.id;
+
+    expect(first).toMatch(new RegExp(`^${UUID_V4}$`));
+    expect(second).toMatch(new RegExp(`^${UUID_V4}$`));
+    expect(first).not.toBe(second);
   });
 });
