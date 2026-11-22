@@ -106,6 +106,19 @@ impl SmartSwapContract {
         storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
     }
 
+    /// Replace only the oracle. Admin only. Like `set_config`, it affects
+    /// new conditions only: open conditions keep the oracle pinned at
+    /// creation.
+    pub fn set_oracle(env: &Env, oracle: Address) {
+        let mut config = Self::load_config(env);
+        config.admin.require_auth();
+
+        config.oracle = oracle;
+        let storage = env.storage().instance();
+        storage.set(&CONFIG, &config);
+        storage.extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
+    }
+
     pub fn get_config(env: &Env) -> Config {
         let config = Self::load_config(env);
         env.storage()
