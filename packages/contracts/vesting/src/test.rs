@@ -1267,3 +1267,460 @@ fn test_touching_a_schedule_keeps_instance_ttl_at_least_as_long() {
     assert_eq!(schedule_ttl(&t, &t.beneficiary), PERSISTENT_TTL_EXTEND);
     assert!(instance_ttl(&t) >= schedule_ttl(&t, &t.beneficiary));
 }
+
+// ===========================================================================
+// Audit probes
+// ===========================================================================
+
+/// The contract must not be usable as a funder: its own balance is the
+/// escrow of every other schedule.
+#[test]
+fn test_contract_cannot_fund_a_schedule_from_its_own_escrow() {
+    let t = Setup::new(TOTAL);
+    t.create_default(); // contract now holds TOTAL of someone else's escrow
+    let thief = Address::generate(&t.env);
+
+    t.env.set_auths(&[]);
+    let r = t
+        .client
+        .try_create_schedule(&t.id, &thief, &TOTAL, &0, &0, &1);
+    std::println!("[probe] create with funder = contract, no auth -> {:?}", r);
+    assert!(r.is_err());
+    assert_eq!(t.balances(), (0, TOTAL, 0));
+}
+
+#[test]
+fn test_error_codes_are_stable() {
+    let codes = [
+        (VestingError::AlreadyInitialized, 1),
+        (VestingError::NotInitialized, 2),
+        (VestingError::InvalidAmount, 3),
+        (VestingError::InvalidDuration, 4),
+        (VestingError::CliffExceedsDuration, 5),
+        (VestingError::TimeOverflow, 6),
+        (VestingError::ScheduleExists, 7),
+        (VestingError::ScheduleNotFound, 8),
+        (VestingError::CliffNotReached, 9),
+        (VestingError::NothingToClaim, 10),
+        (VestingError::MathOverflow, 11),
+        (VestingError::InvalidBeneficiary, 12),
+        (VestingError::AlreadyRevoked, 13),
+        (VestingError::NothingToWithdraw, 14),
+    ];
+    for (e, code) in codes {
+        assert_eq!(e as u32, code);
+        assert_eq!(err(e), soroban_sdk::Error::from_contract_error(code));
+    }
+}
+
+#[test]
+fn test_calls_before_initialize() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, VestingContract);
+    let client = VestingContractClient::new(&env, &id);
+    let someone = Address::generate(&env);
+    let not_init = err(VestingError::NotInitialized);
+    assert_eq!(client.try_claim_tokens(&someone), Err(Ok(not_init)));
+    assert_eq!(client.try_revoke_schedule(&someone), Err(Ok(not_init)));
+    assert_eq!(client.try_withdraw_refund(&someone), Err(Ok(not_init)));
+    assert_eq!(client.try_get_token(), Err(Ok(not_init)));
+    assert_eq!(client.get_schedule(&someone), None);
+    assert_eq!(client.get_claimed_amount(&someone), 0);
+    assert_eq!(client.get_refund(&someone), 0);
+}
+
+#[test]
+fn test_end_boundaries() {
+    let t = Setup::new(TOTAL);
+    t.create_default();
+    t.at(START + DURATION - 1);
+    assert_eq!(
+        t.client.get_vested_amount(&t.beneficiary),
+        TOTAL * (DURATION as i128 - 1) / DURATION as i128
+    );
+    t.at(START + DURATION);
+    assert_eq!(t.client.get_vested_amount(&t.beneficiary), TOTAL);
+    t.at(u64::MAX);
+    assert_eq!(t.client.get_vested_amount(&t.beneficiary), TOTAL);
+    assert_eq!(t.client.claim_tokens(&t.beneficiary), TOTAL);
+}
+
+#[test]
+fn test_start_boundary_with_backdated_cliff() {
+    let t = Setup::new(TOTAL);
+    // start = 0 (genesis), cliff already passed, now = 500.
+    t.client
+        .create_schedule(&t.funder, &t.beneficiary, &TOTAL, &0, &100, &DURATION);
+    assert_eq!(
+        t.client.get_vested_amount(&t.beneficiary),
+        TOTAL * 500 / DURATION as i128
+    );
+}
+
+#[test]
+fn test_revoke_rounding_conserves_every_unit() {
+    let total: i128 = 1_000_003;
+    let duration: u64 = 7;
+    let t = Setup::new(total);
+    t.client
+        .create_schedule(&t.funder, &t.beneficiary, &total, &START, &0, &duration);
+    t.at(START + 2);
+    let first = t.client.claim_tokens(&t.beneficiary); // floor(2/7)
+    t.at(START + 3);
+    let (claimable, refund) = t.client.revoke_schedule(&t.beneficiary);
+    // Beneficiary keeps floor(total * 3 / 7), funder gets the remainder.
+    assert_eq!(first + claimable, total * 3 / 7);
+    assert_eq!(first + claimable + refund, total);
+    t.client.claim_tokens(&t.beneficiary);
+    assert_eq!(t.balances(), (refund, 0, total * 3 / 7));
+}
+
+#[test]
+fn test_revoke_auth_tree_is_admin_only() {
+    let t = Setup::new(TOTAL);
+    t.create_default();
+    t.at(START + DURATION / 2);
+    t.client.revoke_schedule(&t.beneficiary);
+    assert_eq!(
+        t.env.auths(),
+        std::vec![(
+            t.admin.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    t.id.clone(),
+                    Symbol::new(&t.env, "revoke_schedule"),
+                    (t.beneficiary.clone(),).into_val(&t.env),
+                )),
+                sub_invocations: std::vec![],
+            }
+        )]
+    );
+}
+
+#[test]
+fn test_refunds_accumulate_and_withdraw_once() {
+    let t = Setup::new(3 * TOTAL);
+    let b2 = Address::generate(&t.env);
+    let b3 = Address::generate(&t.env);
+    t.create_default();
+    t.client
+        .create_schedule(&t.funder, &b2, &TOTAL, &START, &CLIFF, &DURATION);
+    t.client
+        .create_schedule(&t.funder, &b3, &TOTAL, &START, &CLIFF, &DURATION);
+    t.deauthorize(&t.funder);
+
+    t.client.revoke_schedule(&t.beneficiary); // before cliff: TOTAL refund
+    t.at(START + DURATION / 2);
+    t.client.revoke_schedule(&b2); // TOTAL / 2 refund
+    assert_eq!(t.client.get_refund(&t.funder), TOTAL + TOTAL / 2);
+
+    // Funder becomes able to receive again: the next refund is sent directly
+    // and does not touch the deferred amount.
+    t.sac.set_authorized(&t.funder, &true);
+    t.client.revoke_schedule(&b3);
+    assert_eq!(t.token.balance(&t.funder), TOTAL / 2);
+    assert_eq!(t.client.get_refund(&t.funder), TOTAL + TOTAL / 2);
+
+    assert_eq!(t.client.withdraw_refund(&t.funder), TOTAL + TOTAL / 2);
+    assert_eq!(t.token.balance(&t.funder), 2 * TOTAL);
+    assert_eq!(
+        t.client.try_withdraw_refund(&t.funder),
+        Err(Ok(err(VestingError::NothingToWithdraw)))
+    );
+    // What is left in the contract is exactly what b2 and b3 can still claim.
+    assert_eq!(t.token.balance(&t.id), TOTAL);
+}
+
+#[test]
+fn test_withdraw_refund_auth_tree_is_funder_only() {
+    let t = Setup::new(TOTAL);
+    t.create_default();
+    t.deauthorize(&t.funder);
+    t.client.revoke_schedule(&t.beneficiary);
+    t.sac.set_authorized(&t.funder, &true);
+    t.client.withdraw_refund(&t.funder);
+    assert_eq!(
+        t.env.auths(),
+        std::vec![(
+            t.funder.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    t.id.clone(),
+                    Symbol::new(&t.env, "withdraw_refund"),
+                    (t.funder.clone(),).into_val(&t.env),
+                )),
+                sub_invocations: std::vec![],
+            }
+        )]
+    );
+}
+
+#[test]
+fn test_refund_entry_ttl_is_covered_by_instance() {
+    let t = Setup::new(TOTAL);
+    t.create_default();
+    t.deauthorize(&t.funder);
+    t.client.revoke_schedule(&t.beneficiary);
+    let (refund_ttl, inst) = t.env.as_contract(&t.id, || {
+        (
+            t.env
+                .storage()
+                .persistent()
+                .get_ttl(&DataKey::Refund(t.funder.clone())),
+            t.env.storage().instance().get_ttl(),
+        )
+    });
+    assert_eq!(refund_ttl, PERSISTENT_TTL_EXTEND);
+    assert!(inst >= refund_ttl);
+}
+
+/// Token balance held by the contract always equals what beneficiaries can
+/// still claim plus deferred refunds, through a mix of every operation.
+#[test]
+fn test_escrow_balance_matches_obligations_throughout() {
+    let t = Setup::new(20 * TOTAL);
+    let funder2 = Address::generate(&t.env);
+    t.sac.mint(&funder2, &(10 * TOTAL));
+    let bens: std::vec::Vec<Address> = (0..4).map(|_| Address::generate(&t.env)).collect();
+    let funders = [&t.funder, &funder2, &t.funder, &funder2];
+
+    let check = |label: &str| {
+        let mut owed: i128 = 0;
+        for b in &bens {
+            if let Some(s) = t.client.get_schedule(b) {
+                owed += s.total_amount - s.claimed;
+            }
+        }
+        owed += t.client.get_refund(&t.funder) + t.client.get_refund(&funder2);
+        assert_eq!(t.token.balance(&t.id), owed, "after {label}");
+    };
+
+    let params = [
+        (1_000_003i128, 0u64, 0u64, 7u64),
+        (TOTAL, START, CLIFF, DURATION),
+        (999_999_937, START + 500, 0, 3_333),
+        (TOTAL, 0, 2_000, 2_000),
+    ];
+    for (i, (amount, start, cliff, duration)) in params.iter().enumerate() {
+        t.client
+            .create_schedule(funders[i], &bens[i], amount, start, cliff, duration);
+        check("create");
+    }
+    t.deauthorize(&funder2);
+
+    let steps: [(u64, u8, usize); 10] = [
+        (600, 0, 0),
+        (1_500, 0, 1),
+        (1_700, 1, 2),
+        (2_100, 0, 3),
+        (2_500, 1, 1),
+        (2_600, 0, 2),
+        (3_000, 0, 1),
+        (4_000, 1, 3),
+        (9_000, 0, 1),
+        (9_000, 0, 3),
+    ];
+    for (ts, op, who) in steps {
+        t.at(ts);
+        if op == 0 {
+            let _ = t.client.try_claim_tokens(&bens[who]);
+            check("claim");
+        } else {
+            let _ = t.client.try_revoke_schedule(&bens[who]);
+            check("revoke");
+        }
+    }
+    t.sac.set_authorized(&funder2, &true);
+    let _ = t.client.try_withdraw_refund(&funder2);
+    check("withdraw");
+}
+
+mod mock_token {
+    use super::VestingContractClient;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
+
+    const MODE: Symbol = symbol_short!("MODE");
+    const VEST: Symbol = symbol_short!("VEST");
+    const SEEN: Symbol = symbol_short!("SEEN");
+
+    /// Minimal token for failure-path tests. Mode 0: transfers succeed and
+    /// move nothing. Mode 1: transfers panic. Mode 2: transfers try to call
+    /// back into the vesting contract and record whether that worked.
+    #[contract]
+    pub struct MockToken;
+
+    #[contractimpl]
+    impl MockToken {
+        pub fn set_mode(env: Env, mode: u32, vesting: Address) {
+            env.storage().instance().set(&MODE, &mode);
+            env.storage().instance().set(&VEST, &vesting);
+        }
+
+        pub fn reentry_succeeded(env: Env) -> Option<bool> {
+            env.storage().instance().get(&SEEN)
+        }
+
+        pub fn transfer(env: Env, from: Address, _to: Address, _amount: i128) {
+            let mode: u32 = env.storage().instance().get(&MODE).unwrap_or(0);
+            if mode == 1 {
+                panic!("token refuses transfers");
+            }
+            if mode == 2 {
+                let vesting: Address = env.storage().instance().get(&VEST).unwrap();
+                let ok = VestingContractClient::new(&env, &vesting)
+                    .try_get_claimed_amount(&from)
+                    .is_ok();
+                env.storage().instance().set(&SEEN, &ok);
+            }
+        }
+    }
+}
+
+fn setup_with_mock_token() -> (
+    Env,
+    VestingContractClient<'static>,
+    mock_token::MockTokenClient<'static>,
+) {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = 500);
+    let token_id = env.register_contract(None, mock_token::MockToken);
+    let token = mock_token::MockTokenClient::new(&env, &token_id);
+    let id = env.register_contract(None, VestingContract);
+    let client = VestingContractClient::new(&env, &id);
+    client.initialize(&Address::generate(&env), &token_id);
+    token.set_mode(&0, &id);
+    (env, client, token)
+}
+
+/// Soroban rejects re-entry, so a token cannot call back into vesting in the
+/// middle of a transfer. State is written before transfers anyway.
+#[test]
+fn test_token_cannot_reenter_the_contract() {
+    let (env, client, token) = setup_with_mock_token();
+    let funder = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    token.set_mode(&2, &client.address);
+    client.create_schedule(&funder, &beneficiary, &TOTAL, &START, &0, &DURATION);
+    assert_eq!(token.reentry_succeeded(), Some(false));
+}
+
+/// A refund to a token that panics (not just a SAC error) is deferred too.
+#[test]
+fn test_panicking_token_transfer_defers_refund() {
+    let (env, client, token) = setup_with_mock_token();
+    let funder = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    client.create_schedule(&funder, &beneficiary, &TOTAL, &START, &0, &DURATION);
+
+    token.set_mode(&1, &client.address);
+    env.ledger()
+        .with_mut(|l| l.timestamp = START + DURATION / 4);
+    assert_eq!(
+        client.revoke_schedule(&beneficiary),
+        (TOTAL / 4, TOTAL * 3 / 4)
+    );
+    assert_eq!(client.get_refund(&funder), TOTAL * 3 / 4);
+    // Claims and withdrawals do revert while the token keeps failing.
+    assert!(client.try_claim_tokens(&beneficiary).is_err());
+    assert!(client.try_withdraw_refund(&funder).is_err());
+    assert_eq!(client.get_refund(&funder), TOTAL * 3 / 4);
+    assert_eq!(client.get_schedule(&beneficiary).unwrap().claimed, 0);
+
+    token.set_mode(&0, &client.address);
+    assert_eq!(client.withdraw_refund(&funder), TOTAL * 3 / 4);
+    assert_eq!(client.claim_tokens(&beneficiary), TOTAL / 4);
+}
+
+/// Worst-case calls stay far below mainnet per-transaction limits
+/// (400M instructions, 41.9 MB memory as of Nov 2026). The contract runs
+/// natively here, which understates cost; the same calls on the wasm built
+/// with Rust 1.81 measured about 3.5M instructions and 1.9 MB each.
+#[test]
+fn test_resource_usage_of_each_call() {
+    let t = Setup::new(TOTAL);
+    let measure = |label: &str, f: &dyn Fn()| {
+        t.env.budget().reset_default();
+        f();
+        let (cpu, mem) = (
+            t.env.budget().cpu_instruction_cost(),
+            t.env.budget().memory_bytes_cost(),
+        );
+        std::println!("[budget] {label:<26} cpu {cpu:>10}  mem {mem:>9}");
+        assert!(cpu < 40_000_000, "{label}: {cpu} instructions");
+        assert!(mem < 10_000_000, "{label}: {mem} bytes");
+    };
+    measure("create_schedule", &|| t.create_default());
+    t.at(START + DURATION / 2);
+    measure("claim_tokens", &|| {
+        t.client.claim_tokens(&t.beneficiary);
+    });
+    t.deauthorize(&t.funder);
+    t.at(START + 3_000);
+    measure("revoke (deferred refund)", &|| {
+        t.client.revoke_schedule(&t.beneficiary);
+    });
+    t.sac.set_authorized(&t.funder, &true);
+    measure("withdraw_refund", &|| {
+        t.client.withdraw_refund(&t.funder);
+    });
+    measure("get_vested_amount", &|| {
+        t.client.get_vested_amount(&t.beneficiary);
+    });
+}
+
+fn entry_bytes(env: &Env, key: &soroban_sdk::xdr::LedgerKey) -> usize {
+    use soroban_sdk::xdr::{Limits, WriteXdr};
+    let snap = env.to_snapshot();
+    for (k, (e, _)) in snap.ledger.ledger_entries.iter() {
+        if k.as_ref() == key {
+            return e.to_xdr(Limits::none()).unwrap().len();
+        }
+    }
+    panic!("entry not found");
+}
+
+/// The original contract kept every schedule in one instance Map, which grew
+/// ~236 bytes per schedule until writes hit the 64 KiB entry limit. Now the
+/// instance and each schedule entry stay the same size however many exist.
+#[test]
+fn test_storage_does_not_grow_with_schedule_count() {
+    use soroban_sdk::xdr::{
+        ContractDataDurability, LedgerKey, LedgerKeyContractData, ScAddress, ScVal,
+    };
+    let t = Setup::new(1_000 * TOTAL);
+    t.env.budget().reset_unlimited();
+    let contract = ScAddress::from(&t.id);
+    let instance_key = LedgerKey::ContractData(LedgerKeyContractData {
+        contract: contract.clone(),
+        key: ScVal::LedgerKeyContractInstance,
+        durability: ContractDataDurability::Persistent,
+    });
+    let schedule_key = |b: &Address| {
+        let key: soroban_sdk::Val = DataKey::Schedule(b.clone()).into_val(&t.env);
+        LedgerKey::ContractData(LedgerKeyContractData {
+            contract: contract.clone(),
+            key: soroban_sdk::TryFromVal::try_from_val(&t.env, &key).unwrap(),
+            durability: ContractDataDurability::Persistent,
+        })
+    };
+
+    t.create_default();
+    let instance_one = entry_bytes(&t.env, &instance_key);
+    let schedule_one = entry_bytes(&t.env, &schedule_key(&t.beneficiary));
+    let mut last = t.beneficiary.clone();
+    for _ in 0..20 {
+        last = Address::generate(&t.env);
+        t.client
+            .create_schedule(&t.funder, &last, &TOTAL, &START, &CLIFF, &DURATION);
+    }
+    let instance_many = entry_bytes(&t.env, &instance_key);
+    let schedule_many = entry_bytes(&t.env, &schedule_key(&last));
+    std::println!(
+        "[storage] instance {instance_one} -> {instance_many} bytes, schedule {schedule_one} -> {schedule_many} bytes after 21 schedules"
+    );
+    assert_eq!(instance_one, instance_many);
+    assert_eq!(schedule_one, schedule_many);
+    assert!(schedule_one < 1_024);
+}
