@@ -115,7 +115,7 @@ Revoke never sends tokens to the beneficiary, so a beneficiary who cannot receiv
 - Instance: `Admin`, `Token`.
 - Persistent: one `Schedule(beneficiary)` entry per beneficiary and one `Refund(funder)` entry per funder with a deferred refund.
 
-Every call that touches an entry extends its TTL to about 120 days once less than about 30 days remain (`PERSISTENT_TTL_*`, and the same values for the instance). An entry that does expire is archived, not lost, and can be restored.
+Every call that touches an entry extends its TTL to about 120 days once less than about 30 days remain (`PERSISTENT_TTL_*`). Any call that touches a schedule or refund also tops the instance up to the full window, so the contract never expires before the entries it holds. An entry that does expire is archived, not lost, and can be restored.
 
 ## Token notes
 

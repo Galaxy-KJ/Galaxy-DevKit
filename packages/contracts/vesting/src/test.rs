@@ -1213,3 +1213,57 @@ fn test_initialize_event() {
         ]
     );
 }
+
+fn instance_ttl(t: &Setup) -> u32 {
+    t.env
+        .as_contract(&t.id, || t.env.storage().instance().get_ttl())
+}
+
+fn schedule_ttl(t: &Setup, beneficiary: &Address) -> u32 {
+    t.env.as_contract(&t.id, || {
+        t.env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Schedule(beneficiary.clone()))
+    })
+}
+
+/// A schedule created while the instance still has more than the threshold
+/// left must not outlive the instance.
+#[test]
+fn test_create_extends_instance_to_cover_the_new_schedule() {
+    let t = Setup::new(TOTAL);
+    // Instance was extended to the full window by `initialize` at ledger 100.
+    // Keep the funder's token balance alive while time passes.
+    while t.env.ledger().sequence() < 100 + 1_000_000 {
+        t.env.ledger().with_mut(|l| l.sequence_number += 100_000);
+        t.token.balance(&t.funder);
+    }
+    assert!(instance_ttl(&t) > INSTANCE_TTL_THRESHOLD);
+
+    t.create_default();
+    assert_eq!(schedule_ttl(&t, &t.beneficiary), PERSISTENT_TTL_EXTEND);
+    assert!(instance_ttl(&t) >= schedule_ttl(&t, &t.beneficiary));
+}
+
+/// Same guarantee when an existing schedule is extended later by a claim or
+/// a read, after another schedule already refreshed the instance.
+#[test]
+fn test_touching_a_schedule_keeps_instance_ttl_at_least_as_long() {
+    let t = Setup::new(2 * TOTAL);
+    let other = Address::generate(&t.env);
+    t.create_default();
+    t.client
+        .create_schedule(&t.funder, &other, &TOTAL, &START, &CLIFF, &DURATION);
+
+    // Both schedules reach the threshold; only `other` is touched, which
+    // also refreshes the instance.
+    t.advance_keeping_token_alive(100 + PERSISTENT_TTL_EXTEND - PERSISTENT_TTL_THRESHOLD);
+    t.client.get_schedule(&other);
+
+    // A little later the first schedule is touched and extended.
+    t.advance_keeping_token_alive(t.env.ledger().sequence() + 1_000);
+    t.client.get_vested_amount(&t.beneficiary);
+    assert_eq!(schedule_ttl(&t, &t.beneficiary), PERSISTENT_TTL_EXTEND);
+    assert!(instance_ttl(&t) >= schedule_ttl(&t, &t.beneficiary));
+}

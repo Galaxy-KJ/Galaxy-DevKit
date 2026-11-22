@@ -23,8 +23,9 @@ use soroban_sdk::{
 // ---------------------------------------------------------------------------
 
 /// Instance TTL (admin, token, contract instance and code): extend when
-/// fewer than ~30 days remain. Same window as schedules, so the contract
-/// never expires before the schedules it holds.
+/// fewer than ~30 days remain. Calls that touch a schedule or refund also
+/// top the instance up to the full window, so the contract never expires
+/// before the entries it holds.
 pub const INSTANCE_TTL_THRESHOLD: u32 = PERSISTENT_TTL_THRESHOLD;
 /// Instance TTL: extend to ~120 days.
 pub const INSTANCE_TTL_EXTEND: u32 = PERSISTENT_TTL_EXTEND;
@@ -99,10 +100,17 @@ fn token_client(env: &Env) -> token::Client<'_> {
     token::Client::new(env, &read_token(env))
 }
 
+/// Extends a persistent entry, then brings the instance up to the full
+/// window. A persistent entry never has more than `PERSISTENT_TTL_EXTEND`
+/// ledgers left, so the instance (admin, token and code) always lives at
+/// least as long as any schedule or refund it holds.
 fn bump_persistent(env: &Env, key: &DataKey) {
     env.storage()
         .persistent()
         .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_EXTEND, PERSISTENT_TTL_EXTEND);
 }
 
 fn read_schedule(env: &Env, beneficiary: &Address) -> Option<VestingSchedule> {
