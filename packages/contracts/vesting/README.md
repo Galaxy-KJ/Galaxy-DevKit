@@ -19,8 +19,14 @@ Call once, signed by `admin`. A second call fails with `AlreadyInitialized`.
 
 Deploy and `initialize` are separate transactions, because soroban-sdk 21 has no constructor. Until `initialize` lands, anyone can call it with their own admin and token, so run the two back to back and check `get_admin` afterwards.
 
+The soroban-sdk 21 VM rejects wasm that uses the `reference-types` feature, which Rust 1.82 and later enable by default for `wasm32-unknown-unknown` (the contract fails to load with "reference-types not enabled"). Build with Rust 1.81. Current releases of some dependencies need a newer compiler, so resolve the lockfile for 1.81 first (`ethnum` does not declare its minimum Rust version, hence the manual pin):
+
 ```bash
-cargo build --target wasm32-unknown-unknown --release
+rustup toolchain install 1.81.0 --target wasm32-unknown-unknown
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+  RUSTC="$(rustup which --toolchain 1.81.0 rustc)" cargo generate-lockfile
+cargo update -p ethnum --precise 1.5.0
+cargo +1.81.0 build --target wasm32-unknown-unknown --release
 stellar contract optimize --wasm target/wasm32-unknown-unknown/release/vesting.wasm
 
 stellar contract deploy \
@@ -39,7 +45,7 @@ stellar contract invoke --id CONTRACT_ID --source admin --network testnet -- \
 | `initialize(admin, token)` | `admin` | once |
 | `create_schedule(funder, beneficiary, total_amount, start, cliff, duration)` | `funder` | transfers `total_amount` from `funder` into the contract |
 | `claim_tokens(beneficiary) -> i128` | `beneficiary` | sends everything vested and unclaimed, returns the amount |
-| `revoke_schedule(beneficiary) -> (i128, i128)` | admin | returns `(still_claimable_by_beneficiary, refunded_to_funder)` |
+| `revoke_schedule(beneficiary) -> (i128, i128)` | admin | returns `(still_claimable_by_beneficiary, refund_to_funder)`; the refund is sent, or held for `withdraw_refund` |
 | `withdraw_refund(funder) -> i128` | `funder` | only needed if a revoke refund could not be sent |
 | `get_vested_amount(beneficiary) -> i128` | | vested so far, claimed or not |
 | `get_claimed_amount(beneficiary) -> i128` | | `0` if there is no schedule |
@@ -66,7 +72,7 @@ stellar contract invoke --id CONTRACT_ID --source beneficiary --network testnet 
 - Before `start + cliff` nothing is vested. At the cliff, everything vested since `start` unlocks at once.
 - `start` can be in the past (a backdated grant) or the future.
 - The math is exact for every `i128` amount and `u64` duration: `total_amount` is split into `q * duration + r` so no intermediate product overflows.
-- Each beneficiary has one open schedule. Once a schedule is fully claimed (or revoked with nothing left to claim) a new one can be created for the same beneficiary.
+- Each beneficiary has one open schedule. Once a schedule is fully claimed (or revoked with nothing left to claim) a new one can be created for the same beneficiary. The new schedule starts with `claimed = 0`; past claims stay visible in the events.
 
 Validation on `create_schedule`: `total_amount > 0`, `duration > 0`, `cliff <= duration`, `start + duration` fits in a `u64`, and the beneficiary is not the contract itself.
 
@@ -106,7 +112,7 @@ Revoke never sends tokens to the beneficiary, so a beneficiary who cannot receiv
 | `("init")` | `(admin, token)` |
 | `("created", beneficiary)` | `(funder, total_amount, start, cliff, duration)` |
 | `("claimed", beneficiary)` | `amount` |
-| `("revoked", beneficiary)` | `(still_claimable_by_beneficiary, refunded_to_funder)` |
+| `("revoked", beneficiary)` | `(still_claimable_by_beneficiary, refund_to_funder)`, refund sent or held |
 | `("refunddue", funder)` | `amount`, when a revoke refund was deferred |
 | `("refunded", funder)` | `amount`, on `withdraw_refund` |
 

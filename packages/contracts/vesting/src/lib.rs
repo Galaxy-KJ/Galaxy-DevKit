@@ -314,12 +314,13 @@ impl VestingContract {
     /// When nothing is left to claim, the schedule is deleted right away, so
     /// a new one can be created for the same beneficiary.
     ///
-    /// Returns `(still_claimable_by_beneficiary, refunded_to_funder)`.
+    /// Returns `(still_claimable_by_beneficiary, refund_to_funder)`, where the
+    /// refund was either sent or is held for `withdraw_refund`.
     ///
     /// Errors: `NotInitialized`, `ScheduleNotFound`, `AlreadyRevoked`.
     ///
     /// Emits `("revoked", beneficiary)` with data
-    /// `(still_claimable_by_beneficiary, refunded_to_funder)`, plus
+    /// `(still_claimable_by_beneficiary, refund_to_funder)`, plus
     /// `("refunddue", funder)` with data `amount` if the refund was deferred.
     pub fn revoke_schedule(env: Env, beneficiary: Address) -> (i128, i128) {
         let admin = read_admin(&env);
