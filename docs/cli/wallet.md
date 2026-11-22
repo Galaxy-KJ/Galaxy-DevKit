@@ -467,11 +467,11 @@ galaxy wallet multisig sign <transaction-id> [options]
 - `transaction-id` - Proposal ID to sign
 
 **Options:**
-- `--network <network>` - Network (testnet/mainnet)
+- `--network <network>` - Network (testnet/mainnet); defaults to the proposal's stored network and rejects mismatches
 
 **Example:**
 ```bash
-galaxy wallet multisig sign abc123 --network testnet
+galaxy wallet multisig sign abc123 --network mainnet
 ```
 
 ---

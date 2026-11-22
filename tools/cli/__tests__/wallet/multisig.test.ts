@@ -7,6 +7,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { Account, Keypair, TransactionBuilder, Networks, Operation, Asset } from '@stellar/stellar-sdk';
+import inquirer from 'inquirer';
 import { WalletStorage } from '../../src/utils/wallet-storage';
 import { multisigCommand } from '../../src/commands/wallet/multisig';
 
@@ -32,10 +33,13 @@ describe('Multisig Wallet Tests', () => {
     const proposalsFile = path.join(testDir, '.galaxy', 'multisig-proposals.json');
     let homedirSpy: jest.SpiedFunction<typeof os.homedir>;
     let errSpy: jest.SpiedFunction<typeof console.error>;
+    let logSpy: jest.SpiedFunction<typeof console.log>;
 
     beforeEach(async () => {
         homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(testDir);
         errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        (inquirer.prompt as jest.Mock).mockReset();
         storage = new WalletStorage();
         (storage as any).walletsDir = path.join(testDir, 'wallets');
         await fs.ensureDir((storage as any).walletsDir);
@@ -46,13 +50,18 @@ describe('Multisig Wallet Tests', () => {
         await fs.remove(testDir);
         homedirSpy.mockRestore();
         errSpy.mockRestore();
+        logSpy.mockRestore();
     });
 
-    function createTransactionXdr(destination: string, amount: string): string {
+    function createTransactionXdr(
+        destination: string,
+        amount: string,
+        networkPassphrase = Networks.TESTNET
+    ): string {
         const source = Keypair.random();
         return new TransactionBuilder(new Account(source.publicKey(), '100'), {
             fee: '100',
-            networkPassphrase: Networks.TESTNET
+            networkPassphrase
         })
             .addOperation(Operation.payment({
                 destination,
@@ -197,6 +206,43 @@ describe('Multisig Wallet Tests', () => {
 
             expect(errSpy.mock.calls.flat().join('\n')).toMatch(/Invalid transaction XDR/);
             expect(await fs.pathExists(proposalsFile)).toBe(false);
+        });
+
+        it('signs a mainnet proposal using its stored network by default', async () => {
+            const signer = Keypair.random();
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1', Networks.PUBLIC);
+            await fs.outputJson(path.join(testDir, '.galaxy', 'wallets', 'alice.json'), {
+                publicKey: signer.publicKey(),
+                secretKey: signer.secret()
+            });
+            (inquirer.prompt as jest.Mock).mockResolvedValue({ walletName: 'alice' });
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr, '--network', 'mainnet']);
+            const proposalId = Object.keys(await fs.readJson(proposalsFile))[0];
+            expect(logSpy.mock.calls.flat().join('\n')).toContain(
+                `galaxy wallet multisig sign ${proposalId} --network mainnet`
+            );
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'sign', proposalId]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(proposals[proposalId].network).toBe('mainnet');
+            expect(proposals[proposalId].signatures).toHaveLength(1);
+            expect(errSpy).not.toHaveBeenCalled();
+            expect(TransactionBuilder.fromXDR(proposals[proposalId].transactionXdr, Networks.PUBLIC).signatures)
+                .toHaveLength(1);
+        });
+
+        it('rejects signing a proposal with an explicitly mismatched network', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1', Networks.PUBLIC);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr, '--network', 'mainnet']);
+            const proposalId = Object.keys(await fs.readJson(proposalsFile))[0];
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'sign', proposalId, '--network', 'testnet']);
+
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/Network mismatch/);
+            expect(inquirer.prompt).not.toHaveBeenCalled();
+            expect((await fs.readJson(proposalsFile))[proposalId].signatures).toHaveLength(0);
         });
 
         it('should create a transaction proposal', async () => {
