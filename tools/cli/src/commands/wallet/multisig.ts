@@ -158,6 +158,12 @@ multisigCommand.command('propose')
             if (await fs.pathExists(proposalsPath)) {
                 proposals = await fs.readJson(proposalsPath);
             }
+            const existingProposal = Object.values(proposals).find(
+                (entry: any) => entry?.transactionXdr === xdr
+            );
+            if (existingProposal) {
+                throw new Error('A proposal for this transaction XDR already exists.');
+            }
             if (Object.prototype.hasOwnProperty.call(proposals, id)) {
                 throw new Error(`Proposal ${id} already exists.`);
             }

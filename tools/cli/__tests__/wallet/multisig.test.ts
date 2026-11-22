@@ -189,6 +189,22 @@ describe('Multisig Wallet Tests', () => {
             expect(errSpy.mock.calls.flat().join('\n')).toMatch(/already exists/);
         });
 
+        it('rejects an XDR already stored under a legacy proposal ID without changing it', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+            const legacyProposal = {
+                id: 'legacy-id',
+                transactionXdr: xdr,
+                signatures: [{ signerPublicKey: 'GLEGACY', signature: 'legacy-signature' }]
+            };
+            await fs.outputJson(proposalsFile, { 'legacy-id': legacyProposal });
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(proposals).toEqual({ 'legacy-id': legacyProposal });
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/already exists/);
+        });
+
         it('assigns distinct IDs to different transaction XDRs', async () => {
             const firstXdr = createTransactionXdr(Keypair.random().publicKey(), '1');
             const secondXdr = createTransactionXdr(Keypair.random().publicKey(), '2');
