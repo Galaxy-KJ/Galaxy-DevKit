@@ -125,10 +125,19 @@ multisigCommand.command('propose')
     .description('Propose a transaction (creates a proposal ID)')
     .argument('<xdr>', 'Transaction XDR')
     .option('--description <text>', 'Description of proposal')
+    .option('--network <network>', 'Network (testnet/mainnet)', 'testnet')
     .action(async (xdr: string, options: any) => {
         const spinner = ora('Creating proposal...').start();
         try {
-            const id = Math.random().toString(36).substring(7);
+            const networkPassphrase = options.network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
+            let transaction;
+            try {
+                transaction = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+            } catch {
+                throw new Error('Invalid transaction XDR. Provide a valid Stellar transaction XDR.');
+            }
+
+            const id = transaction.hash().toString('hex');
             const proposal = {
                 id,
                 transactionXdr: xdr,
@@ -141,6 +150,9 @@ multisigCommand.command('propose')
             let proposals: any = {};
             if (await fs.pathExists(proposalsPath)) {
                 proposals = await fs.readJson(proposalsPath);
+            }
+            if (Object.prototype.hasOwnProperty.call(proposals, id)) {
+                throw new Error(`Proposal ${id} already exists.`);
             }
             proposals[id] = proposal;
             await fs.writeJson(proposalsPath, proposals, { spaces: 2 });

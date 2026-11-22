@@ -6,8 +6,9 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { Keypair, TransactionBuilder, Networks, Operation, Asset } from '@stellar/stellar-sdk';
+import { Account, Keypair, TransactionBuilder, Networks, Operation, Asset } from '@stellar/stellar-sdk';
 import { WalletStorage } from '../../src/utils/wallet-storage';
+import { multisigCommand } from '../../src/commands/wallet/multisig';
 
 // Mock dependencies
 jest.mock('ora', () => {
@@ -28,9 +29,13 @@ jest.mock('inquirer', () => ({
 describe('Multisig Wallet Tests', () => {
     let storage: WalletStorage;
     const testDir = path.join(os.tmpdir(), '.galaxy-test-multisig');
-    const proposalsFile = path.join(testDir, 'multisig-proposals.json');
+    const proposalsFile = path.join(testDir, '.galaxy', 'multisig-proposals.json');
+    let homedirSpy: jest.SpiedFunction<typeof os.homedir>;
+    let errSpy: jest.SpiedFunction<typeof console.error>;
 
     beforeEach(async () => {
+        homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(testDir);
+        errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         storage = new WalletStorage();
         (storage as any).walletsDir = path.join(testDir, 'wallets');
         await fs.ensureDir((storage as any).walletsDir);
@@ -39,7 +44,25 @@ describe('Multisig Wallet Tests', () => {
 
     afterEach(async () => {
         await fs.remove(testDir);
+        homedirSpy.mockRestore();
+        errSpy.mockRestore();
     });
+
+    function createTransactionXdr(destination: string, amount: string): string {
+        const source = Keypair.random();
+        return new TransactionBuilder(new Account(source.publicKey(), '100'), {
+            fee: '100',
+            networkPassphrase: Networks.TESTNET
+        })
+            .addOperation(Operation.payment({
+                destination,
+                asset: Asset.native(),
+                amount
+            }))
+            .setTimeout(30)
+            .build()
+            .toXDR();
+    }
 
     describe('Multisig Wallet Creation', () => {
         it('should create a multisig wallet configuration', async () => {
@@ -146,6 +169,36 @@ describe('Multisig Wallet Tests', () => {
     });
 
     describe('Transaction Proposals', () => {
+        it('rejects proposing the same transaction XDR twice', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(Object.keys(proposals)).toHaveLength(1);
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/already exists/);
+        });
+
+        it('assigns distinct IDs to different transaction XDRs', async () => {
+            const firstXdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+            const secondXdr = createTransactionXdr(Keypair.random().publicKey(), '2');
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', firstXdr]);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', secondXdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(Object.keys(proposals)).toHaveLength(2);
+            expect(Object.keys(proposals)[0]).not.toBe(Object.keys(proposals)[1]);
+        });
+
+        it('rejects invalid transaction XDR with a clear error', async () => {
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', 'not-valid-xdr']);
+
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/Invalid transaction XDR/);
+            expect(await fs.pathExists(proposalsFile)).toBe(false);
+        });
+
         it('should create a transaction proposal', async () => {
             const proposal = {
                 id: 'proposal-1',
