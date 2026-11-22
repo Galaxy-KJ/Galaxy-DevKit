@@ -19,12 +19,13 @@ Call once, signed by `admin`. A second call fails with `AlreadyInitialized`.
 
 Deploy and `initialize` are separate transactions, because soroban-sdk 21 has no constructor. Until `initialize` lands, anyone can call it with their own admin and token, so run the two back to back and check `get_admin` afterwards.
 
-The soroban-sdk 21 VM rejects wasm that uses the `reference-types` feature, which Rust 1.82 and later enable by default for `wasm32-unknown-unknown` (the contract fails to load with "reference-types not enabled"). Build with Rust 1.81. Current releases of some dependencies need a newer compiler, so resolve the lockfile for 1.81 first (`ethnum` does not declare its minimum Rust version, hence the manual pin):
+The soroban-sdk 21 VM rejects wasm that uses the `reference-types` feature, which Rust 1.82 and later enable by default for `wasm32-unknown-unknown` (the contract fails to load with "reference-types not enabled"). Build with Rust 1.81. Current releases of some dependencies need a newer compiler, so resolve the lockfile for 1.81 first (`ethnum` does not declare its minimum Rust version, hence the manual pin). The lockfile step needs Cargo 1.84 or later, since older Cargo ignores `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS`, so it runs on `stable`:
 
 ```bash
+rustup toolchain install stable
 rustup toolchain install 1.81.0 --target wasm32-unknown-unknown
 CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
-  RUSTC="$(rustup which --toolchain 1.81.0 rustc)" cargo generate-lockfile
+  RUSTC="$(rustup which --toolchain 1.81.0 rustc)" cargo +stable generate-lockfile
 cargo update -p ethnum --precise 1.5.0
 cargo +1.81.0 build --target wasm32-unknown-unknown --release
 stellar contract optimize --wasm target/wasm32-unknown-unknown/release/vesting.wasm
