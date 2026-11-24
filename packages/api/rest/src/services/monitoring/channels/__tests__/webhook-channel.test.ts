@@ -2,6 +2,22 @@ import { createHmac } from 'crypto';
 import { WebhookChannel } from '../webhook-channel';
 import { AlertEventPayload, MonitoringAlert } from '../../../../types/monitoring-types';
 
+// Mock the SSRF guard so webhook-channel tests are not affected by DNS.
+// Individual SSRF scenarios are tested in ssrf-guard.test.ts.
+jest.mock('../../../../utils/ssrf-guard', () => ({
+  assertWebhookUrlSafe: jest.fn().mockResolvedValue(undefined),
+  SsrfBlockedError: class SsrfBlockedError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'SsrfBlockedError';
+    }
+  },
+}));
+
+import { assertWebhookUrlSafe, SsrfBlockedError } from '../../../../utils/ssrf-guard';
+
+const mockAssertWebhookUrlSafe = assertWebhookUrlSafe as jest.MockedFunction<typeof assertWebhookUrlSafe>;
+
 function makeAlert(): MonitoringAlert {
   return {
     id: 'alert-1',
@@ -44,6 +60,14 @@ function makePayload(): AlertEventPayload {
 }
 
 describe('WebhookChannel', () => {
+  beforeEach(() => {
+    mockAssertWebhookUrlSafe.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    mockAssertWebhookUrlSafe.mockReset();
+  });
+
   it('POSTs the payload with a valid HMAC signature header', async () => {
     const fetchMock = jest.fn().mockResolvedValue(new Response('ok', { status: 200 }));
     const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
@@ -127,5 +151,75 @@ describe('WebhookChannel', () => {
     expect(result.success).toBe(false);
     expect(result.retryable).toBe(true);
     expect(result.error).toContain('timeout');
+  });
+
+  // ── SSRF guard integration ──────────────────────────────────────────────────
+
+  it('returns a terminal failure when the SSRF guard rejects the URL', async () => {
+    mockAssertWebhookUrlSafe.mockRejectedValueOnce(
+      new SsrfBlockedError('Webhook URL hostname "internal.corp" resolves to a private/reserved address (10.0.0.1) and is not allowed')
+    );
+    const fetchMock = jest.fn();
+    const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    const result = await channel.send(makeAlert(), makePayload());
+
+    expect(result.success).toBe(false);
+    expect(result.retryable).toBe(false);
+    expect(result.error).toContain('private/reserved address');
+    // fetch must not have been called after the SSRF check failed
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('calls assertWebhookUrlSafe with the configured URL before each send', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    await channel.send(makeAlert(), makePayload());
+
+    expect(mockAssertWebhookUrlSafe).toHaveBeenCalledWith('https://hook.example.com/alerts');
+  });
+
+  // ── Redirect handling ───────────────────────────────────────────────────────
+
+  it('treats a 301 redirect as a terminal SSRF-prevention failure (redirect:manual)', async () => {
+    const redirectResponse = new Response(null, {
+      status: 301,
+      headers: { Location: 'http://169.254.169.254/latest/meta-data' },
+    });
+    const fetchMock = jest.fn().mockResolvedValue(redirectResponse);
+    const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    const result = await channel.send(makeAlert(), makePayload());
+
+    expect(result.success).toBe(false);
+    expect(result.retryable).toBe(false);
+    expect(result.statusCode).toBe(301);
+    expect(result.error).toMatch(/redirect/i);
+  });
+
+  it('treats a 302 redirect as a terminal failure (redirect:manual)', async () => {
+    const redirectResponse = new Response(null, {
+      status: 302,
+      headers: { Location: 'http://10.0.0.1/secret' },
+    });
+    const fetchMock = jest.fn().mockResolvedValue(redirectResponse);
+    const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    const result = await channel.send(makeAlert(), makePayload());
+
+    expect(result.success).toBe(false);
+    expect(result.retryable).toBe(false);
+    expect(result.statusCode).toBe(302);
+  });
+
+  it('sends the request with redirect:manual so fetch never auto-follows redirects', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    const channel = new WebhookChannel({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    await channel.send(makeAlert(), makePayload());
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.redirect).toBe('manual');
   });
 });
