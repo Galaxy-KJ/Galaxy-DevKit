@@ -5,6 +5,7 @@
  * and failures by listening to Supabase real-time changes.
  */
 
+import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ExtendedSocket, TransactionPendingEvent, TransactionConfirmedEvent, TransactionFailedEvent } from '../types/websocket-types';
@@ -349,7 +350,7 @@ export class TransactionHandler {
 
       if (eventType === 'INSERT' || transaction.status === 'pending') {
         event = {
-          id: `transaction-pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `transaction-pending-${randomUUID()}`,
           timestamp: Date.now(),
           source: 'galaxy-websocket',
           type: 'transaction:pending',
@@ -366,7 +367,7 @@ export class TransactionHandler {
         };
       } else if (transaction.status === 'confirmed') {
         event = {
-          id: `transaction-confirmed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `transaction-confirmed-${randomUUID()}`,
           timestamp: Date.now(),
           source: 'galaxy-websocket',
           type: 'transaction:confirmed',
@@ -381,7 +382,7 @@ export class TransactionHandler {
         };
       } else if (transaction.status === 'failed') {
         event = {
-          id: `transaction-failed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `transaction-failed-${randomUUID()}`,
           timestamp: Date.now(),
           source: 'galaxy-websocket',
           type: 'transaction:failed',

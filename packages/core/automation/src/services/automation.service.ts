@@ -117,6 +117,11 @@ export class AutomationService extends EventEmitter {
         throw new Error(`Invalid rule: ${validation.error}`);
       }
 
+      // Never overwrite an existing rule silently
+      if (this.rules.has(rule.id)) {
+        throw new Error(`Rule already registered: ${rule.id}`);
+      }
+
       // Store rule
       this.rules.set(rule.id, rule);
 
