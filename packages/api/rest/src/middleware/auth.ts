@@ -13,7 +13,7 @@ import {
   PermissionError,
   AuthErrorCode,
 } from '../types/auth-types';
-import { extractApiKey } from './api-key';
+import { extractApiKey, rejectQueryApiKey } from './api-key';
 import { AuditLogger } from '../services/audit-logger';
 import { logger } from '@galaxy-kj/api-logger';
 import { requestLogger } from './request-context';
@@ -58,6 +58,12 @@ export function authenticate() {
     next: NextFunction
   ): Promise<void> => {
     try {
+      // A key in the ?api_key= query string is rejected outright (400),
+      // it must never fall through to header auth.
+      if (rejectQueryApiKey(req, res)) {
+        return;
+      }
+
       // First, try API key authentication
       const apiKey = extractApiKey(req);
       if (apiKey) {
@@ -278,6 +284,12 @@ export function optionalAuthenticate() {
     next: NextFunction
   ): Promise<void> => {
     try {
+      // A key in the ?api_key= query string is rejected outright (400),
+      // it must never fall through to header auth.
+      if (rejectQueryApiKey(req, res)) {
+        return;
+      }
+
       // Try API key first
       const apiKey = extractApiKey(req);
       if (apiKey) {

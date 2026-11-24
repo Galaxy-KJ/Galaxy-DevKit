@@ -21,6 +21,8 @@ Authorization: Bearer <supabase-jwt>
 
 Read-only DeFi endpoints (quotes, positions, analytics) are unauthenticated.
 
+API keys must be sent in the `x-api-key` header (or as `Authorization: Bearer <key>`). API keys in the `?api_key=` query string are rejected with `400`: credentials in URLs leak into browser history, proxy/CDN/load-balancer logs and `Referer` headers.
+
 ---
 
 ## DeFi — Soroswap

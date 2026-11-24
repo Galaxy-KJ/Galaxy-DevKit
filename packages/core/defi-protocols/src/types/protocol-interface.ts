@@ -252,6 +252,15 @@ export interface IDefiProtocol {
   getLiquidityPool?(tokenA: Asset, tokenB: Asset): Promise<LiquidityPool>;
 
   /**
+   * Read the two tokens held by a pair contract, given the pair address.
+   * Used to resolve the tokens of a pool when the caller only knows the
+   * contract address (no assumption about which tokens the pool holds).
+   * @param {string} pairAddress - Pair contract address
+   * @returns {Promise<{ token0: Asset; token1: Asset }>} The pair's tokens
+   */
+  getPairTokens?(pairAddress: string): Promise<{ token0: Asset; token1: Asset }>;
+
+  /**
    * Get analytics for a specific liquidity pool
    * @param {string} poolAddress - Pair/pool contract address
    * @returns {Promise<PoolAnalytics>}
