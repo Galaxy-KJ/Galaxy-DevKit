@@ -27,6 +27,12 @@ async function getProposalsPath(): Promise<string> {
     return path.join(dir, PROPOSALS_FILE);
 }
 
+function getNetworkPassphrase(network: string): string {
+    if (network === 'mainnet') return Networks.PUBLIC;
+    if (network === 'testnet') return Networks.TESTNET;
+    throw new Error(`Unsupported network "${network}". Use testnet or mainnet.`);
+}
+
 export const multisigCommand = new Command('multisig')
     .description('Multi-signature wallet setup and management');
 
@@ -125,13 +131,23 @@ multisigCommand.command('propose')
     .description('Propose a transaction (creates a proposal ID)')
     .argument('<xdr>', 'Transaction XDR')
     .option('--description <text>', 'Description of proposal')
+    .option('--network <network>', 'Network (testnet/mainnet)', 'testnet')
     .action(async (xdr: string, options: any) => {
         const spinner = ora('Creating proposal...').start();
         try {
-            const id = Math.random().toString(36).substring(7);
+            const networkPassphrase = getNetworkPassphrase(options.network);
+            let transaction;
+            try {
+                transaction = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+            } catch {
+                throw new Error('Invalid transaction XDR. Provide a valid Stellar transaction XDR.');
+            }
+
+            const id = transaction.hash().toString('hex');
             const proposal = {
                 id,
                 transactionXdr: xdr,
+                network: options.network,
                 description: options.description || 'No description',
                 createdAt: new Date(),
                 signatures: [] as any[]
@@ -142,11 +158,20 @@ multisigCommand.command('propose')
             if (await fs.pathExists(proposalsPath)) {
                 proposals = await fs.readJson(proposalsPath);
             }
+            const existingProposal = Object.values(proposals).find(
+                (entry: any) => entry?.transactionXdr === xdr
+            );
+            if (existingProposal) {
+                throw new Error('A proposal for this transaction XDR already exists.');
+            }
+            if (Object.prototype.hasOwnProperty.call(proposals, id)) {
+                throw new Error(`Proposal ${id} already exists.`);
+            }
             proposals[id] = proposal;
             await fs.writeJson(proposalsPath, proposals, { spaces: 2 });
 
             spinner.succeed(chalk.green(`Proposal created! ID: ${id}`));
-            console.log(chalk.blue(`Use 'galaxy wallet multisig sign ${id}' to sign this proposal.`));
+            console.log(chalk.blue(`Use 'galaxy wallet multisig sign ${id} --network ${options.network}' to sign this proposal.`));
         } catch (e) {
             spinner.fail('Failed to create proposal');
             if (e instanceof Error) console.error(chalk.red(e.message));
@@ -156,7 +181,7 @@ multisigCommand.command('propose')
 multisigCommand.command('sign')
     .description('Sign proposed transaction')
     .argument('<transaction-id>', 'Transaction/Proposal ID to sign')
-    .option('--network <network>', 'Network (testnet/mainnet)', 'testnet')
+    .option('--network <network>', 'Network (testnet/mainnet; defaults to the proposal network)')
     .action(async (transactionId: string, options: any) => {
         const spinner = ora('Signing transaction...').start();
 
@@ -174,6 +199,12 @@ multisigCommand.command('sign')
                 spinner.fail(`Proposal ${transactionId} not found`);
                 return;
             }
+
+            const proposalNetwork = proposal.network ?? 'testnet';
+            if (options.network !== undefined && options.network !== proposalNetwork) {
+                throw new Error(`Network mismatch: proposal uses ${proposalNetwork}, but ${options.network} was requested.`);
+            }
+            const networkPassphrase = getNetworkPassphrase(options.network ?? proposalNetwork);
 
             // 2. Select wallet to sign with
             spinner.stop();
@@ -199,7 +230,6 @@ multisigCommand.command('sign')
 
             // 3. Sign
             const kp = Keypair.fromSecret(wallet.secretKey);
-            const networkPassphrase = options.network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
             const tx = TransactionBuilder.fromXDR(proposal.transactionXdr, networkPassphrase);
 
             tx.sign(kp);

@@ -443,11 +443,15 @@ galaxy wallet multisig propose <xdr> [options]
 
 **Options:**
 - `--description <text>` - Description of the proposal
+- `--network <network>` - Network used to hash the transaction (testnet/mainnet, default: testnet)
+
+The proposal ID is the transaction hash for the selected network. The XDR must be a valid Stellar transaction, and a transaction that already has a proposal cannot be proposed again.
 
 **Example:**
 ```bash
 galaxy wallet multisig propose "AAAAAgAAAAD..." \
-  --description "Payment to supplier"
+  --description "Payment to supplier" \
+  --network testnet
 ```
 
 #### Sign Transaction
@@ -463,11 +467,11 @@ galaxy wallet multisig sign <transaction-id> [options]
 - `transaction-id` - Proposal ID to sign
 
 **Options:**
-- `--network <network>` - Network (testnet/mainnet)
+- `--network <network>` - Network (testnet/mainnet); defaults to the proposal's stored network and rejects mismatches
 
 **Example:**
 ```bash
-galaxy wallet multisig sign abc123 --network testnet
+galaxy wallet multisig sign abc123 --network mainnet
 ```
 
 ---

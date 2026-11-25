@@ -6,8 +6,10 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { Keypair, TransactionBuilder, Networks, Operation, Asset } from '@stellar/stellar-sdk';
+import { Account, Keypair, TransactionBuilder, Networks, Operation, Asset } from '@stellar/stellar-sdk';
+import inquirer from 'inquirer';
 import { WalletStorage } from '../../src/utils/wallet-storage';
+import { multisigCommand } from '../../src/commands/wallet/multisig';
 
 // Mock dependencies
 jest.mock('ora', () => {
@@ -28,9 +30,16 @@ jest.mock('inquirer', () => ({
 describe('Multisig Wallet Tests', () => {
     let storage: WalletStorage;
     const testDir = path.join(os.tmpdir(), '.galaxy-test-multisig');
-    const proposalsFile = path.join(testDir, 'multisig-proposals.json');
+    const proposalsFile = path.join(testDir, '.galaxy', 'multisig-proposals.json');
+    let homedirSpy: jest.SpiedFunction<typeof os.homedir>;
+    let errSpy: jest.SpiedFunction<typeof console.error>;
+    let logSpy: jest.SpiedFunction<typeof console.log>;
 
     beforeEach(async () => {
+        homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(testDir);
+        errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        (inquirer.prompt as jest.Mock).mockReset();
         storage = new WalletStorage();
         (storage as any).walletsDir = path.join(testDir, 'wallets');
         await fs.ensureDir((storage as any).walletsDir);
@@ -39,7 +48,30 @@ describe('Multisig Wallet Tests', () => {
 
     afterEach(async () => {
         await fs.remove(testDir);
+        homedirSpy.mockRestore();
+        errSpy.mockRestore();
+        logSpy.mockRestore();
     });
+
+    function createTransactionXdr(
+        destination: string,
+        amount: string,
+        networkPassphrase = Networks.TESTNET
+    ): string {
+        const source = Keypair.random();
+        return new TransactionBuilder(new Account(source.publicKey(), '100'), {
+            fee: '100',
+            networkPassphrase
+        })
+            .addOperation(Operation.payment({
+                destination,
+                asset: Asset.native(),
+                amount
+            }))
+            .setTimeout(30)
+            .build()
+            .toXDR();
+    }
 
     describe('Multisig Wallet Creation', () => {
         it('should create a multisig wallet configuration', async () => {
@@ -146,6 +178,89 @@ describe('Multisig Wallet Tests', () => {
     });
 
     describe('Transaction Proposals', () => {
+        it('rejects proposing the same transaction XDR twice', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(Object.keys(proposals)).toHaveLength(1);
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/already exists/);
+        });
+
+        it('rejects an XDR already stored under a legacy proposal ID without changing it', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+            const legacyProposal = {
+                id: 'legacy-id',
+                transactionXdr: xdr,
+                signatures: [{ signerPublicKey: 'GLEGACY', signature: 'legacy-signature' }]
+            };
+            await fs.outputJson(proposalsFile, { 'legacy-id': legacyProposal });
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(proposals).toEqual({ 'legacy-id': legacyProposal });
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/already exists/);
+        });
+
+        it('assigns distinct IDs to different transaction XDRs', async () => {
+            const firstXdr = createTransactionXdr(Keypair.random().publicKey(), '1');
+            const secondXdr = createTransactionXdr(Keypair.random().publicKey(), '2');
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', firstXdr]);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', secondXdr]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(Object.keys(proposals)).toHaveLength(2);
+            expect(Object.keys(proposals)[0]).not.toBe(Object.keys(proposals)[1]);
+        });
+
+        it('rejects invalid transaction XDR with a clear error', async () => {
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', 'not-valid-xdr']);
+
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/Invalid transaction XDR/);
+            expect(await fs.pathExists(proposalsFile)).toBe(false);
+        });
+
+        it('signs a mainnet proposal using its stored network by default', async () => {
+            const signer = Keypair.random();
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1', Networks.PUBLIC);
+            await fs.outputJson(path.join(testDir, '.galaxy', 'wallets', 'alice.json'), {
+                publicKey: signer.publicKey(),
+                secretKey: signer.secret()
+            });
+            (inquirer.prompt as jest.Mock).mockResolvedValue({ walletName: 'alice' });
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr, '--network', 'mainnet']);
+            const proposalId = Object.keys(await fs.readJson(proposalsFile))[0];
+            expect(logSpy.mock.calls.flat().join('\n')).toContain(
+                `galaxy wallet multisig sign ${proposalId} --network mainnet`
+            );
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'sign', proposalId]);
+
+            const proposals = await fs.readJson(proposalsFile);
+            expect(proposals[proposalId].network).toBe('mainnet');
+            expect(proposals[proposalId].signatures).toHaveLength(1);
+            expect(errSpy).not.toHaveBeenCalled();
+            expect(TransactionBuilder.fromXDR(proposals[proposalId].transactionXdr, Networks.PUBLIC).signatures)
+                .toHaveLength(1);
+        });
+
+        it('rejects signing a proposal with an explicitly mismatched network', async () => {
+            const xdr = createTransactionXdr(Keypair.random().publicKey(), '1', Networks.PUBLIC);
+            await multisigCommand.parseAsync(['node', 'multisig', 'propose', xdr, '--network', 'mainnet']);
+            const proposalId = Object.keys(await fs.readJson(proposalsFile))[0];
+
+            await multisigCommand.parseAsync(['node', 'multisig', 'sign', proposalId, '--network', 'testnet']);
+
+            expect(errSpy.mock.calls.flat().join('\n')).toMatch(/Network mismatch/);
+            expect(inquirer.prompt).not.toHaveBeenCalled();
+            expect((await fs.readJson(proposalsFile))[proposalId].signatures).toHaveLength(0);
+        });
+
         it('should create a transaction proposal', async () => {
             const proposal = {
                 id: 'proposal-1',
