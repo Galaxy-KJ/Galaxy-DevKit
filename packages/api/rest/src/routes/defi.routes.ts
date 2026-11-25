@@ -6,7 +6,13 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
-import { ProtocolFactory, ProtocolConfig, Asset, DexAggregatorService } from '@galaxy-kj/core-defi-protocols';
+import { ProtocolFactory, ProtocolConfig, Asset, DexAggregatorService, IDefiProtocol } from '@galaxy-kj/core-defi-protocols';
+import { validate } from '../middleware/validate';
+import {
+    addLiquiditySchema, blendOperationSchema, blendPositionParamsSchema,
+    defiAggregatorQuerySchema, defiQuoteQuerySchema, poolAnalyticsQuerySchema,
+    removeLiquiditySchema, swapSchema,
+} from '../validators/defi-validators';
 import { AuditLogger } from '../services/audit-logger';
 
 const auditLogger = new AuditLogger();
@@ -81,6 +87,24 @@ function parseAsset(assetStr: string): Asset {
     };
 }
 
+const initializedProtocols = new Map<string, Promise<IDefiProtocol>>();
+
+function getInitializedProtocol(protocolId: string, config: ProtocolConfig = { ...defaultConfig, protocolId }): Promise<IDefiProtocol> {
+    const key = `${protocolId}:${config.network.network}`;
+    const cached = initializedProtocols.get(key);
+    if (cached) return cached;
+
+    const initialization = Promise.resolve().then(() => {
+        const protocol = ProtocolFactory.getInstance().createProtocol({ ...config, protocolId });
+        return protocol.initialize().then(() => protocol);
+    }).catch((error) => {
+        initializedProtocols.delete(key);
+        throw error;
+    });
+    initializedProtocols.set(key, initialization);
+    return initialization;
+}
+
 function parseSplits(value: Request['query']['splits']): number[] | null {
     if (!value) {
         return null;
@@ -109,7 +133,7 @@ export function setupDefiRoutes(): express.Router {
      * @route GET /api/v1/defi/swap/quote
      * @description Get a swap quote from Soroswap
      */
-    router.get('/swap/quote', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.get('/swap/quote', validate(defiQuoteQuerySchema, 'query'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { assetIn, assetOut, amountIn } = req.query;
 
@@ -124,9 +148,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('soroswap') as any;
 
             const tokenIn = parseAsset(assetIn as string);
             const tokenOut = parseAsset(assetOut as string);
@@ -146,7 +168,7 @@ export function setupDefiRoutes(): express.Router {
      * @route GET /api/v1/defi/aggregator/quote
      * @description Get the best aggregated quote across Soroswap and SDEX
      */
-    router.get('/aggregator/quote', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.get('/aggregator/quote', validate(defiAggregatorQuerySchema, 'query'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { assetIn, assetOut, amountIn, splits } = req.query;
 
@@ -163,7 +185,9 @@ export function setupDefiRoutes(): express.Router {
 
             const tokenIn = parseAsset(assetIn as string);
             const tokenOut = parseAsset(assetOut as string);
-            const aggregator = new DexAggregatorService({ ...defaultConfig, protocolId: 'soroswap' });
+            const aggregator = new DexAggregatorService({ ...defaultConfig, protocolId: 'soroswap' }, {
+                getProtocol: (config: ProtocolConfig) => getInitializedProtocol(config.protocolId, config),
+            });
             const parsedSplits = parseSplits(splits);
             const quote = parsedSplits
                 ? await aggregator.getSplitQuote(tokenIn, tokenOut, amountIn as string, parsedSplits)
@@ -192,7 +216,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/swap
      * @description Create a swap transaction on Soroswap
      */
-    router.post('/swap', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/swap', authenticate(), validate(swapSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { assetIn, assetOut, amountIn, minAmountOut, signerPublicKey } = req.body;
 
@@ -207,9 +231,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('soroswap') as any;
 
             const tokenIn = parseAsset(assetIn);
             const tokenOut = parseAsset(assetOut);
@@ -240,7 +262,7 @@ export function setupDefiRoutes(): express.Router {
      * @route GET /api/v1/defi/blend/position/:publicKey
      * @description Get a user's Blend position
      */
-    router.get('/blend/position/:publicKey', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.get('/blend/position/:publicKey', validate(blendPositionParamsSchema, 'params'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { publicKey } = req.params;
 
@@ -255,9 +277,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('blend');
 
             const position = await protocol.getPosition(publicKey);
 
@@ -286,7 +306,7 @@ export function setupDefiRoutes(): express.Router {
     /**
      * @route POST /api/v1/defi/blend/supply
      */
-    router.post('/blend/supply', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/blend/supply', authenticate(), validate(blendOperationSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { asset, amount, signerPublicKey } = req.body;
 
@@ -301,9 +321,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('blend');
 
             const tokenAsset = parseAsset(asset);
 
@@ -327,7 +345,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/blend/withdraw
      * @description Withdraw an asset from Blend
      */
-    router.post('/blend/withdraw', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/blend/withdraw', authenticate(), validate(blendOperationSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { asset, amount, signerPublicKey } = req.body;
 
@@ -342,9 +360,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('blend');
 
             const tokenAsset = parseAsset(asset);
 
@@ -367,7 +383,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/blend/borrow
      * @description Borrow an asset from Blend
      */
-    router.post('/blend/borrow', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/blend/borrow', authenticate(), validate(blendOperationSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { asset, amount, signerPublicKey } = req.body;
 
@@ -382,9 +398,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('blend');
 
             const tokenAsset = parseAsset(asset);
 
@@ -407,7 +421,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/blend/repay
      * @description Repay a borrowed asset to Blend
      */
-    router.post('/blend/repay', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/blend/repay', authenticate(), validate(blendOperationSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { asset, amount, signerPublicKey } = req.body;
 
@@ -422,9 +436,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'blend' });
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('blend');
 
             const tokenAsset = parseAsset(asset);
 
@@ -447,7 +459,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/liquidity/add
      * @description Add liquidity to a Soroswap pool and return unsigned XDR
      */
-    router.post('/liquidity/add', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/liquidity/add', authenticate(), validate(addLiquiditySchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { assetA, assetB, amountA, amountB, signerPublicKey } = req.body;
 
@@ -462,9 +474,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('soroswap') as any;
 
             const tokenA = parseAsset(assetA);
             const tokenB = parseAsset(assetB);
@@ -494,7 +504,7 @@ export function setupDefiRoutes(): express.Router {
      * @route POST /api/v1/defi/liquidity/remove
      * @description Remove liquidity from a Soroswap pool and return unsigned XDR
      */
-    router.post('/liquidity/remove', authenticate(), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.post('/liquidity/remove', authenticate(), validate(removeLiquiditySchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { assetA, assetB, poolAddress, lpAmount, minAmountA, minAmountB, signerPublicKey } = req.body;
 
@@ -509,9 +519,7 @@ export function setupDefiRoutes(): express.Router {
                 return;
             }
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('soroswap') as any;
 
             const tokenA = parseAsset(assetA);
             const tokenB = parseAsset(assetB);
@@ -543,13 +551,11 @@ export function setupDefiRoutes(): express.Router {
      *   Omit `poolAddress` to retrieve analytics for all registered pools.
      *   Supply `poolAddress` to query a single pool.
      */
-    router.get('/pools/analytics', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    router.get('/pools/analytics', validate(poolAnalyticsQuerySchema, 'query'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const { poolAddress } = req.query;
 
-            const factory = ProtocolFactory.getInstance();
-            const protocol = factory.createProtocol({ ...defaultConfig, protocolId: 'soroswap' }) as any;
-            await protocol.initialize();
+            const protocol = await getInitializedProtocol('soroswap') as any;
 
             if (poolAddress) {
                 if (typeof poolAddress !== 'string' || !poolAddress.trim()) {
