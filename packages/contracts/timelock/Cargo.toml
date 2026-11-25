@@ -2,7 +2,7 @@
 name = "timelock"
 version = "1.0.0"
 edition = "2021"
-description = "Soroban timelock contract with ETA enforcement and pre-ETA revocation"
+description = "Soroban timelock: admin-gated, delayed execution of contract calls with a grace period"
 
 [lib]
 crate-type = ["cdylib"]
