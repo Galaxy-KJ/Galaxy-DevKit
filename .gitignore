@@ -104,6 +104,8 @@ supabase/.temp/
 # Stellar/Soroban
 target/
 Cargo.lock
+# The contracts workspace is built and deployed, so its lockfile is committed.
+!packages/contracts/Cargo.lock
 
 # Development files
 .env.local

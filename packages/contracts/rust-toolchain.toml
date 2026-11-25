@@ -1,0 +1,8 @@
+# Pinned so CI and local builds use the same rustfmt/clippy; a new Rust
+# release can add lints that would otherwise fail `clippy -D warnings`.
+# Bump deliberately, and fix any new lints in the same PR.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32v1-none"]
+profile = "minimal"

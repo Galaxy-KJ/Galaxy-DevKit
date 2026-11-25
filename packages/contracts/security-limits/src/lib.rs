@@ -44,7 +44,7 @@ fn asset_allowed(profile: &RiskProfile, asset: &Symbol) -> bool {
             return false;
         }
     }
-    if profile.allowed_assets.len() > 0 {
+    if !profile.allowed_assets.is_empty() {
         for allowed in profile.allowed_assets.iter() {
             if allowed == *asset {
                 return true;
@@ -62,12 +62,7 @@ fn window_for_limit(limit: &SecurityLimit) -> u64 {
     }
 }
 
-fn evaluate_limits(
-    env: &Env,
-    owner: &Address,
-    asset: &Symbol,
-    amount: u64,
-) -> CheckResult {
+fn evaluate_limits(env: &Env, owner: &Address, asset: &Symbol, amount: u64) -> CheckResult {
     if amount == 0 {
         return CheckResult::denied(SecurityLimitsError::InvalidAmount);
     }
@@ -83,8 +78,7 @@ fn evaluate_limits(
         let now = env.ledger().timestamp();
         let daily_asset = daily_volume_asset(env);
         let usage = load_usage(env, owner, &daily_asset);
-        let (current, _) =
-            effective_usage(usage.amount, usage.last_reset, DAILY_WINDOW_SECS, now);
+        let (current, _) = effective_usage(usage.amount, usage.last_reset, DAILY_WINDOW_SECS, now);
         match current.checked_add(amount) {
             Some(projected) if projected > profile.max_daily_volume => {
                 return CheckResult::denied(SecurityLimitsError::LimitExceeded);
@@ -120,7 +114,12 @@ fn evaluate_limits(
     CheckResult::ok()
 }
 
-fn persist_usage(env: &Env, owner: &Address, asset: &Symbol, amount: u64) -> Result<(), SecurityLimitsError> {
+fn persist_usage(
+    env: &Env,
+    owner: &Address,
+    asset: &Symbol,
+    amount: u64,
+) -> Result<(), SecurityLimitsError> {
     let now = env.ledger().timestamp();
     let mut limits = load_limits(env, owner);
     let mut changed = false;
@@ -273,7 +272,9 @@ impl SecurityLimitsContract {
 
         let check = evaluate_limits(env, &owner, &asset, amount);
         if !check.allowed {
-            let reason = check.reason.unwrap_or(SecurityLimitsError::LimitExceeded as u32);
+            let reason = check
+                .reason
+                .unwrap_or(SecurityLimitsError::LimitExceeded as u32);
             events::limit_breached(env, &owner, &asset, reason, amount);
             return Err(match reason {
                 3 => SecurityLimitsError::LimitExceeded,

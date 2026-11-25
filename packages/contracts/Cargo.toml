@@ -1,0 +1,30 @@
+# Cargo workspace for every Soroban contract in this folder, so one
+# `cargo test` / `cargo clippy` / `stellar contract build` covers them all
+# and they share one lockfile and one target/ directory.
+[workspace]
+resolver = "2"
+members = [
+    "flash-loan",
+    "governance",
+    "nft-marketplace",
+    "price-oracle",
+    "security-limits",
+    "smart-swap",
+    "smart-wallet-account/contracts/common",
+    "smart-wallet-account/contracts/factory",
+    "smart-wallet-account/contracts/wallet",
+    "timelock",
+    "vesting",
+    "yield-vault",
+]
+
+# Member crates cannot set profiles inside a workspace; this one applies to all.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

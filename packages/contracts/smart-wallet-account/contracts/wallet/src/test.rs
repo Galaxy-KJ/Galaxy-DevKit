@@ -144,7 +144,10 @@ fn test_session_signer_evicted_after_ttl_elapses() {
     env.ledger()
         .with_mut(|li| li.sequence_number = 100 + ttl_ledgers - 1);
     let alive = env.as_contract(&client.address, || env.storage().temporary().has(&key));
-    assert!(alive, "session key must still be present before its TTL elapses");
+    assert!(
+        alive,
+        "session key must still be present before its TTL elapses"
+    );
 
     env.ledger()
         .with_mut(|li| li.sequence_number = 100 + ttl_ledgers + 1);
@@ -246,19 +249,27 @@ fn bench_extend_ttl_costs() {
     std::println!("\n=== extend_ttl marginal CPU-instruction cost ===");
     std::println!(
         "{:<12} | {:>16} | {:>16}",
-        "storage", "trigger (insns)", "no-op (insns)"
+        "storage",
+        "trigger (insns)",
+        "no-op (insns)"
     );
     std::println!(
         "{:<12} | {:>16} | {:>16}",
-        "instance", instance_trigger_cpu, instance_noop_cpu
+        "instance",
+        instance_trigger_cpu,
+        instance_noop_cpu
     );
     std::println!(
         "{:<12} | {:>16} | {:>16}",
-        "persistent", persistent_trigger_cpu, persistent_noop_cpu
+        "persistent",
+        persistent_trigger_cpu,
+        persistent_noop_cpu
     );
     std::println!(
         "{:<12} | {:>16} | {:>16}",
-        "temporary", temporary_trigger_cpu, temporary_noop_cpu
+        "temporary",
+        temporary_trigger_cpu,
+        temporary_noop_cpu
     );
 
     assert!(instance_noop_cpu <= instance_trigger_cpu);

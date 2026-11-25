@@ -133,6 +133,31 @@ This directory contains automated workflows for continuous integration, security
 
 ---
 
+### 6. **Contracts - Soroban** 🦀 (`contracts.yml`)
+
+**Trigger**:
+- PRs to main/develop that change `packages/contracts/**` or this workflow
+- Every push to main
+- Manual dispatch
+
+**Duration**: ~3-5 minutes with a warm cache
+**Purpose**: Keep every Soroban contract compiling, lint-clean and tested
+
+**What it does:**
+- `cargo fmt --all --check`
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- `cargo test --workspace --locked`
+- `stellar contract build` (wasm32v1-none) for every contract
+- Writes each contract's wasm size to the job summary and uploads the wasm as an artifact
+
+**Notes:**
+- All contracts are members of the Cargo workspace at `packages/contracts/Cargo.toml`, with a committed `Cargo.lock`. Add new contracts to its `members` list.
+- The Rust version is pinned in `packages/contracts/rust-toolchain.toml`.
+- Swatinem/rust-cache caches `~/.cargo` and `target/`; only main saves the cache.
+- Because of the paths filter, don't mark this job as a required check: PRs that skip it would wait for it forever.
+
+---
+
 ## 🎯 Workflow Strategy
 
 ### Fast Feedback Loop

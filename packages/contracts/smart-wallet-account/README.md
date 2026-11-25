@@ -21,10 +21,12 @@ flowchart LR
 ## Build
 
 ```bash
-cd packages/contracts/smart-wallet-account
-cargo build --target wasm32-unknown-unknown
-stellar contract build
+cd packages/contracts
+stellar contract build --package smart-wallet-account-wallet
+stellar contract build --package smart-wallet-account-factory
 ```
+
+The crates are members of the `packages/contracts` Cargo workspace, so the wasm lands in `packages/contracts/target/wasm32v1-none/release/`.
 
 ## Deploy To Testnet
 

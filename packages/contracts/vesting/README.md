@@ -137,8 +137,4 @@ cd packages/contracts/vesting
 cargo test
 ```
 
-`Cargo.lock` is not committed. If a fresh resolve picks `ed25519-dalek 3.x`, `soroban-env-host 21.2.1` fails to compile; pin it back with:
-
-```bash
-cargo update -p ed25519-dalek@3.0.0 --precise 2.2.0
-```
+The contracts share the Cargo workspace in `packages/contracts`, whose committed `Cargo.lock` pins `ed25519-dalek` to 2.x (`soroban-env-host 21.2.1` does not compile against 3.x). CI runs fmt, clippy, tests and `stellar contract build` for every contract (`.github/workflows/contracts.yml`).

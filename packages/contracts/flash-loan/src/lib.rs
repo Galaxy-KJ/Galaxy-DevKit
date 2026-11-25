@@ -25,8 +25,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env, IntoVal,
-    Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env, IntoVal, Symbol,
 };
 
 // ---------------------------------------------------------------------------
@@ -149,9 +148,7 @@ impl FlashLoanContract {
 
         // Assert repayment invariant: balance must be >= pre_balance + fee
         let post_balance = token_client.balance(&contract_address);
-        let required = pre_balance
-            .checked_add(fee)
-            .expect("balance overflow");
+        let required = pre_balance.checked_add(fee).expect("balance overflow");
 
         if post_balance < required {
             panic!("flash loan not repaid");
@@ -204,7 +201,7 @@ impl FlashLoanContract {
     ///
     /// * `fee_bps` – new fee in basis points (0–10 000).
     pub fn set_fee(env: Env, fee_bps: i128) {
-        if fee_bps < 0 || fee_bps > 10_000 {
+        if !(0..=10_000).contains(&fee_bps) {
             panic!("fee_bps must be between 0 and 10000");
         }
 

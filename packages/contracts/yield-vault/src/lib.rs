@@ -121,8 +121,7 @@ impl YieldVaultContract {
         }
 
         // Update balances
-        let mut balances: Map<Address, u64> =
-            storage.get(&BALANCES).unwrap_or(Map::new(&env));
+        let mut balances: Map<Address, u64> = storage.get(&BALANCES).unwrap_or(Map::new(&env));
         let current = balances.get(depositor.clone()).unwrap_or(0);
         balances.set(depositor, current + shares_to_mint);
 
@@ -149,8 +148,7 @@ impl YieldVaultContract {
             panic!("vault is empty");
         }
 
-        let mut balances: Map<Address, u64> =
-            storage.get(&BALANCES).unwrap_or(Map::new(&env));
+        let mut balances: Map<Address, u64> = storage.get(&BALANCES).unwrap_or(Map::new(&env));
         let user_shares = balances.get(owner.clone()).unwrap_or(0);
 
         if user_shares < shares {
