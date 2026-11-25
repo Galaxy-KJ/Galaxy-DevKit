@@ -109,3 +109,66 @@ fn test_set_config_rejects_non_admin() {
     assert_eq!(result, Err(Ok(auth_error())));
     assert_eq!(s.swap.get_config().oracle, s.oracle_id);
 }
+
+#[test]
+fn test_set_oracle_updates_only_the_oracle() {
+    let s = Setup::new();
+    let new_oracle = Address::generate(&s.env);
+    s.env.mock_auths(&[MockAuth {
+        address: &s.admin,
+        invoke: &MockAuthInvoke {
+            contract: &s.swap_id,
+            fn_name: "set_oracle",
+            args: (new_oracle.clone(),).into_val(&s.env),
+            sub_invokes: &[],
+        },
+    }]);
+    s.swap.set_oracle(&new_oracle);
+    assert_eq!(
+        s.swap.get_config(),
+        Config {
+            admin: s.admin.clone(),
+            oracle: new_oracle,
+            router: s.router_id.clone(),
+            max_price_age_secs: MAX_PRICE_AGE,
+            target_tolerance_bps: TOLERANCE_BPS,
+        }
+    );
+}
+
+#[test]
+fn test_set_oracle_rejects_non_admin() {
+    let s = Setup::new();
+    let attacker = Address::generate(&s.env);
+    let new_oracle = Address::generate(&s.env);
+    s.env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &s.swap_id,
+            fn_name: "set_oracle",
+            args: (new_oracle.clone(),).into_val(&s.env),
+            sub_invokes: &[],
+        },
+    }]);
+    assert_eq!(s.swap.try_set_oracle(&new_oracle), Err(Ok(auth_error())));
+    assert_eq!(s.swap.get_config().oracle, s.oracle_id);
+}
+
+#[test]
+fn test_set_oracle_without_any_signature_fails() {
+    let s = Setup::new();
+    s.enforce_auths();
+    let new_oracle = Address::generate(&s.env);
+    assert_eq!(s.swap.try_set_oracle(&new_oracle), Err(Ok(auth_error())));
+    assert_eq!(s.swap.get_config().oracle, s.oracle_id);
+}
+
+#[test]
+fn test_set_oracle_before_initialize_fails() {
+    let s = Setup::uninitialized();
+    let new_oracle = Address::generate(&s.env);
+    assert_eq!(
+        s.swap.try_set_oracle(&new_oracle),
+        Err(Ok(SwapError::NotInitialized.into()))
+    );
+}

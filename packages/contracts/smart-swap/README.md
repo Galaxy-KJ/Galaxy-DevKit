@@ -29,6 +29,7 @@ Deploy and `initialize` are separate transactions, because soroban-sdk 21 has no
 |---|---|---|
 | `initialize(admin, oracle, router, max_price_age_secs, target_tolerance_bps)` | `admin` | once |
 | `set_config(oracle, router, max_price_age_secs, target_tolerance_bps)` | stored admin | affects new conditions only, see below |
+| `set_oracle(oracle)` | stored admin | replaces only the oracle; affects new conditions only |
 | `get_config() -> Config` | | |
 | `create_swap_condition(owner, source_asset, destination_asset, source_token, destination_token, condition_type, amount_to_swap, min_amount_out, max_slippage, expires_at) -> u64` | `owner` | deposits `amount_to_swap` |
 | `execute_swap_condition(condition_id) -> Option<SwapExecution>` | nobody | `None`: expired and refunded |
