@@ -70,6 +70,8 @@ function buildTemplateVars(
 // ── Condition matchers per alert type ─────────────────────────────────────────
 
 const CONDITION_MATCHERS: Partial<Record<AlertType, (value: number, threshold: number) => boolean>> = {
+  custom_metric_above: (v, t) => v > t,
+  custom_metric_below: (v, t) => v < t,
   // Position
   health_factor_below: (v, t) => v < t,
 

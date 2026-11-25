@@ -1,3 +1,4 @@
+import { CustomMetricsClient, renderCustomMetricCards, type CustomMetricCard } from '../services/custom-metrics.client';
 import { buildLineChart, buildLineChartTable } from '../charts/line-chart';
 import { buildPieChart, buildPieChartTable } from '../charts/pie-chart';
 import { PortfolioSnapshotStore } from '../services/portfolio-snapshots';
@@ -27,6 +28,7 @@ export interface DashboardDeps {
   tracker: TxTrackerService;
   now: () => number;
   network: string;
+  loadCustomMetrics: () => Promise<CustomMetricCard[]>;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -41,6 +43,7 @@ function defaultDeps(): DashboardDeps {
     tracker: new TxTrackerService(),
     now: () => Date.now(),
     network: 'testnet',
+    loadCustomMetrics: () => new CustomMetricsClient().cards(),
   };
 }
 
@@ -64,6 +67,7 @@ export class AnalyticsDashboardPanel {
   private readonly deps: DashboardDeps;
   private requestId = 0;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private customRequestId = 0;
   private seriesKey = 'portfolio';
 
   constructor(container: string | HTMLElement, deps: Partial<DashboardDeps> = {}) {
@@ -97,6 +101,11 @@ export class AnalyticsDashboardPanel {
 
         <p id="ad-status" class="status status-info" role="status" aria-live="polite">Enter a wallet and load its portfolio.</p>
 
+        <section aria-label="Custom metrics">
+          <h3>Custom metrics</h3>
+          <button id="ad-load-custom" type="button">Load custom metrics</button>
+          <div id="ad-custom-metrics" class="analytics-kpis" aria-live="polite">Sign in to load custom metrics.</div>
+        </section>
         <div id="ad-body" hidden>
           <div id="ad-kpis" class="analytics-kpis"></div>
           <div class="analytics-charts">
@@ -110,8 +119,29 @@ export class AnalyticsDashboardPanel {
       </section>
     `;
 
+    this.byId<HTMLButtonElement>('ad-load-custom').addEventListener('click', () => void this.refreshCustomMetrics());
     this.byId<HTMLButtonElement>('ad-load').addEventListener('click', () => void this.refresh());
     this.byId<HTMLButtonElement>('ad-refresh').addEventListener('click', () => void this.refresh());
+  }
+
+  /** Supply the active session token without persisting it in browser storage. */
+  setMetricsJwt(jwt?: string): void {
+    const client = new CustomMetricsClient(jwt);
+    this.deps.loadCustomMetrics = () => client.cards();
+    ++this.customRequestId;
+    this.byId('ad-custom-metrics').textContent = jwt ? 'Load your custom metrics.' : 'Sign in to load custom metrics.';
+  }
+
+  async refreshCustomMetrics(): Promise<void> {
+    const requestId = ++this.customRequestId;
+    const host = this.byId('ad-custom-metrics');
+    host.textContent = 'Loading custom metrics...';
+    try {
+      const cards = await this.deps.loadCustomMetrics();
+      if (requestId === this.customRequestId) renderCustomMetricCards(host, cards);
+    } catch (error) {
+      if (requestId === this.customRequestId) host.textContent = error instanceof Error ? error.message : 'Custom metrics unavailable.';
+    }
   }
 
   async refresh(): Promise<void> {
@@ -160,6 +190,7 @@ export class AnalyticsDashboardPanel {
   }
 
   destroy(): void {
+    ++this.customRequestId;
     if (this.refreshTimer !== null) {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;

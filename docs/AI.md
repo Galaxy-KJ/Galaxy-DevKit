@@ -1683,3 +1683,9 @@ Network defaults and environment overrides come from the shared `resolveNetwork`
 Require `STELLAR_SECRET_KEY` without logging it. Persist addresses and transaction
 hashes only after RPC reports SUCCESS; propagate failure and confirmation timeout.
 The CLI does not implement app hosting or a `--verify` flag.
+
+## Custom metric engine (#413)
+
+Custom metrics live in `packages/api/rest/src/services/metrics/`. Use `validateMetric` before evaluation and the transactional `save_metric_definitions` RPC for mutations. Never write definitions directly: the RPC serializes per-owner updates and checks reference ownership, cycles, matching windows/dimensions and the 50-definition cap. `MetricSourceReader` maps fixed source columns and applies owner predicates even with a service-role client. Share one row budget and abort signal across a complete derived evaluation. Do not infer USD values or query nonexistent request-log/position-history tables. See the REST README's custom metrics section for source capabilities, API payloads, limitations and test commands.
+
+The dashboard's `setMetricsJwt` accepts the host session token in memory and clears displayed metrics on session changes. Custom alert IDs are first-class persisted references, not mutable metadata fields.

@@ -20,6 +20,7 @@ try {
   // ignore
 }
 
+import { MetricMaterializationWorker } from './metric-materialization.worker';
 import { PositionMonitorWorker } from './position-monitor.worker';
 import { StellarNetworkName } from '../types/monitoring-types';
 import { TransactionMonitorWorker } from './transaction-monitor.worker';
@@ -52,12 +53,15 @@ async function main(): Promise<void> {
     batchSize: envInt('COMPLIANCE_SCHEDULER_BATCH_SIZE', 50),
   });
 
+  const metricsWorker = new MetricMaterializationWorker();
+  metricsWorker.start();
   worker.start();
   await transactionWorker.start();
   complianceWorker.start();
 
   const shutdown = (signal: string): void => {
     log.info({ signal }, 'received signal, shutting down');
+    metricsWorker.stop();
     worker.stop();
     transactionWorker.stop();
     complianceWorker.stop();

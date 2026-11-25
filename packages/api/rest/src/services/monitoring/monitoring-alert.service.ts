@@ -10,6 +10,8 @@
  * @since 2026-06-29 (extended 2026-07-01)
  */
 
+import { CustomMetricsService } from '../metrics/custom-metrics.service';
+
 import { MonitoringAlertRepository } from '../../repositories/monitoring-alert.repository';
 import { CursorPageResult } from '../../utils/pagination';
 import {
@@ -56,6 +58,7 @@ const ACTIVITY_ALERT_TYPES = new Set<AlertType>([
 ]);
 
 const ALL_ALERT_TYPES = new Set<AlertType>([
+  'custom_metric_above', 'custom_metric_below',
   ...PRICE_ALERT_TYPES,
   ...POSITION_ALERT_TYPES,
   ...SYSTEM_ALERT_TYPES,
@@ -64,14 +67,24 @@ const ALL_ALERT_TYPES = new Set<AlertType>([
 
 export class MonitoringAlertService {
   constructor(
-    private readonly repo: MonitoringAlertRepository = new MonitoringAlertRepository()
+    private readonly repo: MonitoringAlertRepository = new MonitoringAlertRepository(),
+    private readonly metrics: () => Pick<CustomMetricsService, 'list'> = () => new CustomMetricsService()
   ) {}
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
   async create(userId: string, input: CreateMonitoringAlertInput): Promise<MonitoringAlert> {
     this.assertAlertTypeSupported(input.alertType);
-    this.assertProtocolSupported(input.protocol);
+    if (input.alertType === 'custom_metric_above' || input.alertType === 'custom_metric_below') {
+      if (input.channel !== 'webhook') throw new MonitoringError(MonitoringErrorCode.ALERT_CHANNEL_UNSUPPORTED, 'Custom metric alerts currently use the registered webhook dispatcher', 400);
+      const metric = (await this.metrics().list(userId)).find(item => item.id === input.customMetricId);
+      if (!metric || !metric.enabled || metric.dimensions.length > 0 || input.protocol !== 'custom') {
+        throw new MonitoringError(MonitoringErrorCode.ALERT_VALIDATION_ERROR, 'Custom alerts require an enabled, ungrouped metric owned by you and protocol custom', 400);
+      }
+    } else {
+      this.assertProtocolSupported(input.protocol);
+      if (input.customMetricId) throw new MonitoringError(MonitoringErrorCode.ALERT_VALIDATION_ERROR, 'Metric reference is only valid for custom alerts', 400);
+    }
     this.assertChannelImplemented(input.channel);
     this.assertChannelConfigMatchesChannel(input);
     this.assertDeduplicationConfig(input);

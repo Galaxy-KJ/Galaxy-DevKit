@@ -3051,3 +3051,9 @@ graph TB
 `GalaxyClient` -> native fetch transport -> mounted `/api/v1/defi` REST routes -> existing protocol services. The client root has no server, database or Node-only dependencies. Conditional exports provide separate ESM and CommonJS builds and declarations. Existing Stellar path-payment helpers remain available through explicit `stellar/*` subpaths.
 
 The SDK models current REST JSON responses rather than importing server types. Wallet, oracle and automation capabilities are unavailable until their routes are mounted/implemented. Network selection remains server-owned (currently testnet); OpenAPI generation awaits a checked-in specification. The package remains private pending completion and release review. See `packages/sdk/typescript/README.md` for detailed limitations.
+
+## Persisted custom metrics (#413)
+
+Authenticated REST routes feed validated definitions into an owner-scoped repository and a bounded evaluator. Supabase stores private definitions and snapshots with RLS; service-role-only mutation RPCs serialize definition graph changes. The source reader accesses recorded transactions, shared market observations and owner-joined automation execution attempts. Arithmetic/aggregation stays in a pure TypeScript engine; source values are bound through Supabase query methods.
+
+The existing cache manager holds revision-scoped results. The separate worker process rotates through enabled metrics and persists snapshots. Custom threshold alerts resolve those same owner-scoped metrics, then reuse the position worker's event persistence and channel dispatcher. The browser analytics panel fetches authenticated values and renders text-only KPI cards. No new event collection, historical pricing valuation, organization sharing or request-log pipeline is introduced.

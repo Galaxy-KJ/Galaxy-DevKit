@@ -91,6 +91,7 @@ const templateSchema = Joi.object({
 // ── Alert type enum ───────────────────────────────────────────────────────────
 
 const ALL_ALERT_TYPES = [
+  'custom_metric_above', 'custom_metric_below',
   // Position
   'health_factor_below',
   // Price
@@ -110,9 +111,9 @@ const ALL_ALERT_TYPES = [
 
 export const createAlertSchema = Joi.object({
   name: Joi.string().trim().min(1).max(120).required(),
-  protocol: Joi.string().lowercase().valid('blend', 'soroswap', 'sdex').required(),
-  accountAddress: Joi.string().pattern(STELLAR_ACCOUNT_REGEX).required()
-    .messages({ 'string.pattern.base': 'accountAddress must be a valid Stellar account (G...)' }),
+  protocol: Joi.when('alertType', { is: Joi.valid('custom_metric_above', 'custom_metric_below'), then: Joi.string().valid('custom').default('custom'), otherwise: Joi.string().lowercase().valid('blend', 'soroswap', 'sdex').required() }),
+  accountAddress: Joi.when('alertType', { is: Joi.valid('custom_metric_above', 'custom_metric_below'), then: Joi.string().valid('').default(''), otherwise: Joi.string().pattern(STELLAR_ACCOUNT_REGEX).required() }),
+  customMetricId: Joi.when('alertType', { is: Joi.valid('custom_metric_above', 'custom_metric_below'), then: Joi.string().uuid().required(), otherwise: Joi.forbidden() }),
   network: Joi.string().valid('testnet', 'mainnet').default('testnet'),
   alertType: Joi.string().valid(...ALL_ALERT_TYPES).required(),
   threshold: Joi.number().required(),

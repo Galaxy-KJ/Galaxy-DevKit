@@ -130,3 +130,22 @@ describe('AnalyticsDashboardPanel', () => {
     expect(container.querySelector('#ad-status')!.textContent).toContain('network down');
   });
 });
+
+
+describe('Custom metric cards', () => {
+  afterEach(() => { while (mountedPanels.length) mountedPanels.pop()!.destroy(); });
+  it('renders server values and dimensions as text without USD conversion', async () => {
+    const { panel, container } = mountPanel({ loadCustomMetrics: async () => [{ id: 'metric', name: '<img src=x onerror=alert(1)>', unit: 'XLM', value: 12, delta: 2, target: 10, trend: 'improving', dimensions: { asset: 'XLM' } }] });
+    await panel.refreshCustomMetrics();
+    const host = container.querySelector('#ad-custom-metrics')!;
+    expect(host.textContent).toContain('12 XLM');
+    expect(host.textContent).toContain('target: 10');
+    expect(host.querySelector('img')).toBeNull();
+  });
+  it('clears previous user values when the session changes', async () => {
+    const { panel, container } = mountPanel({ loadCustomMetrics: async () => [] });
+    await panel.refreshCustomMetrics();
+    panel.setMetricsJwt(undefined);
+    expect(container.querySelector('#ad-custom-metrics')!.textContent).toContain('Sign in');
+  });
+});
