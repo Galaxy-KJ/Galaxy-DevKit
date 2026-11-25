@@ -127,6 +127,8 @@ export interface EventSubscription {
   id: string;
   contractId: string;
   eventTypes?: string[];
+  /** First ledger to read from. Defaults to the latest ledger. */
+  startLedger?: number;
   onEvent: (event: ContractEventDetail) => void;
   onError?: (error: Error) => void;
   onClose?: () => void;

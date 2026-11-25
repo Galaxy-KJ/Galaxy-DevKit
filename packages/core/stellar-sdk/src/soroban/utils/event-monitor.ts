@@ -6,7 +6,7 @@
  * @since 2024-12-01
  */
 
-import { SorobanRpc, xdr } from '../../types/stellar-sdk-compat.js';
+import { SorobanRpc, nativeToScVal, xdr } from '../../types/stellar-sdk-compat.js';
 import { resolveNetwork } from '../../utils/network-utils.js';
 import { ScValConverter } from './scval-converter.js';
 import {
@@ -15,53 +15,102 @@ import {
   EventSubscription,
 } from '../types/contract-types.js';
 
-function topicStringFilter(value: unknown): SorobanRpc.TopicString {
-  return { type: 'string', value };
+const POLL_INTERVAL_MS = 5000;
+const PAGE_LIMIT = 1000;
+
+/** One topic segment as base64 XDR, the form Soroban RPC expects. */
+function topicSegment(value: unknown): string {
+  if (value instanceof xdr.ScVal) {
+    return value.toXDR('base64');
+  }
+  return nativeToScVal(value, { type: 'symbol' }).toXDR('base64');
+}
+
+/** Match events whose first topic is `value`, with any topics after it. */
+function firstTopicFilter(value: unknown): string[] {
+  return [topicSegment(value), '**'];
+}
+
+interface PollState {
+  filters: SorobanRpc.EventFilter[];
+  startLedger: number;
+  cursor?: string;
+  timer?: NodeJS.Timeout;
+  stopped: boolean;
 }
 
 export class ContractEventMonitor {
   private server: SorobanRpc.Server;
   private subscriptions: Map<string, EventSubscription>;
-  private pollingIntervals: Map<string, NodeJS.Timeout>;
-  private lastLedger: number;
+  private pollStates: Map<string, PollState>;
+  private destroyCount = 0;
 
   constructor(rpcUrl: string = resolveNetwork('testnet').rpcUrl) {
     this.server = new SorobanRpc.Server(rpcUrl);
     this.subscriptions = new Map();
-    this.pollingIntervals = new Map();
-    this.lastLedger = 0;
+    this.pollStates = new Map();
   }
 
   /**
    * Subscribe to contract events
    */
   async subscribeToEvents(subscription: EventSubscription): Promise<string> {
-    const { contractId, onError } = subscription;
+    return this.startSubscription(subscription);
+  }
 
+  /**
+   * Register a subscription with its own cursor, starting at the
+   * caller's `startLedger` or the latest ledger.
+   */
+  private async startSubscription(
+    subscription: EventSubscription
+  ): Promise<string> {
+    const destroyCountAtStart = this.destroyCount;
     try {
-      // Generate unique subscription ID
-      const subscriptionId = this.generateSubscriptionId(contractId);
+      const startLedger =
+        subscription.startLedger ??
+        (await this.server.getLatestLedger()).sequence;
+      if (this.destroyCount !== destroyCountAtStart) {
+        throw new Error('Event monitor was destroyed during subscription');
+      }
+      const subscriptionId = this.generateSubscriptionId(
+        subscription.contractId
+      );
 
-      // Store subscription
       this.subscriptions.set(subscriptionId, {
         ...subscription,
         id: subscriptionId,
       });
+      this.pollStates.set(subscriptionId, {
+        filters: this.buildSubscriptionFilters(subscription),
+        startLedger,
+        stopped: false,
+      });
 
-      // Get current ledger
-      const ledgerResponse = await this.server.getLatestLedger();
-      this.lastLedger = ledgerResponse.sequence;
-
-      // Start polling for events
-      this.startPolling(subscriptionId);
+      this.scheduleNextPoll(subscriptionId);
 
       return subscriptionId;
     } catch (error) {
-      if (onError) {
-        onError(error);
+      if (subscription.onError) {
+        subscription.onError(error);
       }
       throw error;
     }
+  }
+
+  private buildSubscriptionFilters(
+    subscription: EventSubscription
+  ): SorobanRpc.EventFilter[] {
+    return [
+      {
+        type: 'contract',
+        contractIds: [subscription.contractId],
+        ...(subscription.eventTypes &&
+          subscription.eventTypes.length > 0 && {
+            topics: subscription.eventTypes.map(type => firstTopicFilter(type)),
+          }),
+      },
+    ];
   }
 
   /**
@@ -86,7 +135,7 @@ export class ContractEventMonitor {
         filters.push({
           type: 'contract',
           contractIds: [contractId],
-          topics: eventTypes.map(type => topicStringFilter(type)),
+          topics: eventTypes.map(type => firstTopicFilter(type)),
         });
       } else {
         filters.push({
@@ -99,9 +148,7 @@ export class ContractEventMonitor {
       if (topics && topics.length > 0) {
         filters[0].topics = [
           ...(filters[0].topics || []),
-          ...topics.map(topic =>
-            topicStringFilter(ScValConverter.fromScVal(topic))
-          ),
+          ...topics.map(topic => firstTopicFilter(topic)),
         ];
       }
 
@@ -126,9 +173,11 @@ export class ContractEventMonitor {
    */
   unsubscribe(subscriptionId: string): void {
     // Stop polling
-    if (this.pollingIntervals.has(subscriptionId)) {
-      clearInterval(this.pollingIntervals.get(subscriptionId));
-      this.pollingIntervals.delete(subscriptionId);
+    const state = this.pollStates.get(subscriptionId);
+    if (state) {
+      state.stopped = true;
+      clearTimeout(state.timer);
+      this.pollStates.delete(subscriptionId);
     }
 
     // Remove subscription
@@ -157,70 +206,65 @@ export class ContractEventMonitor {
   }
 
   /**
-   * Start polling for events
+   * Schedule the next poll. The next one is only scheduled after the
+   * current one finishes, so polls never overlap.
    */
-  private startPolling(subscriptionId: string): void {
-    const subscription = this.subscriptions.get(subscriptionId);
-    if (!subscription) return;
+  private scheduleNextPoll(subscriptionId: string): void {
+    const state = this.pollStates.get(subscriptionId);
+    if (!state || state.stopped) return;
 
-    const interval = setInterval(async () => {
+    state.timer = setTimeout(async () => {
       try {
         await this.pollForEvents(subscriptionId);
-      } catch (error) {
-        if (subscription.onError) {
-          subscription.onError(error);
-        }
+      } finally {
+        this.scheduleNextPoll(subscriptionId);
       }
-    }, 5000); // Poll every 5 seconds
-
-    this.pollingIntervals.set(subscriptionId, interval);
+    }, POLL_INTERVAL_MS);
   }
 
   /**
-   * Poll for new events
+   * Fetch every page of new events for one subscription and advance
+   * its cursor.
    */
   private async pollForEvents(subscriptionId: string): Promise<void> {
     const subscription = this.subscriptions.get(subscriptionId);
-    if (!subscription) return;
+    const state = this.pollStates.get(subscriptionId);
+    if (!subscription || !state) return;
 
     try {
-      // Get latest ledger
-      const ledgerResponse = await this.server.getLatestLedger();
-      const currentLedger = ledgerResponse.sequence;
+      while (!state.stopped) {
+        const response = await this.server.getEvents(
+          state.cursor
+            ? { filters: state.filters, cursor: state.cursor, limit: PAGE_LIMIT }
+            : {
+                filters: state.filters,
+                startLedger: state.startLedger,
+                limit: PAGE_LIMIT,
+              }
+        );
+        const events = response.events || [];
 
-      if (currentLedger <= this.lastLedger) {
-        return; // No new ledgers
+        for (const event of events) {
+          if (state.stopped) return;
+          subscription.onEvent(this.convertRpcEventToDetail(event));
+        }
+
+        const lastId = events.length > 0 ? events[events.length - 1].id : undefined;
+        state.cursor = response.cursor || lastId || state.cursor;
+
+        if (events.length === 0) break;
       }
-
-      // Query events since last check
-      const eventsResponse = await this.server.getEvents({
-        startLedger: this.lastLedger + 1,
-        endLedger: currentLedger,
-        filters: [
-          {
-            type: 'contract',
-            contractIds: [subscription.contractId],
-            ...(subscription.eventTypes && {
-              topics: subscription.eventTypes.map(type => ({
-                type: 'string',
-                value: type,
-              })),
-            }),
-          },
-        ],
-      });
-
-      // Process events
-      for (const event of eventsResponse.events) {
-        const eventDetail = this.convertRpcEventToDetail(event);
-        subscription.onEvent(eventDetail);
-      }
-
-      // Update last ledger
-      this.lastLedger = currentLedger;
     } catch (error) {
-      // Log error but don't stop polling
-      console.error('Error polling for events:', error);
+      // Report the error but keep polling from the same cursor
+      try {
+        if (subscription.onError) {
+          subscription.onError(error);
+        } else {
+          console.error('Error polling for events:', error);
+        }
+      } catch (callbackError) {
+        console.error('Error in onError callback:', callbackError);
+      }
     }
   }
 
@@ -255,28 +299,9 @@ export class ContractEventMonitor {
    * Stream events using WebSocket (if available)
    */
   async streamEvents(subscription: EventSubscription): Promise<string> {
-    try {
-      const subscriptionId = this.generateSubscriptionId(
-        subscription.contractId
-      );
-
-      // Store subscription
-      this.subscriptions.set(subscriptionId, {
-        ...subscription,
-        id: subscriptionId,
-      });
-
-      // For now, fall back to polling since WebSocket support is limited
-      // In the future, this could use actual WebSocket connections
-      this.startPolling(subscriptionId);
-
-      return subscriptionId;
-    } catch (error) {
-      if (subscription.onError) {
-        subscription.onError(error);
-      }
-      throw error;
-    }
+    // For now, fall back to polling since WebSocket support is limited
+    // In the future, this could use actual WebSocket connections
+    return this.startSubscription(subscription);
   }
 
   /**
@@ -355,6 +380,7 @@ export class ContractEventMonitor {
    * Cleanup resources
    */
   destroy(): void {
+    this.destroyCount += 1;
     this.unsubscribeAll();
     this.subscriptions.clear();
   }
