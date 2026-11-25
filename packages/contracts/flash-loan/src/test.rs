@@ -24,7 +24,15 @@ use soroban_sdk::{
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn setup(env: &Env) -> (Address, FlashLoanContractClient, Address, token::Client, Address) {
+fn setup(
+    env: &Env,
+) -> (
+    Address,
+    FlashLoanContractClient<'_>,
+    Address,
+    token::Client<'_>,
+    Address,
+) {
     env.mock_all_auths();
 
     let admin = Address::generate(env);
@@ -359,4 +367,3 @@ fn test_deposit_and_withdraw_extend_instance_ttl() {
     let ttl = env.as_contract(&flash_loan_id, || env.storage().instance().get_ttl());
     assert_eq!(ttl, INSTANCE_TTL_EXTEND);
 }
-

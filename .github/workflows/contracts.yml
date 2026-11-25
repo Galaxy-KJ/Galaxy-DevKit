@@ -1,0 +1,97 @@
+name: Contracts - Soroban
+
+# Builds, lints and tests every Soroban contract in the packages/contracts
+# Cargo workspace. PRs run it only when contract code (or this workflow)
+# changes; pushes to main always run it.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'packages/contracts/**'
+      - '.github/workflows/contracts.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/contracts
+
+env:
+  CARGO_TERM_COLOR: always
+  # Incremental builds only slow down CI and bloat the cache.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  contracts:
+    name: Build, Lint & Test Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # The toolchain, components and wasm target come from
+      # packages/contracts/rust-toolchain.toml.
+      - name: Install Rust toolchain
+        run: |
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal \
+            --component rustfmt,clippy --target wasm32v1-none
+          rustc --version
+          cargo --version
+
+      - name: Cache cargo registry and target/
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/contracts -> target
+          # Only main writes the cache, so PRs cannot evict each other's.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v30.0.1
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build wasm
+        run: stellar contract build
+
+      - name: Report wasm sizes
+        run: |
+          {
+            echo "### Contract wasm sizes"
+            echo
+            echo "| Contract | Size (bytes) | Size (KiB) |"
+            echo "| --- | ---: | ---: |"
+            for f in target/wasm32v1-none/release/*.wasm; do
+              bytes=$(stat -c %s "$f")
+              kib=$(awk "BEGIN { printf \"%.1f\", $bytes / 1024 }")
+              echo "| $(basename "$f" .wasm) | $bytes | $kib |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          count=$(ls target/wasm32v1-none/release/*.wasm | wc -l)
+          echo "Built $count contract(s)."
+          test "$count" -gt 0
+
+      - name: Upload wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-wasm
+          path: packages/contracts/target/wasm32v1-none/release/*.wasm
+          retention-days: 14
+          if-no-files-found: error

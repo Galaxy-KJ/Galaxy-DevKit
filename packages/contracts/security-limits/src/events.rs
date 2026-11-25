@@ -43,6 +43,8 @@ pub fn tx_recorded(
 }
 
 pub fn limit_breached(env: &Env, owner: &Address, asset: &Symbol, reason: u32, amount: u64) {
-    env.events()
-        .publish(topics(env, "limit_breached", owner, asset), (reason, amount));
+    env.events().publish(
+        topics(env, "limit_breached", owner, asset),
+        (reason, amount),
+    );
 }

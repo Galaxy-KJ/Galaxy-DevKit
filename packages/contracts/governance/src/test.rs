@@ -1,37 +1,72 @@
 use soroban_sdk::{
-    testutils::{storage::Instance as _, Address as _, Ledger, StellarAsset as _},
+    testutils::{storage::Instance as _, Address as _, Ledger},
     token, Address, Env, String,
 };
 
-use crate::{GovernanceContract, GovernanceContractClient, ProposalStatus, DEFAULT_VOTING_PERIOD_SECS, INSTANCE_TTL_EXTEND, INSTANCE_TTL_THRESHOLD};
+use crate::{
+    GovernanceContract, GovernanceContractClient, ProposalStatus, DEFAULT_VOTING_PERIOD_SECS,
+    INSTANCE_TTL_EXTEND, INSTANCE_TTL_THRESHOLD,
+};
 
 const VOTING_PERIOD_SECS: u64 = DEFAULT_VOTING_PERIOD_SECS;
 
-fn setup() -> (Env, GovernanceContractClient<'static>) {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register_contract(None, GovernanceContract);
-    let client = GovernanceContractClient::new(&env, &contract_id);
-
-    // Initialize the contract
-    let admin = Address::generate(&env);
-    let token = Address::generate(&env);
-    client.initialize(&admin, &token, &VOTING_PERIOD_SECS, &1_000);
-
-    (env, client)
+/// Test token: minting goes through the Stellar Asset admin client, transfers
+/// and approvals through the SEP-41 client.
+struct TestToken<'a> {
+    env: Env,
+    id: Address,
+    client: token::Client<'a>,
+    admin: token::StellarAssetClient<'a>,
 }
 
-fn setup_with_token() -> (Env, GovernanceContractClient<'static>, token::Client<'static>) {
+impl TestToken<'_> {
+    fn mint(&self, to: &Address, amount: &i128) {
+        self.admin.mint(to, amount);
+    }
+
+    fn approve(&self, from: &Address, spender: &Address, amount: &i128, expiration_ledger: &u32) {
+        self.client
+            .approve(from, spender, amount, expiration_ledger);
+    }
+
+    fn balance(&self, id: &Address) -> i128 {
+        self.client.balance(id)
+    }
+
+    /// Extends the token contract instance so it survives a jump of up to
+    /// `ledgers` ledgers. TTL tests jump far ahead to exercise governance's
+    /// own TTL, and the token must still be live when governance calls it.
+    fn keep_alive(&self, ledgers: u32) {
+        self.env.as_contract(&self.id, || {
+            self.env.storage().instance().extend_ttl(ledgers, ledgers)
+        });
+    }
+}
+
+/// Approval expiry far enough out to survive the TTL tests' ledger jumps.
+const LONG_EXPIRY: u32 = 3 * INSTANCE_TTL_EXTEND;
+
+fn setup_with_token() -> (Env, GovernanceContractClient<'static>, TestToken<'static>) {
     let env = Env::default();
     env.mock_all_auths();
 
     // Register a mock token contract
     let admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(admin.clone());
-    let token_client = token::Client::new(&env, &token_id);
+    let token_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let token_client = TestToken {
+        env: env.clone(),
+        id: token_id.clone(),
+        client: token::Client::new(&env, &token_id),
+        admin: token::StellarAssetClient::new(&env, &token_id),
+    };
 
     let contract_id = env.register_contract(None, GovernanceContract);
     let client = GovernanceContractClient::new(&env, &contract_id);
+
+    // TTL tests measure from ledger 100, so initialize there.
+    env.ledger().with_mut(|li| li.sequence_number = 100);
 
     // Initialize the contract with the token
     client.initialize(&admin, &token_id, &VOTING_PERIOD_SECS, &1_000);
@@ -210,7 +245,7 @@ fn test_full_lifecycle_rejected_below_quorum() {
 #[test]
 #[should_panic(expected = "proposer must lock tokens before creating a proposal")]
 fn test_propose_without_lock_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token) = setup_with_token();
     let proposer = Address::generate(&env);
     client.propose(&proposer, &String::from_str(&env, "no_lock_action"));
 }
@@ -441,8 +476,9 @@ fn test_instance_ttl_boundary_behavior() {
     env.ledger().with_mut(|li| li.sequence_number = 100);
     let voter = Address::generate(&env);
 
-    token_client.mint(&voter, &500);
-    token_client.approve(&voter, &client.address, &500, &100);
+    token_client.mint(&voter, &502);
+    token_client.approve(&voter, &client.address, &502, &LONG_EXPIRY);
+    token_client.keep_alive(INSTANCE_TTL_EXTEND);
     client.lock_tokens(&voter, &500);
 
     let just_before_threshold = 100 + (INSTANCE_TTL_EXTEND - INSTANCE_TTL_THRESHOLD - 1);
@@ -506,6 +542,7 @@ fn test_unlock_tokens_extends_instance_ttl() {
     token_client.mint(&voter, &500);
     token_client.approve(&voter, &client.address, &500, &100);
     client.lock_tokens(&voter, &500);
+    token_client.keep_alive(INSTANCE_TTL_EXTEND);
 
     env.ledger()
         .with_mut(|li| li.sequence_number = 100 + INSTANCE_TTL_EXTEND - 1);
@@ -520,7 +557,7 @@ fn test_unlock_tokens_extends_instance_ttl() {
 #[test]
 #[should_panic(expected = "lock amount must be positive")]
 fn test_lock_zero_amount_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token) = setup_with_token();
     let voter = Address::generate(&env);
 
     client.lock_tokens(&voter, &0);
@@ -607,7 +644,7 @@ fn test_balances_return_after_unlock() {
 #[test]
 #[should_panic(expected = "contract already initialized")]
 fn test_initialize_twice_panics() {
-    let (env, client, token_client) = setup_with_token();
+    let (env, client, _token) = setup_with_token();
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
 

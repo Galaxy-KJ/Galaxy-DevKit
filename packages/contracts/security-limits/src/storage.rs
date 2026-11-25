@@ -2,9 +2,7 @@
 
 use soroban_sdk::{Address, Env, Map, Symbol};
 
-use crate::types::{
-    DataKey, RiskProfile, SecurityLimit, Usage, TTL_EXTEND, TTL_THRESHOLD,
-};
+use crate::types::{DataKey, RiskProfile, SecurityLimit, Usage, TTL_EXTEND, TTL_THRESHOLD};
 
 /// Reserved usage key for the risk-profile 24h volume (all assets).
 pub fn daily_volume_asset(env: &Env) -> Symbol {
@@ -116,5 +114,3 @@ pub fn take_next_tx_id(env: &Env) -> u64 {
     bump_instance(env);
     id
 }
-
-

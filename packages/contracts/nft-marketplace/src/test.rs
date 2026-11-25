@@ -32,7 +32,9 @@ impl MockNft {
     pub fn mint(env: Env, to: Address, token_id: u32) {
         let owner_key = NftKey::Owner(token_id);
         env.storage().persistent().set(&owner_key, &to);
-        env.storage().persistent().remove(&NftKey::Approved(token_id));
+        env.storage()
+            .persistent()
+            .remove(&NftKey::Approved(token_id));
         env.storage()
             .persistent()
             .extend_ttl(&owner_key, ENTRY_TTL_THRESHOLD, ENTRY_TTL_EXTEND);
@@ -85,9 +87,11 @@ impl MockNft {
         let approved_key = NftKey::Approved(token_id);
         let approved = env.storage().persistent().get(&approved_key);
         if env.storage().persistent().has(&approved_key) {
-            env.storage()
-                .persistent()
-                .extend_ttl(&approved_key, ENTRY_TTL_THRESHOLD, ENTRY_TTL_EXTEND);
+            env.storage().persistent().extend_ttl(
+                &approved_key,
+                ENTRY_TTL_THRESHOLD,
+                ENTRY_TTL_EXTEND,
+            );
         }
         env.storage()
             .instance()
@@ -157,7 +161,9 @@ fn setup(fee_bps: i128) -> Setup {
 
     let admin = Address::generate(&env);
     let fee_recipient = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
 
     let market = NftMarketplaceContractClient::new(&env, &market_id);
     market.initialize(&admin, &token_id, &fee_recipient, &fee_bps);
@@ -177,12 +183,8 @@ fn list(s: &Setup, seller: &Address, token_id: u32, price: i128) {
     let nft = MockNftClient::new(&s.env, &s.nft_id);
     nft.mint(seller, &token_id);
     nft.approve(seller, &s.market_id, &token_id);
-    NftMarketplaceContractClient::new(&s.env, &s.market_id).list_nft(
-        seller,
-        &s.nft_id,
-        &token_id,
-        &price,
-    );
+    NftMarketplaceContractClient::new(&s.env, &s.market_id)
+        .list_nft(seller, &s.nft_id, &token_id, &price);
 }
 
 // ---------------------------------------------------------------------------
@@ -448,7 +450,11 @@ fn test_entry_ttl_boundary_behavior() {
     let ttl = s
         .env
         .as_contract(&s.market_id, || s.env.storage().persistent().get_ttl(&key));
-    assert_eq!(ttl, ENTRY_TTL_THRESHOLD + 1, "must not re-extend before threshold");
+    assert_eq!(
+        ttl,
+        ENTRY_TTL_THRESHOLD + 1,
+        "must not re-extend before threshold"
+    );
 
     s.env
         .ledger()

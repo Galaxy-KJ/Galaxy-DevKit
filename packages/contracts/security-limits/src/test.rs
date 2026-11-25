@@ -169,7 +169,10 @@ fn update_and_delete_limit() {
     let limit_id = c.create_security_limit(&owner, &LimitType::Daily, &xlm(&env), &10_000, &86400);
 
     c.update_security_limit(&limit_id, &owner, &20_000, &86400, &true);
-    assert_eq!(c.get_security_limits(&owner).get(0).unwrap().max_amount, 20_000);
+    assert_eq!(
+        c.get_security_limits(&owner).get(0).unwrap().max_amount,
+        20_000
+    );
 
     c.delete_security_limit(&limit_id, &owner);
     assert_eq!(c.get_security_limits(&owner).len(), 0);
@@ -224,7 +227,10 @@ fn check_rejects_over_daily_limit() {
 
     let denied = c.check_transaction_allowed(&owner, &xlm(&env), &15_000);
     assert!(!denied.allowed);
-    assert_eq!(denied.reason, Some(SecurityLimitsError::LimitExceeded as u32));
+    assert_eq!(
+        denied.reason,
+        Some(SecurityLimitsError::LimitExceeded as u32)
+    );
 }
 
 #[test]
@@ -236,12 +242,16 @@ fn daily_limit_resets_across_window() {
 
     let tx1 = c.record_transaction(&owner, &xlm(&env), &8_000, &hash(&env));
     assert_eq!(tx1, 1);
-    assert_eq!(c.get_security_limits(&owner).get(0).unwrap().current_usage, 8_000);
+    assert_eq!(
+        c.get_security_limits(&owner).get(0).unwrap().current_usage,
+        8_000
+    );
 
     let blocked = c.check_transaction_allowed(&owner, &xlm(&env), &3_000);
     assert!(!blocked.allowed);
 
-    env.ledger().set_timestamp(env.ledger().timestamp() + 86_400);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 86_400);
 
     let after = c.check_transaction_allowed(&owner, &xlm(&env), &3_000);
     assert!(after.allowed);
@@ -256,20 +266,23 @@ fn per_transaction_does_not_accumulate() {
     let (env, id, admin, enforcer, owner) = setup();
     let c = client(&env, &id);
     c.initialize(&admin, &enforcer);
-    c.create_security_limit(
-        &owner,
-        &LimitType::PerTransaction,
-        &xlm(&env),
-        &1_000,
-        &0,
+    c.create_security_limit(&owner, &LimitType::PerTransaction, &xlm(&env), &1_000, &0);
+
+    assert!(
+        c.check_transaction_allowed(&owner, &xlm(&env), &1_000)
+            .allowed
+    );
+    assert!(
+        !c.check_transaction_allowed(&owner, &xlm(&env), &1_001)
+            .allowed
     );
 
-    assert!(c.check_transaction_allowed(&owner, &xlm(&env), &1_000).allowed);
-    assert!(!c.check_transaction_allowed(&owner, &xlm(&env), &1_001).allowed);
-
     c.record_transaction(&owner, &xlm(&env), &1_000, &hash(&env));
     c.record_transaction(&owner, &xlm(&env), &1_000, &hash(&env));
-    assert_eq!(c.get_security_limits(&owner).get(0).unwrap().current_usage, 0);
+    assert_eq!(
+        c.get_security_limits(&owner).get(0).unwrap().current_usage,
+        0
+    );
 }
 
 #[test]
@@ -279,7 +292,8 @@ fn check_is_read_only() {
     c.initialize(&admin, &enforcer);
     c.create_security_limit(&owner, &LimitType::Daily, &xlm(&env), &10_000, &86400);
 
-    env.ledger().set_timestamp(env.ledger().timestamp() + 86_400);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 86_400);
     c.check_transaction_allowed(&owner, &xlm(&env), &1);
     // last_reset is unchanged because check does not persist a window reset
     let limit = c.get_security_limits(&owner).get(0).unwrap();

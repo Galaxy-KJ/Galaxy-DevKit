@@ -29,8 +29,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, symbol_short, token, Address, Env,
-    Symbol,
+    contract, contractclient, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
 };
 
 // ---------------------------------------------------------------------------
@@ -321,11 +320,7 @@ impl NftMarketplaceContract {
     pub fn cancel_bid(env: Env, bidder: Address, nft: Address, token_id: u32) {
         bidder.require_auth();
         let key = DataKey::Bid(nft.clone(), token_id, bidder.clone());
-        let bid: Bid = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .expect("Bid not found");
+        let bid: Bid = env.storage().persistent().get(&key).expect("Bid not found");
 
         let payment_token = Self::payment_token(&env);
         let contract_address = env.current_contract_address();
@@ -352,11 +347,9 @@ impl NftMarketplaceContract {
         if listing.seller != seller {
             panic!("Not the seller");
         }
-        env.storage().persistent().extend_ttl(
-            &listing_key,
-            ENTRY_TTL_THRESHOLD,
-            ENTRY_TTL_EXTEND,
-        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&listing_key, ENTRY_TTL_THRESHOLD, ENTRY_TTL_EXTEND);
 
         let bid_key = DataKey::Bid(nft.clone(), token_id, bidder.clone());
         let bid: Bid = env

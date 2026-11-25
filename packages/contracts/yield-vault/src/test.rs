@@ -54,11 +54,11 @@ fn test_deposit_first_user_gets_1_to_1_shares() {
     client.initialize(&admin, &asset);
 
     let user = Address::generate(&env);
-    let shares = client.deposit(&user, &1_000_0000000u64); // 1 000 units (7 dp)
+    let shares = client.deposit(&user, &10_000_000_000u64); // 1 000 units (7 dp)
 
-    assert_eq!(shares, 1_000_0000000u64);
-    assert_eq!(client.get_balance(&user), 1_000_0000000u64);
-    assert_eq!(client.get_total_value_locked(), 1_000_0000000u64);
+    assert_eq!(shares, 10_000_000_000u64);
+    assert_eq!(client.get_balance(&user), 10_000_000_000u64);
+    assert_eq!(client.get_total_value_locked(), 10_000_000_000u64);
 }
 
 #[test]

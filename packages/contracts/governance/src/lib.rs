@@ -12,18 +12,14 @@ const LOCKS: Symbol = symbol_short!("LOCKS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const TOKEN: Symbol = symbol_short!("TOKEN");
-const VOTING_PERIOD: Symbol = symbol_short!("VOTING_PERIOD");
+const VOTING_PERIOD: Symbol = symbol_short!("VOTE_PER");
 const QUORUM: Symbol = symbol_short!("QUORUM");
-const ACTIVE_VOTE_COUNT: Symbol = symbol_short!("ACTIVE_VOTE_COUNT"); // Map<Address, u32>
+const ACTIVE_VOTE_COUNT: Symbol = symbol_short!("ACT_VOTES"); // Map<Address, u32>
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// Default voting period in ledger seconds (7 days at ~5 s/ledger).
 pub const DEFAULT_VOTING_PERIOD_SECS: u64 = 7 * 24 * 60 * 60;
-
-/// Default minimum total weight (for + against) required for a proposal to pass.
-/// Prevents low-participation proposals from executing.
-const DEFAULT_QUORUM_THRESHOLD: i128 = 1_000;
 
 /// Minimum FOR weight as a percentage of total votes cast (50 % = majority).
 const APPROVAL_THRESHOLD_PCT: i128 = 50;
@@ -101,13 +97,7 @@ impl GovernanceContract {
     ///
     /// Can only be called once. Sets the admin address, governance token address,
     /// voting period, and quorum threshold.
-    pub fn initialize(
-        env: Env,
-        admin: Address,
-        token: Address,
-        voting_period: u64,
-        quorum: i128,
-    ) {
+    pub fn initialize(env: Env, admin: Address, token: Address, voting_period: u64, quorum: i128) {
         if env.storage().instance().has(&ADMIN) {
             panic!("contract already initialized");
         }
@@ -139,8 +129,11 @@ impl GovernanceContract {
         proposer.require_auth();
 
         // Proposer must have locked tokens to submit a proposal.
-        let locks: Map<Address, TokenLock> =
-            env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        let locks: Map<Address, TokenLock> = env
+            .storage()
+            .instance()
+            .get(&LOCKS)
+            .unwrap_or(Map::new(&env));
 
         if !locks.contains_key(proposer.clone()) {
             panic!("proposer must lock tokens before creating a proposal");
@@ -168,8 +161,11 @@ impl GovernanceContract {
             status: ProposalStatus::Active,
         };
 
-        let mut proposals: Map<u32, Proposal> =
-            env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        let mut proposals: Map<u32, Proposal> = env
+            .storage()
+            .instance()
+            .get(&PROPOSALS)
+            .unwrap_or(Map::new(&env));
 
         proposals.set(id, proposal);
         env.storage().instance().set(&PROPOSALS, &proposals);
@@ -194,22 +190,28 @@ impl GovernanceContract {
         }
 
         // Validate token lock.
-        let locks: Map<Address, TokenLock> =
-            env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        let locks: Map<Address, TokenLock> = env
+            .storage()
+            .instance()
+            .get(&LOCKS)
+            .unwrap_or(Map::new(&env));
 
-        let lock = locks.get(voter.clone()).expect("voter has no locked tokens");
+        let lock = locks
+            .get(voter.clone())
+            .expect("voter has no locked tokens");
 
         if weight > lock.amount {
             panic!("voting weight exceeds locked token balance");
         }
 
         // Load proposal and assert it is still Active.
-        let mut proposals: Map<u32, Proposal> =
-            env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        let mut proposals: Map<u32, Proposal> = env
+            .storage()
+            .instance()
+            .get(&PROPOSALS)
+            .unwrap_or(Map::new(&env));
 
-        let mut proposal = proposals
-            .get(proposal_id)
-            .expect("proposal not found");
+        let mut proposal = proposals.get(proposal_id).expect("proposal not found");
 
         if proposal.status != ProposalStatus::Active {
             panic!("proposal is not active");
@@ -221,8 +223,11 @@ impl GovernanceContract {
 
         // Prevent double-voting on the same proposal.
         let vote_key = (voter.clone(), proposal_id);
-        let all_votes: Map<(Address, u32), VoteRecord> =
-            env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
+        let all_votes: Map<(Address, u32), VoteRecord> = env
+            .storage()
+            .instance()
+            .get(&VOTES)
+            .unwrap_or(Map::new(&env));
 
         if all_votes.contains_key(vote_key.clone()) {
             panic!("voter has already voted on this proposal");
@@ -241,12 +246,19 @@ impl GovernanceContract {
         env.storage().instance().set(&VOTES, &all_votes);
 
         // Track active vote count for this voter.
-        let mut active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+        let mut active_vote_count: Map<Address, u32> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_VOTE_COUNT)
+            .unwrap_or(Map::new(&env));
         let current_count = active_vote_count.get(voter.clone()).unwrap_or(0);
-        let new_count = current_count.checked_add(1).expect("active vote count overflow");
+        let new_count = current_count
+            .checked_add(1)
+            .expect("active vote count overflow");
         active_vote_count.set(voter, new_count);
-        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
+        env.storage()
+            .instance()
+            .set(&ACTIVE_VOTE_COUNT, &active_vote_count);
 
         // Accumulate weight.
         if support {
@@ -273,12 +285,13 @@ impl GovernanceContract {
     /// Sets the status to `Passed` or `Rejected` based on quorum and
     /// approval threshold. Must be called before `execute`.
     pub fn finalize(env: Env, proposal_id: u32) {
-        let mut proposals: Map<u32, Proposal> =
-            env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        let mut proposals: Map<u32, Proposal> = env
+            .storage()
+            .instance()
+            .get(&PROPOSALS)
+            .unwrap_or(Map::new(&env));
 
-        let mut proposal = proposals
-            .get(proposal_id)
-            .expect("proposal not found");
+        let mut proposal = proposals.get(proposal_id).expect("proposal not found");
 
         if proposal.status != ProposalStatus::Active {
             panic!("proposal is not active");
@@ -294,8 +307,7 @@ impl GovernanceContract {
             .expect("total votes overflow");
 
         let quorum: i128 = env.storage().instance().get(&QUORUM).unwrap();
-        let passed = total >= quorum
-            && proposal.votes_for * 100 > total * APPROVAL_THRESHOLD_PCT;
+        let passed = total >= quorum && proposal.votes_for * 100 > total * APPROVAL_THRESHOLD_PCT;
 
         proposal.status = if passed {
             ProposalStatus::Passed
@@ -307,10 +319,16 @@ impl GovernanceContract {
         env.storage().instance().set(&PROPOSALS, &proposals);
 
         // Decrement active vote count for all voters on this proposal.
-        let all_votes: Map<(Address, u32), VoteRecord> =
-            env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
-        let mut active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+        let all_votes: Map<(Address, u32), VoteRecord> = env
+            .storage()
+            .instance()
+            .get(&VOTES)
+            .unwrap_or(Map::new(&env));
+        let mut active_vote_count: Map<Address, u32> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_VOTE_COUNT)
+            .unwrap_or(Map::new(&env));
 
         for (voter, vote_proposal_id) in all_votes.keys() {
             if vote_proposal_id == proposal_id {
@@ -321,7 +339,9 @@ impl GovernanceContract {
             }
         }
 
-        env.storage().instance().set(&ACTIVE_VOTE_COUNT, &active_vote_count);
+        env.storage()
+            .instance()
+            .set(&ACTIVE_VOTE_COUNT, &active_vote_count);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -336,12 +356,13 @@ impl GovernanceContract {
     pub fn execute(env: Env, executor: Address, proposal_id: u32) {
         executor.require_auth();
 
-        let mut proposals: Map<u32, Proposal> =
-            env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        let mut proposals: Map<u32, Proposal> = env
+            .storage()
+            .instance()
+            .get(&PROPOSALS)
+            .unwrap_or(Map::new(&env));
 
-        let mut proposal = proposals
-            .get(proposal_id)
-            .expect("proposal not found");
+        let mut proposal = proposals.get(proposal_id).expect("proposal not found");
 
         if proposal.status != ProposalStatus::Passed {
             panic!("proposal must be in Passed status to execute");
@@ -369,7 +390,11 @@ impl GovernanceContract {
             panic!("lock amount must be positive");
         }
 
-        let token_address: Address = env.storage().instance().get(&TOKEN).expect("contract not initialized");
+        let token_address: Address = env
+            .storage()
+            .instance()
+            .get(&TOKEN)
+            .expect("contract not initialized");
         let contract_address = env.current_contract_address();
 
         // Transfer tokens from voter to contract (escrow)
@@ -380,14 +405,14 @@ impl GovernanceContract {
             &amount,
         );
 
-        let mut locks: Map<Address, TokenLock> =
-            env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        let mut locks: Map<Address, TokenLock> = env
+            .storage()
+            .instance()
+            .get(&LOCKS)
+            .unwrap_or(Map::new(&env));
 
         // If a previous lock exists, accumulate rather than replace.
-        let existing_amount = locks
-            .get(voter.clone())
-            .map(|l| l.amount)
-            .unwrap_or(0);
+        let existing_amount = locks.get(voter.clone()).map(|l| l.amount).unwrap_or(0);
 
         let new_amount = existing_amount
             .checked_add(amount)
@@ -415,29 +440,37 @@ impl GovernanceContract {
         voter.require_auth();
 
         // Check if voter has active votes on non-finalized proposals.
-        let active_vote_count: Map<Address, u32> =
-            env.storage().instance().get(&ACTIVE_VOTE_COUNT).unwrap_or(Map::new(&env));
+        let active_vote_count: Map<Address, u32> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_VOTE_COUNT)
+            .unwrap_or(Map::new(&env));
         let count = active_vote_count.get(voter.clone()).unwrap_or(0);
 
         if count > 0 {
             panic!("cannot unlock tokens while having active votes on non-finalized proposals");
         }
 
-        let mut locks: Map<Address, TokenLock> =
-            env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        let mut locks: Map<Address, TokenLock> = env
+            .storage()
+            .instance()
+            .get(&LOCKS)
+            .unwrap_or(Map::new(&env));
 
-        let lock = locks.get(voter.clone()).expect("no token lock found for voter");
+        let lock = locks
+            .get(voter.clone())
+            .expect("no token lock found for voter");
         let amount = lock.amount;
 
         // Transfer tokens back to voter.
-        let token_address: Address = env.storage().instance().get(&TOKEN).expect("contract not initialized");
+        let token_address: Address = env
+            .storage()
+            .instance()
+            .get(&TOKEN)
+            .expect("contract not initialized");
         let contract_address = env.current_contract_address();
 
-        token::Client::new(&env, &token_address).transfer(
-            &contract_address,
-            &voter,
-            &amount,
-        );
+        token::Client::new(&env, &token_address).transfer(&contract_address, &voter, &amount);
 
         locks.remove(voter);
         env.storage().instance().set(&LOCKS, &locks);
@@ -450,8 +483,11 @@ impl GovernanceContract {
 
     /// Return a proposal by ID.
     pub fn get_proposal(env: Env, proposal_id: u32) -> Option<Proposal> {
-        let proposals: Map<u32, Proposal> =
-            env.storage().instance().get(&PROPOSALS).unwrap_or(Map::new(&env));
+        let proposals: Map<u32, Proposal> = env
+            .storage()
+            .instance()
+            .get(&PROPOSALS)
+            .unwrap_or(Map::new(&env));
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -461,8 +497,11 @@ impl GovernanceContract {
     /// Return the current vote record for a (voter, proposal_id) pair.
     pub fn get_vote(env: Env, voter: Address, proposal_id: u32) -> Option<VoteRecord> {
         let key = (voter, proposal_id);
-        let all_votes: Map<(Address, u32), VoteRecord> =
-            env.storage().instance().get(&VOTES).unwrap_or(Map::new(&env));
+        let all_votes: Map<(Address, u32), VoteRecord> = env
+            .storage()
+            .instance()
+            .get(&VOTES)
+            .unwrap_or(Map::new(&env));
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -471,8 +510,11 @@ impl GovernanceContract {
 
     /// Return the token lock for a voter.
     pub fn get_lock(env: Env, voter: Address) -> Option<TokenLock> {
-        let locks: Map<Address, TokenLock> =
-            env.storage().instance().get(&LOCKS).unwrap_or(Map::new(&env));
+        let locks: Map<Address, TokenLock> = env
+            .storage()
+            .instance()
+            .get(&LOCKS)
+            .unwrap_or(Map::new(&env));
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);

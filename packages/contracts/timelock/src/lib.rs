@@ -43,8 +43,11 @@ impl TimelockContract {
             queued_at: env.ledger().timestamp(),
         };
 
-        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> =
-            env.storage().instance().get(&QUEUED_TXS).unwrap_or(Map::new(&env));
+        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> = env
+            .storage()
+            .instance()
+            .get(&QUEUED_TXS)
+            .unwrap_or(Map::new(&env));
 
         if queued_txs.contains_key(tx_hash.clone()) {
             panic!("Transaction already queued");
@@ -60,17 +63,25 @@ impl TimelockContract {
     }
 
     pub fn execute_transaction(env: Env, tx_hash: BytesN<32>) {
-        let mut executed: Map<BytesN<32>, bool> =
-            env.storage().instance().get(&EXECUTED).unwrap_or(Map::new(&env));
+        let mut executed: Map<BytesN<32>, bool> = env
+            .storage()
+            .instance()
+            .get(&EXECUTED)
+            .unwrap_or(Map::new(&env));
 
         if executed.contains_key(tx_hash.clone()) {
             panic!("Transaction already executed");
         }
 
-        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> =
-            env.storage().instance().get(&QUEUED_TXS).unwrap_or(Map::new(&env));
+        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> = env
+            .storage()
+            .instance()
+            .get(&QUEUED_TXS)
+            .unwrap_or(Map::new(&env));
 
-        let tx = queued_txs.get(tx_hash.clone()).expect("Transaction not found");
+        let tx = queued_txs
+            .get(tx_hash.clone())
+            .expect("Transaction not found");
 
         if env.ledger().timestamp() < tx.eta {
             panic!("Cannot execute before ETA");
@@ -87,10 +98,15 @@ impl TimelockContract {
     }
 
     pub fn revoke_transaction(env: Env, tx_hash: BytesN<32>) {
-        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> =
-            env.storage().instance().get(&QUEUED_TXS).unwrap_or(Map::new(&env));
+        let mut queued_txs: Map<BytesN<32>, QueuedTransaction> = env
+            .storage()
+            .instance()
+            .get(&QUEUED_TXS)
+            .unwrap_or(Map::new(&env));
 
-        let tx = queued_txs.get(tx_hash.clone()).expect("Transaction not found");
+        let tx = queued_txs
+            .get(tx_hash.clone())
+            .expect("Transaction not found");
 
         if env.ledger().timestamp() >= tx.eta {
             panic!("Cannot revoke after ETA has passed");
@@ -104,8 +120,11 @@ impl TimelockContract {
     }
 
     pub fn get_queued_transaction(env: Env, tx_hash: BytesN<32>) -> Option<QueuedTransaction> {
-        let queued_txs: Map<BytesN<32>, QueuedTransaction> =
-            env.storage().instance().get(&QUEUED_TXS).unwrap_or(Map::new(&env));
+        let queued_txs: Map<BytesN<32>, QueuedTransaction> = env
+            .storage()
+            .instance()
+            .get(&QUEUED_TXS)
+            .unwrap_or(Map::new(&env));
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
@@ -113,8 +132,11 @@ impl TimelockContract {
     }
 
     pub fn is_executed(env: Env, tx_hash: BytesN<32>) -> bool {
-        let executed: Map<BytesN<32>, bool> =
-            env.storage().instance().get(&EXECUTED).unwrap_or(Map::new(&env));
+        let executed: Map<BytesN<32>, bool> = env
+            .storage()
+            .instance()
+            .get(&EXECUTED)
+            .unwrap_or(Map::new(&env));
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);

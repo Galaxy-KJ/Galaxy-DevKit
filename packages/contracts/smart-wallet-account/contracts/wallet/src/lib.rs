@@ -14,7 +14,7 @@ use smart_wallet_account_common::{
 /// Admin passkeys must never archive silently — a week of slack, renewed
 /// on every auth check, keeps them alive across long gaps between logins.
 const ADMIN_TTL_THRESHOLD: u32 = 60_480; // ~3.5 days
-const ADMIN_TTL_EXTEND: u32 = 120_960;   // ~7 days
+const ADMIN_TTL_EXTEND: u32 = 120_960; // ~7 days
 
 #[contract]
 pub struct SmartWallet;
@@ -325,7 +325,8 @@ impl CustomAccountInterface for SmartWallet {
                     .map_err(|_| WalletError::InvalidPublicKey)?;
                 let payload_bytes =
                     Bytes::from_slice(&env, signature_payload.to_array().as_slice());
-                env.crypto().ed25519_verify(&pk, &payload_bytes, &sig.signature);
+                env.crypto()
+                    .ed25519_verify(&pk, &payload_bytes, &sig.signature);
 
                 extend_signer_ttl(&env, &sig.id, &signer.kind, signer.ttl_ledgers);
             }
@@ -441,8 +442,7 @@ fn verify_challenge(
 }
 
 pub fn base64url_encode(env: &Env, input: &[u8]) -> Bytes {
-    const TABLE: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = Bytes::new(env);
 

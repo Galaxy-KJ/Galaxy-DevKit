@@ -6,14 +6,17 @@ NETWORK="testnet"
 SOURCE="deployer"
 
 # WASM paths
-WALLET_WASM="target/wasm32v1-none/release/smart_wallet_account_wallet.wasm"
-FACTORY_WASM="target/wasm32v1-none/release/smart_wallet_account_factory.wasm"
+# These crates are members of the packages/contracts workspace, which builds
+# into packages/contracts/target.
+WALLET_WASM="../target/wasm32v1-none/release/smart_wallet_account_wallet.wasm"
+FACTORY_WASM="../target/wasm32v1-none/release/smart_wallet_account_factory.wasm"
 
-# Navigate to the contract root (where Cargo.toml is)
+# Navigate to the smart-wallet-account folder
 cd "$(dirname "$0")/.."
 
 echo "Building contracts..."
-stellar contract build
+stellar contract build --package smart-wallet-account-wallet
+stellar contract build --package smart-wallet-account-factory
 
 echo "-----------------------------------"
 echo "Installing Wallet WASM..."
