@@ -32,6 +32,7 @@ interface MonitoringAlertRow {
   name: string;
   protocol: string;
   account_address: string;
+  custom_metric_id?: string;
   network: StellarNetworkName;
   alert_type: AlertType;
   threshold: string | number;
@@ -103,6 +104,7 @@ function rowToAlert(row: MonitoringAlertRow): MonitoringAlert {
     name: row.name,
     protocol: row.protocol,
     accountAddress: row.account_address,
+    customMetricId: row.custom_metric_id ?? undefined,
     network: row.network,
     alertType: row.alert_type,
     threshold: toNumber(row.threshold) ?? 0,
@@ -154,6 +156,7 @@ export class MonitoringAlertRepository {
         name: input.name,
         protocol: input.protocol,
         account_address: input.accountAddress,
+        custom_metric_id: input.customMetricId ?? null,
         network: input.network ?? 'testnet',
         alert_type: input.alertType,
         threshold: input.threshold,

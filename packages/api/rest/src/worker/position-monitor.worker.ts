@@ -11,6 +11,8 @@
  * @since 2026-06-29
  */
 
+import { CustomMetricsService } from '../services/metrics/custom-metrics.service';
+
 import { randomUUID } from 'crypto';
 import { MonitoringAlertRepository } from '../repositories/monitoring-alert.repository';
 import { AlertEvaluator } from '../services/monitoring/alert-evaluator';
@@ -37,6 +39,7 @@ export interface WorkerDeps {
   protocolPool?: ProtocolPool;
   logger?: Pick<Console, 'log' | 'warn' | 'error'>;
   now?: () => Date;
+  metrics?: Pick<CustomMetricsService, 'value'>;
 }
 
 export class PositionMonitorWorker {
@@ -49,11 +52,13 @@ export class PositionMonitorWorker {
   private evaluationTimer?: NodeJS.Timeout;
   private retryTimer?: NodeJS.Timeout;
   private running = false;
+  private metrics?: Pick<CustomMetricsService, 'value'>;
 
   constructor(
     private readonly config: WorkerConfig,
     deps: WorkerDeps = {}
   ) {
+    this.metrics = deps.metrics;
     this.repo = deps.repo ?? new MonitoringAlertRepository();
     this.evaluator = deps.evaluator ?? new AlertEvaluator();
     this.dispatcher = deps.dispatcher ?? new ChannelDispatcher();
@@ -102,9 +107,17 @@ export class PositionMonitorWorker {
   private async evaluateOne(alert: MonitoringAlert): Promise<void> {
     let observedValue: number | null = null;
     try {
-      const protocol = this.protocolPool.get(alert.protocol, alert.network);
-      const hf = await protocol.getHealthFactor(alert.accountAddress);
-      observedValue = this.parseHealthFactor(hf.value);
+      if (alert.alertType === 'custom_metric_above' || alert.alertType === 'custom_metric_below') {
+        if (!alert.customMetricId) throw new Error('Missing custom metric reference');
+        this.metrics ??= new CustomMetricsService();
+        const value = await this.metrics.value(alert.userId, alert.customMetricId);
+        if (value.groups.length !== 1 || Object.keys(value.groups[0].dimensions).length !== 0) throw new Error('Alert metric must be ungrouped');
+        observedValue = value.groups[0].value;
+      } else {
+        const protocol = this.protocolPool.get(alert.protocol, alert.network);
+        const hf = await protocol.getHealthFactor(alert.accountAddress);
+        observedValue = this.parseHealthFactor(hf.value);
+      }
     } catch (err) {
       this.logger.warn(
         `[monitor] alert=${alert.id} failed to fetch health factor: ${(err as Error).message}`
@@ -132,6 +145,7 @@ export class PositionMonitorWorker {
       alertName: alert.name,
       protocol: alert.protocol,
       accountAddress: alert.accountAddress,
+      customMetricId: alert.customMetricId,
       network: alert.network,
       alertType: alert.alertType,
       threshold: alert.threshold,

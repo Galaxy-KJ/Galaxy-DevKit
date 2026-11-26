@@ -130,3 +130,17 @@ describe('MonitoringAlertService', () => {
     await expect(service.listEventsForUser('a1', 'user-1')).rejects.toBeInstanceOf(MonitoringError);
   });
 });
+
+
+test('custom alerts require an owned enabled scalar metric', async () => {
+  const repo = makeRepo();
+  const list = jest.fn().mockResolvedValue([]);
+  const service = new MonitoringAlertService(repo, () => ({ list }));
+  const input = { ...validInput, alertType: 'custom_metric_above' as const, protocol: 'custom', customMetricId: 'metric', accountAddress: '' };
+  await expect(service.create('alice', input)).rejects.toThrow('owned by you');
+  expect(repo.create).not.toHaveBeenCalled();
+  list.mockResolvedValue([{ id: 'metric', enabled: true, dimensions: [] }]);
+  await service.create('alice', input);
+  expect(list).toHaveBeenCalledWith('alice');
+  expect(repo.create).toHaveBeenCalledWith('alice', input);
+});

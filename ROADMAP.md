@@ -170,7 +170,7 @@ gantt
 - [x] **#71** Build comprehensive analytics dashboard (delivered via #339)
 - [ ] **#72** Add real-time performance monitoring
 - [ ] **#73** Implement alerting system
-- [ ] **#74** Create custom metrics and KPIs
+- [x] **#74** Create custom metrics and KPIs (Issue #413: persisted transactions, oracle observations and automation executions; missing historical sources/valuations remain unavailable)
 - [ ] **#75** Add business intelligence integrations
 
 ### Performance & Scale (5 issues)

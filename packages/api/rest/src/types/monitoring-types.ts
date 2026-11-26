@@ -20,6 +20,8 @@ export type AlertStatus = 'active' | 'paused' | 'archived';
  * - Activity: large transactions, unusual patterns
  */
 export type AlertType =
+  | 'custom_metric_above'
+  | 'custom_metric_below'
   // Position (existing)
   | 'health_factor_below'
   // Price
@@ -111,6 +113,7 @@ export interface MonitoringAlert {
   name: string;
   protocol: string;
   accountAddress: string;
+  customMetricId?: string;
   network: StellarNetworkName;
   alertType: AlertType;
   threshold: number;
@@ -133,6 +136,7 @@ export interface CreateMonitoringAlertInput {
   name: string;
   protocol: string;
   accountAddress: string;
+  customMetricId?: string;
   network?: StellarNetworkName;
   alertType: AlertType;
   threshold: number;
@@ -194,6 +198,7 @@ export interface AlertEventPayload {
   alertName: string;
   protocol: string;
   accountAddress: string;
+  customMetricId?: string;
   network: StellarNetworkName;
   alertType: AlertType;
   threshold: number;

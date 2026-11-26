@@ -177,3 +177,28 @@ describe('PositionMonitorWorker.evaluationTick', () => {
     worker.stop();
   });
 });
+
+
+describe('custom metric alerts', () => {
+  test('uses the owner-scoped metric value and existing dispatcher', async () => {
+    const alert = makeAlert({ alertType: 'custom_metric_above', protocol: 'custom', customMetricId: 'metric-1', threshold: 2 });
+    const repo = { listActiveForEvaluation: jest.fn().mockResolvedValue([alert]), markEvaluated: jest.fn(), createEvent: jest.fn().mockResolvedValue({ id: 'event', deliveryAttempts: 0 }), updateEventDelivery: jest.fn() };
+    const metrics = { value: jest.fn().mockResolvedValue({ groups: [{ dimensions: {}, value: 3 }] }) };
+    const dispatcher = { dispatch: jest.fn().mockResolvedValue({ success: true }), computeNextRetry: jest.fn() };
+    const protocolPool = { get: jest.fn() };
+    const worker = new PositionMonitorWorker({ network: 'testnet', evaluationIntervalMs: 60000, retryIntervalMs: 60000, batchSize: 10 }, {
+      repo: repo as unknown as MonitoringAlertRepository, metrics, dispatcher: dispatcher as unknown as ChannelDispatcher,
+      protocolPool: protocolPool as unknown as ProtocolPool, logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
+    });
+    await worker.evaluationTick();
+    expect(metrics.value).toHaveBeenCalledWith('u1', 'metric-1');
+    expect(protocolPool.get).not.toHaveBeenCalled();
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(alert, expect.objectContaining({ customMetricId: 'metric-1', observedValue: 3 }));
+    metrics.value.mockResolvedValue({ groups: [{ dimensions: { asset: 'XLM' }, value: 4 }] });
+    await worker.evaluationTick();
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    metrics.value.mockRejectedValue(new Error('Metric unavailable'));
+    await worker.evaluationTick();
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+  });
+});
