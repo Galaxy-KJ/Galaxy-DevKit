@@ -9,7 +9,7 @@
   "ledger": {
     "protocol_version": 21,
     "sequence_number": 0,
-    "timestamp": 3000,
+    "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -87,7 +87,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "queue_transaction"
+                "symbol": "initialize"
               }
             ],
             "data": {
@@ -96,10 +96,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "transfer"
+                  "u64": 3600
                 },
                 {
-                  "u64": 2000
+                  "u64": 86400
                 }
               ]
             }
@@ -117,22 +117,21 @@
           "v0": {
             "topics": [
               {
-                "symbol": "log"
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "auth": "invalid_action"
+                }
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'ETA must be in the future' from contract function 'Symbol(obj#9)'"
+                  "string": "Unauthorized function call for address"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "string": "transfer"
-                },
-                {
-                  "u64": 2000
                 }
               ]
             }
@@ -154,7 +153,32 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "auth": "invalid_action"
+                }
+              }
+            ],
+            "data": {
+              "string": "escalating error to panic"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "auth": "invalid_action"
                 }
               }
             ],
@@ -179,17 +203,17 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "auth": "invalid_action"
                 }
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "contract call failed"
+                  "string": "contract try_call failed"
                 },
                 {
-                  "symbol": "queue_transaction"
+                  "symbol": "initialize"
                 },
                 {
                   "vec": [
@@ -197,39 +221,14 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                     },
                     {
-                      "string": "transfer"
+                      "u64": 3600
                     },
                     {
-                      "u64": 2000
+                      "u64": 86400
                     }
                   ]
                 }
               ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "error"
-              },
-              {
-                "error": {
-                  "wasm_vm": "invalid_action"
-                }
-              }
-            ],
-            "data": {
-              "string": "escalating error to panic"
             }
           }
         }

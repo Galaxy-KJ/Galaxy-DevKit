@@ -27,6 +27,7 @@ interface DexAggregatorDependencies {
   fetchImpl?: typeof fetch;
   horizonServer?: HorizonServerLike;
   protocolFactory?: AggregatorProtocolFactory;
+  getProtocol?: (config: ProtocolConfig) => Promise<SoroswapQuoteProtocol>;
   aquariusAdapter?: Pick<AquariusAdapter, 'fetchRoute'>;
 }
 
@@ -36,6 +37,7 @@ export class DexAggregatorService implements IDEXAggregator {
   private readonly fetchImpl: typeof fetch;
   private readonly horizonServer: HorizonServerLike;
   private readonly protocolFactory: AggregatorProtocolFactory;
+  private readonly getProtocol?: (config: ProtocolConfig) => Promise<SoroswapQuoteProtocol>;
   private readonly aquariusAdapter: Pick<AquariusAdapter, 'fetchRoute'>;
 
   constructor(config: ProtocolConfig, dependencies: DexAggregatorDependencies = {}) {
@@ -53,6 +55,7 @@ export class DexAggregatorService implements IDEXAggregator {
       dependencies.horizonServer ??
       ((new Horizon.Server(this.soroswapConfig.network.horizonUrl) as unknown) as HorizonServerLike);
     this.protocolFactory = dependencies.protocolFactory ?? ProtocolFactory.getInstance();
+    this.getProtocol = dependencies.getProtocol;
     this.aquariusAdapter =
       dependencies.aquariusAdapter ?? new AquariusAdapter({ fetchImpl: this.fetchImpl });
   }
@@ -176,8 +179,10 @@ export class DexAggregatorService implements IDEXAggregator {
     assetOut: Asset,
     amountIn: string
   ): Promise<AggregatorRoute> {
-    const protocol = this.protocolFactory.createProtocol(this.soroswapConfig);
-    await protocol.initialize();
+    const protocol = this.getProtocol
+      ? await this.getProtocol(this.soroswapConfig)
+      : this.protocolFactory.createProtocol(this.soroswapConfig);
+    if (!this.getProtocol) await protocol.initialize();
 
     if (typeof protocol.getSwapQuote !== 'function') {
       throw new Error('Soroswap protocol does not implement getSwapQuote');
@@ -200,8 +205,10 @@ export class DexAggregatorService implements IDEXAggregator {
     assetOut: Asset,
     amountIn: string
   ): Promise<AggregatorRoute> {
-    const protocol = this.protocolFactory.createProtocol(this.sdexConfig);
-    await protocol.initialize();
+    const protocol = this.getProtocol
+      ? await this.getProtocol(this.sdexConfig)
+      : this.protocolFactory.createProtocol(this.sdexConfig);
+    if (!this.getProtocol) await protocol.initialize();
 
     if (typeof protocol.getSwapQuote !== 'function') {
       throw new Error('SDEX protocol does not implement getSwapQuote');
